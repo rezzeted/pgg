@@ -54,6 +54,7 @@ def roof_spire(h: f32, r0: f32, rng: rng) -> (out: geo<mesh>) {
     gold_h = 2.05
     skirt_h = 0.11
     k_gold = 0.98
+    finial_width_scale = 1.2075
     tiles_h = h - gold_h - skirt_h
     a_cap = a0 * (gold_h + skirt_h) / h
     r_cap = r0 * (gold_h + skirt_h) / h
@@ -61,7 +62,7 @@ def roof_spire(h: f32, r0: f32, rng: rng) -> (out: geo<mesh>) {
     pitch = degrees(atan2(tiles_h, a0 - a_cap))
     y_soffit = tiles_h - 0.02
     y_gold0 = tiles_h + skirt_h * 0.70
-    a_gold0 = a0 * (h - y_gold0) / h * k_gold
+    a_gold0 = a0 * (h - y_gold0) / h * k_gold * finial_width_scale
     body0 = common.hexa_frustum(y0 = 0.0, y1 = tiles_h, r0 = a0, r1 = a_cap, grp = "roof")
     body = clip(body0, origin = vec3(0, y_soffit, 0), normal = vec3(0, -1, 0), cap_group = "roof")
     face0 = roof.spire_tile_face(r0 = r0, r1 = r_cap, slope_len = slope_len, rng = split_rng(rng, key = "face"), apex_clip = 0.02)
@@ -74,7 +75,8 @@ def roof_spire(h: f32, r0: f32, rng: rng) -> (out: geo<mesh>) {
     cap0 = roof.hip_caps(p0 = p0, p1 = p1, rng = split_rng(rng, key = "hip"), half = 38.0, lift = 0.12, cap_w = 0.26, cap_l = 0.36, y_step = 0.005)
     caps = clip(shapes.polar_array(cap0, n = 6), origin = vec3(0, y_soffit, 0), normal = vec3(0, -1, 0), cap_group = "roof")
     over_hi = 0.028
-    over_lo = a_cap - a_gold0 + over_hi + 0.09
+    skirt_lo = (a_cap + 0.09) * finial_width_scale
+    over_lo = skirt_lo - a_gold0 + over_hi
     belt0 = common.hexa_belt(y = y_soffit, h = skirt_h, r = a_gold0 - over_hi, over_lo = over_lo, over_hi = over_hi)
     soff = common.hexa_plate(y = y_soffit - 0.012, h = 0.024, r = a_gold0 - over_hi + over_lo, grp = "iron")
     skirt = merge(mark(unmark(belt0, "stone"), "iron", where = true, domain = faces), soff)
