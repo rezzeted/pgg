@@ -34,3 +34,7 @@ std::filesystem::path findPggCorpusDir(const std::filesystem::path& from);
 // Walks up from `from` looking for `<ancestor>/resources/pgg` (product/art
 // examples); empty if not found.
 std::filesystem::path findPggResourcesDir(const std::filesystem::path& from);
+
+// Walks up from `from` looking for `<ancestor>/resources` (sibling of
+// AmberEstate and `pgg/`); empty if not found.
+std::filesystem::path findPggResourcesParent(const std::filesystem::path& from);

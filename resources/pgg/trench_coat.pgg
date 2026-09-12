@@ -1,0 +1,96 @@
+# Длинное пальто-тренч на невидимом манекене: корпус — один вертикальный sweep
+# от подола до верха воротника с эллиптическим профилем, ширина/глубина которого
+# задана ramp'ом по высоте (подол → талия → грудь → плечо → горло → раструб
+# воротника); складки подола — синус по u профиля, затухающий к плечам, плюс fbm
+# для мятости ткани. Рукава — sweep круга по Безье от плеча вниз с раструбом
+# манжеты, правый отражён mirror'ом. Пояс — замкнутый sweep квадратного профиля
+# по эллипсу талии, пряжка и двубортные пуговицы — инстансы на вычисленных
+# точках лицевой поверхности (z берётся из того же ramp'а глубины).
+#
+# Грабли: вертикальный sweep — @profile_scale = (глубина Z, ширина X), не
+# (ширина, глубина); константный @profile_scale пояса — с domain = points,
+# иначе уедет в detail и sweep его не увидит.
+
+param seed: int = 3
+param folds: int = 14
+param fold_amp: f32 = 0.03
+
+def coat_shape(pts: geo<points>) -> (out: geo<points>) {
+    """Профиль корпуса по высоте: пишет @profile_scale = (глубина, ширина) на точки
+    пути по их @P.y (0 — подол, 1.66 — верх воротника). Тот же def даёт z лицевой
+    поверхности для пуговиц/пряжки: dot(@profile_scale, (1, 0))."""
+    depth = ramp(dot(@P, (0, 1, 0)), 0.0, 0.30, 0.5, 0.22, 0.95, 0.17, 1.25, 0.18, 1.40, 0.17, 1.50, 0.13, 1.55, 0.10, 1.66, 0.13)
+    width = ramp(dot(@P, (0, 1, 0)), 0.0, 0.40, 0.5, 0.31, 0.95, 0.24, 1.25, 0.26, 1.40, 0.26, 1.50, 0.18, 1.55, 0.12, 1.66, 0.15)
+    out = set(pts, "profile_scale", vec2(depth, width), domain = points)
+}
+
+def sleeve(rng: rng) -> (out: geo<mesh>) {
+    """Правый рукав: Безье от плеча (x ≈ 0.30, внутри корпуса) вниз и чуть вперёд,
+    круглый профиль, @scale сужается к запястью и расходится манжетой."""
+    path0 = bezier_points(p0 = (0.17, 1.36, 0), p1 = (0.30, 1.30, 0.0), p2 = (0.36, 1.02, 0.04), p3 = (0.37, 0.72, 0.09), count = 16)
+    path = set(path0, "scale", ramp(@t, 0.0, 0.085, 0.3, 0.082, 0.85, 0.072, 1.0, 0.088), domain = points)
+    tube = sweep(path, circle(sides = 24, radius = 1.0), cap = true)
+    wrinkled = set_position(tube, offset = @N * fbm(scale = 5.0, octaves = 3, rng = rng) * 0.006)
+    out = compute_normals(wrinkled, mode = smooth)
+}
+
+coat_rng = rng_from_seed(seed)
+r_body = split_rng(coat_rng, key = "body")
+r_sleeve = split_rng(coat_rng, key = "sleeve")
+r_color = split_rng(coat_rng, key = "color")
+
+camel = vec3(0.60, 0.45, 0.27)
+brass = vec3(0.75, 0.58, 0.25)
+
+# --- корпус --------------------------------------------------------------------
+spine0 = mesh_line(count = 56, length = 1.66, dir = (0, 1, 0))
+spine = coat_shape(spine0)
+shell = sweep(spine, circle(sides = 64, radius = 1.0), cap = false)
+
+u = dot(@uv, (1, 0))
+v = dot(@uv, (0, 1))
+radial = normalize(vec3(dot(@P, (1, 0, 0)), 0.0, dot(@P, (0, 0, 1))))
+pleat = sin(u * 6.2831853 * f32(folds)) * fold_amp * pow(1.0 - v, 2.0) * (0.55 + 0.45 * fbm(scale = 1.8, octaves = 2, rng = split_rng(r_body, key = "pleat")))
+crease = fbm(scale = 2.5, octaves = 4, rng = r_body) * 0.014 * (1.0 - v * 0.6)
+draped = set_position(shell, offset = radial * (pleat + crease), where = dot(@P, (0, 1, 0)) < 1.50)
+
+placket = (u < 0.03) | (u > 0.97)
+collar = v > 0.925
+shade = 0.94 + 0.12 * fbm(scale = 4.0, octaves = 3, rng = r_color)
+body_col = collar ? camel * 0.82 : (placket ? camel * 0.86 : camel * shade)
+body = compute_normals(set(draped, "Cd", body_col, domain = faces), mode = smooth)
+
+# --- рукава --------------------------------------------------------------------
+sleeve_r = sleeve(rng = r_sleeve)
+sleeves0 = mirror(sleeve_r, normal = (1, 0, 0))
+cuff = dot(@uv, (0, 1)) > 0.86
+sleeves = set(sleeves0, "Cd", cuff ? camel * 0.84 : camel * 0.98, domain = faces)
+
+# --- пояс и пряжка -------------------------------------------------------------
+waist0 = transform(circle(sides = 48, radius = 1.0), rotate = (90, 0, 0))
+waist1 = transform(waist0, translate = (0, 0.95, 0), scale = (0.255, 1, 0.185))
+waist = set(waist1, "profile_scale", vec2(0.020, 0.045), domain = points)
+strap_prof = transform(circle(sides = 4, radius = 1.0), rotate = (0, 0, 45))
+belt0 = sweep(waist, strap_prof, closed = true)
+belt = compute_normals(set(belt0, "Cd", camel * 0.62, domain = faces), mode = flat)
+
+buckle0 = transform(box(size = (0.07, 0.08, 0.016)), translate = (0, 0.95, 0.202))
+buckle = compute_normals(set(buckle0, "Cd", brass, domain = faces), mode = flat)
+
+# --- пуговицы (двубортные: две колонки по три) -----------------------------------
+col_l0 = mesh_line(count = 3, length = 0.30, dir = (0, 1, 0))
+col_l1 = transform(col_l0, translate = (-0.06, 1.02, 0))
+col_r1 = transform(col_l0, translate = (0.06, 1.02, 0))
+anchors0 = coat_shape(merge(col_l1, col_r1))
+anchors = set_position(anchors0, pos = vec3(dot(@P, (1, 0, 0)), dot(@P, (0, 1, 0)), dot(@profile_scale, (1, 0)) * 0.97 + 0.012))
+button_src = set(ico_sphere(subdiv = 1, radius = 0.017), "Cd", brass, domain = faces)
+buttons = compute_normals(realize(instance_on_points(anchors, source = button_src)), mode = smooth)
+
+# --- пол ---------------------------------------------------------------------
+floor0 = transform(grid(size = (1.6, 1.6), res = 4), translate = (0, -0.22, 0))
+floor = set(floor0, "Cd", vec3(0.30, 0.30, 0.32), domain = faces)
+
+coat = bake_ao(merge(body, sleeves, belt, buckle, buttons), rays = 24, distance = 0.35, rng = split_rng(coat_rng, key = "ao"))
+scene = merge(coat, floor)
+output coat
+output scene

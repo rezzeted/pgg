@@ -145,4 +145,44 @@ ModuleClosure loadModuleClosure(const File& mainFile, const std::vector<std::str
     return loader.run(mainFile);
 }
 
+namespace {
+
+std::string walkProductLib(std::filesystem::path cur) {
+    std::error_code ec;
+    if (cur.empty()) return {};
+    if (std::filesystem::is_regular_file(cur, ec)) cur = cur.parent_path();
+    cur = std::filesystem::weakly_canonical(cur, ec);
+    for (int depth = 0; depth < 16 && !cur.empty(); ++depth) {
+        const std::filesystem::path candidate = cur / "resources" / "pgg";
+        if (std::filesystem::is_directory(candidate / "lib", ec)) {
+            const std::filesystem::path canon = std::filesystem::weakly_canonical(candidate, ec);
+            return (ec ? candidate : canon).string();
+        }
+        const std::filesystem::path parent = cur.parent_path();
+        if (parent == cur) break;
+        cur = parent;
+    }
+    return {};
+}
+
+}  // namespace
+
+std::string findProductLibRoot(const std::string& from) {
+    if (std::string s = walkProductLib(from); !s.empty()) return s;
+    std::error_code ec;
+    return walkProductLib(std::filesystem::current_path(ec));
+}
+
+void appendImportRoot(std::vector<std::string>& roots, const std::string& root) {
+    if (root.empty()) return;
+    std::error_code ec;
+    const std::string wantCanon = std::filesystem::weakly_canonical(root, ec).string();
+    const std::string& want = ec ? root : wantCanon;
+    for (const std::string& r : roots) {
+        const std::string rk = std::filesystem::weakly_canonical(r, ec).string();
+        if ((ec ? r : rk) == want) return;
+    }
+    roots.push_back(root);
+}
+
 }  // namespace pgg

@@ -1,0 +1,146 @@
+param table_w: f32 = 1.02
+param table_h: f32 = 0.70
+param top_t: f32 = 0.045
+param n_planks: int = 5
+param umb_r: f32 = 1.12
+param pole_h: f32 = 0.92
+param canopy_h: f32 = 0.32
+param scallop_h: f32 = 0.18
+param n_gores: int = 12
+param seed: int = 7
+
+import lib.parts
+import lib.shapes
+
+# Столик с полосатым пляжным зонтом по референсу environment/reference.jpg.
+# Стол — квадратный щит из 5 досок на четырёх ножках; шест проходит в центр;
+# купол — 12 долей (меридиан + фестон), чётные terracotta / нечётные cream.
+# Верх +Y, стол в XZ. Именованные узлы: table_unit, umbrella_unit, scene.
+
+def make_table(width: f32, height: f32, thick: f32, n: int, rng: rng) -> (out: geo<mesh>) {
+    """Квадратный стол: n досок щита (зазор 8 мм, @tint на доску) и четыре ножки
+    с небольшим свесом столешницы. Requires: width,height,thick > 0, n >= 3.
+    Writes: faces wood, edge."""
+    expect width > 0.3: "make_table: слишком узкий"
+    expect n >= 3: "make_table: минимум 3 доски"
+    pitch = width / f32(n)
+    plank_w = pitch - 0.008
+    plank = parts.cbox(size = vec3(plank_w, thick, width), k = 0.16)
+    pts0 = mesh_line(count = n, length = width - pitch, dir = (1, 0, 0))
+    pts1 = transform(pts0, translate = vec3(0.0 - (width - pitch) * 0.5, height - thick * 0.5, 0))
+    shade = random(lo = 0.86, hi = 1.14, rng = split_rng(rng, key = "plank"))
+    pts = set(pts1, "tint", vec3(shade * 1.04, shade, shade * 0.93))
+    top = mark(realize(instance_on_points(pts, source = plank)), "wood", where = true, domain = faces)
+
+    # Круглый проём под шест в центре столешницы (без булева: delete по точкам).
+    hole_r = 0.038
+    r2 = dot(@P, (1, 0, 0)) * dot(@P, (1, 0, 0)) + dot(@P, (0, 0, 1)) * dot(@P, (0, 0, 1))
+    top_cut = delete(top, where = r2 < hole_r * hole_r, domain = points)
+
+    leg_s = 0.085
+    leg_h = height - thick
+    inset = 0.075
+    leg = parts.piece(size = vec3(leg_s, leg_h, leg_s), pos = vec3(0, leg_h * 0.5, 0), grp = "wood")
+    hx = width * 0.5 - inset
+    hz = width * 0.5 - inset
+    leg_a = transform(leg, translate = vec3(hx, 0, hz))
+    leg_b = transform(leg, translate = vec3(0.0 - hx, 0, hz))
+    leg_c = transform(leg, translate = vec3(hx, 0, 0.0 - hz))
+    leg_d = transform(leg, translate = vec3(0.0 - hx, 0, 0.0 - hz))
+    legs = merge(leg_a, leg_b, leg_c, leg_d)
+    out = merge(top_cut, legs)
+}
+
+def gore_sheet(r: f32, apex_y: f32, rim_y: f32, sides: int) -> (out: geo<mesh>) {
+    """Одна доля купола: сетка (угол × радиус) в сектор ±180/sides, меридиан
+    с плоской макушкой. Requires: r > 0, apex_y > rim_y, sides >= 6."""
+    expect r > 0.2: "gore_sheet: маленький радиус"
+    expect apex_y > rim_y: "gore_sheet: макушка ниже обода"
+    g0 = grid(size = vec2(1, 1), res = vec2(6, 18))
+    u = dot(@P, (1, 0, 0)) + 0.5
+    v = dot(@P, (0, 0, 1)) + 0.5
+    ang = (u - 0.5) * 2.0 * 3.14159265 / f32(sides)
+    rr = mix(0.045, r, v)
+    yy = mix(apex_y, rim_y, pow(clamp(v, 0.0, 1.0), 1.85))
+    sheet = set_position(g0, pos = vec3(rr * sin(ang), yy, rr * cos(ang)))
+    out = compute_normals(sheet, mode = flat)
+}
+
+def one_petal(r: f32, rim_y: f32, hang: f32, n: int) -> (out: geo<mesh>) {
+    """Один фестон на ободе +Z: лента вдоль хорды, высота sin(πt). Requires: n >= 6."""
+    expect n >= 6: "one_petal: мало долей"
+    chord = 2.0 * r * sin(3.14159265 / f32(n))
+    ap = r * cos(3.14159265 / f32(n))
+    n_path = 11
+    path0 = mesh_line(count = n_path, length = chord, dir = (1, 0, 0))
+    t = f32(@index) / f32(n_path - 1)
+    s = sin(3.14159265 * t)
+    path1 = transform(path0, translate = vec3(0.0 - chord * 0.5, rim_y, ap))
+    path = set(path1, "profile_scale", vec2(0.028 + 0.06 * s, 0.012 + s * hang), domain = points)
+    prof = mesh_line(count = 7, length = 1.0, dir = (0, -1, 0))
+    one = sweep(path, profile = prof, closed = false, cap = false, profile_closed = false)
+    out = compute_normals(one, mode = auto, angle = 35)
+}
+
+def make_fabric(r: f32, apex_y: f32, rim_y: f32, hang: f32, sides: int) -> (out: geo<mesh>) {
+    """12 долей: панель + фестон, чётные stripe_a / нечётные stripe_b."""
+    gore = merge(gore_sheet(r = r, apex_y = apex_y, rim_y = rim_y, sides = sides), one_petal(r = r, rim_y = rim_y, hang = hang, n = sides))
+    a = mark(gore, "stripe_a", where = true, domain = faces)
+    b = mark(transform(gore, rotate = vec3(0, 30, 0)), "stripe_b", where = true, domain = faces)
+    out = merge(shapes.polar_array(a, n = 6, step_deg = 60), shapes.polar_array(b, n = 6, step_deg = 60))
+}
+
+def make_pole(r: f32, y0: f32, y1: f32) -> (out: geo<mesh>) {
+    """Деревянный шест: цилиндр 12 граней от y0 до y1. Requires: y1 > y0, r > 0."""
+    path0 = mesh_line(count = 2, length = y1 - y0, dir = (0, 1, 0))
+    path = set(transform(path0, translate = vec3(0, y0, 0)), "profile_scale", vec2(r, r), domain = points)
+    body = sweep(path, profile = circle(sides = 12, radius = 1.0))
+    out = mark(compute_normals(body, mode = auto, angle = 40), "pole", where = true, domain = faces)
+}
+
+def make_finial(apex_y: f32) -> (out: geo<mesh>) {
+    """Навершие: короткая шейка и шар, группа pole. Requires: apex_y — макушка купола."""
+    neck0 = mesh_line(count = 2, length = 0.06, dir = (0, 1, 0))
+    neck_p = set(transform(neck0, translate = vec3(0, apex_y - 0.01, 0)), "profile_scale", @index == 0 ? vec2(0.062, 0.055) : vec2(0.048, 0.048))
+    neck = mark(compute_normals(sweep(neck_p, profile = circle(sides = 12, radius = 1.0)), mode = auto, angle = 40), "pole", where = true, domain = faces)
+    ball = mark(transform(ico_sphere(subdiv = 2, radius = 0.095), translate = vec3(0, apex_y + 0.10, 0)), "pole", where = true, domain = faces)
+    out = merge(neck, ball)
+}
+
+def paint(raw: geo<mesh>, rng: rng) -> (out: geo<mesh>) {
+    """@Cd по группам (мультяшная палитра референса) и короткий AO в стыках."""
+    wood_col = vec3(0.68, 0.40, 0.16) * @tint
+    pole_col = vec3(0.58, 0.34, 0.14)
+    terra = vec3(0.86, 0.28, 0.10)
+    cream = vec3(0.93, 0.80, 0.58)
+    c0 = ingroup("wood") ? wood_col : vec3(1.0, 0.0, 1.0)
+    c1 = ingroup("pole") ? pole_col : c0
+    c2 = ingroup("stripe_a") ? terra : c1
+    c3 = ingroup("stripe_b") ? cream : c2
+    edge_mul = ingroup("edge") ? vec3(1.28, 1.24, 1.16) : vec3(1.0)
+    painted = set(raw, "Cd", c3 * edge_mul, domain = faces)
+    out = bake_ao(painted, rays = 16, distance = 0.55, rng = rng, domain = points)
+}
+
+def assemble(width: f32, height: f32, thick: f32, n: int, r: f32, shaft_h: f32, dome_h: f32, hang: f32, sides: int, rng: rng) -> (out: geo<mesh>) {
+    """Стол с зонтом: щит, шест, 12-дольный купол с фестонами, окраска и AO."""
+    apex = height + shaft_h
+    rim = apex - dome_h
+    tbl = make_table(width = width, height = height, thick = thick, n = n, rng = split_rng(rng, key = "table"))
+    fab = make_fabric(r = r, apex_y = apex, rim_y = rim, hang = hang, sides = sides)
+    shaft = make_pole(r = 0.028, y0 = height - thick - 0.01, y1 = apex + 0.02)
+    knob = make_finial(apex_y = apex)
+    out = paint(merge(tbl, fab, shaft, knob), rng = split_rng(rng, key = "ao"))
+}
+
+root_rng = rng_from_seed(seed)
+apex_y = table_h + pole_h
+rim_y = apex_y - canopy_h
+
+table_unit = make_table(width = table_w, height = table_h, thick = top_t, n = n_planks, rng = split_rng(root_rng, key = "table"))
+fabric = make_fabric(r = umb_r, apex_y = apex_y, rim_y = rim_y, hang = scallop_h, sides = n_gores)
+pole = make_pole(r = 0.028, y0 = table_h - top_t - 0.01, y1 = apex_y + 0.02)
+finial = make_finial(apex_y = apex_y)
+umbrella_unit = merge(fabric, pole, finial)
+scene = paint(merge(table_unit, umbrella_unit), rng = split_rng(root_rng, key = "ao"))
+output scene

@@ -1,0 +1,7 @@
+[
+  {"name": "iso", "node": "scene", "orbit": [38, 22], "zoom": 1.12, "chrome": "off"},
+  {"name": "front", "node": "scene", "orbit": [0, 8], "zoom": 1.1, "ortho": "front", "chrome": "off"},
+  {"name": "top", "node": "scene", "orbit": [0, 89], "zoom": 1.05, "ortho": "top", "chrome": "off"},
+  {"name": "table", "node": "table_unit", "orbit": [40, 28], "zoom": 1.0, "chrome": "off"},
+  {"name": "canopy", "node": "umbrella_unit", "orbit": [38, 28], "zoom": 0.9, "chrome": "off"}
+]

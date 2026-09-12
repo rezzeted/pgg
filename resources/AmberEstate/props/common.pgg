@@ -1,0 +1,57 @@
+import lib.parts
+import lib.shapes
+import lib.ironwork
+
+# Общая палитра и точёные заготовки для пропов AmberEstate.
+# import common из соседнего файла в props/.
+
+def ao(raw: geo<mesh>, rng: rng) -> (out: geo<mesh>) {
+    """Короткий AO в стыках. @Cd пишет вызывающий — только по группам этого меша."""
+    out = bake_ao(raw, rays = 12, distance = 0.45, rng = rng, domain = points)
+}
+
+def lathe_wood(y0: f32, y1: f32, r_end: f32, r_mid: f32, sides: int) -> (out: geo<mesh>) {
+    """Бочка/кадка:  n-гранный lathe, тонкие торцы, выпуклый экватор. sides — клёпки."""
+    expect y1 > y0: "lathe_wood: высота"
+    expect r_mid > r_end: "lathe_wood: выпуклость"
+    n = 9
+    h = y1 - y0
+    path0 = mesh_line(count = n, length = h, dir = (0, 1, 0))
+    t = f32(@index) / f32(n - 1)
+    k = mix(r_end, r_mid, sin(3.14159265 * t))
+    path = set(transform(path0, translate = vec3(0, y0, 0)), "profile_scale", vec2(k, k), domain = points)
+    body = sweep(path, profile = circle(sides = sides, radius = 1.0))
+    out = mark(compute_normals(body, mode = flat), "wood", where = true, domain = faces)
+}
+
+def hoop_band(y: f32, r: f32, h: f32) -> (out: geo<mesh>) {
+    """Железный обруч: короткий цилиндр радиуса r, высота h, низ на y."""
+    expect h > 0.008: "hoop_band: тонкий"
+    out = ironwork.spool(p0 = vec3(0, y, 0), p1 = vec3(0, y + h, 0), r0 = r, r1 = r, sides = 16)
+}
+
+def rivet_ring(y: f32, r: f32, n: int, riv: f32) -> (out: geo<mesh>) {
+    """n заклёпок на окружности радиуса r в плоскости XZ, высота y."""
+    expect n >= 4: "rivet_ring: мало"
+    one = transform(ico_sphere(subdiv = 1, radius = riv), translate = vec3(0, y, r))
+    out = mark(shapes.polar_array(one, n = n), "iron", where = true, domain = faces)
+}
+
+def wood_disc(y: f32, r: f32, h: f32, grp: string) -> (out: geo<mesh>) {
+    """Крышка-диск: короткий цилиндр, низ на y, группа grp."""
+    body = ironwork.spool(p0 = vec3(0, y, 0), p1 = vec3(0, y + h, 0), r0 = r, r1 = r, sides = 16)
+    out = mark(unmark(body, "iron"), grp, where = true, domain = faces)
+}
+
+def split_log(len: f32, w: f32, h: f32) -> (out: geo<mesh>) {
+    """Полешко: светлый брус + кора сверху. Длина вдоль X, центр в 0."""
+    expect len > 0.15: "split_log: короткое"
+    body = mark(parts.cbox(size = vec3(len, h, w), k = 0.14), "wood_light", where = true, domain = faces)
+    bark = parts.piece(size = vec3(len * 0.97, h * 0.22, w * 0.90), pos = vec3(0, h * 0.40, 0), grp = "bark")
+    out = merge(body, bark)
+}
+
+def post(w: f32, h: f32, at: vec3, grp: string) -> (out: geo<mesh>) {
+    """Квадратный столб сечения w, высоты h, низ в at.y, центр по xz = at.xz."""
+    out = parts.piece(size = vec3(w, h, w), pos = vec3(dot(at, (1, 0, 0)), dot(at, (0, 1, 0)) + h * 0.5, dot(at, (0, 0, 1))), grp = grp)
+}

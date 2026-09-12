@@ -1,0 +1,5 @@
+[
+  {"name": "iso", "node": "scene", "orbit": [40, 28], "zoom": 1.08, "chrome": "off", "wire": false},
+  {"name": "front", "node": "scene", "orbit": [0, 8], "zoom": 1.1, "ortho": "front", "chrome": "off"},
+  {"name": "side", "node": "scene", "orbit": [90, 8], "zoom": 1.1, "ortho": "side", "chrome": "off"}
+]

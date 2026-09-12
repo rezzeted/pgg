@@ -1,0 +1,78 @@
+param barrel_h: f32 = 0.78
+param r_end: f32 = 0.28
+param r_mid: f32 = 0.34
+param seed: int = 4
+
+import lib.parts
+import lib.shapes
+import lib.ironwork
+import common
+
+# Бочка по референсу props/barrel.jpg.
+# 16 клёпок-граней, выпуклый экватор, 4 обруча с заклёпками, крышка из досок, втулка сбоку.
+# Верх +Y. Именованные узлы: body, hoops, lid, bung, scene.
+
+def make_body(h: f32, re: f32, rm: f32) -> (out: geo<mesh>) {
+    """Клёпки lathe 16 граней от 0 до h."""
+    out = common.lathe_wood(y0 = 0.0, y1 = h, r_end = re, r_mid = rm, sides = 16)
+}
+
+def make_hoops(h: f32, re: f32, rm: f32) -> (out: geo<mesh>) {
+    """Четыре обруча: у дна, нижняя треть, верхняя треть, под крышкой + заклёпки."""
+    y0 = 0.055
+    y1 = h * 0.32
+    y2 = h * 0.62
+    y3 = h - 0.085
+    bh = 0.042
+    r0 = mix(re, rm, sin(3.14159265 * (y0 + 0.02) / h)) + 0.012
+    r1 = mix(re, rm, sin(3.14159265 * (y1 + 0.02) / h)) + 0.012
+    r2 = mix(re, rm, sin(3.14159265 * (y2 + 0.02) / h)) + 0.012
+    r3 = mix(re, rm, sin(3.14159265 * (y3 + 0.02) / h)) + 0.012
+    b0 = common.hoop_band(y = y0, r = r0, h = bh)
+    b1 = common.hoop_band(y = y1, r = r1, h = bh)
+    b2 = common.hoop_band(y = y2, r = r2, h = bh)
+    b3 = common.hoop_band(y = y3, r = r3, h = bh)
+    v0 = common.rivet_ring(y = y0 + bh * 0.5, r = r0 + 0.006, n = 8, riv = 0.016)
+    v1 = common.rivet_ring(y = y1 + bh * 0.5, r = r1 + 0.006, n = 8, riv = 0.016)
+    v2 = common.rivet_ring(y = y2 + bh * 0.5, r = r2 + 0.006, n = 8, riv = 0.016)
+    v3 = common.rivet_ring(y = y3 + bh * 0.5, r = r3 + 0.006, n = 8, riv = 0.016)
+    out = merge(b0, b1, b2, b3, v0, v1, v2, v3)
+}
+
+def make_lid(h: f32, re: f32) -> (out: geo<mesh>) {
+    """Круглая крышка: диск + короткий ободок (без прямоугольных досок — силуэт круга)."""
+    disc = common.wood_disc(y = h - 0.010, r = re * 0.96, h = 0.022, grp = "wood_light")
+    rim = common.wood_disc(y = h + 0.008, r = re * 0.98, h = 0.012, grp = "wood")
+    out = merge(disc, rim)
+}
+
+def make_bung(h: f32, rm: f32) -> (out: geo<mesh>) {
+    """Втулка на +Z в средней трети: короткий цилиндр вдоль Z."""
+    y = h * 0.42
+    peg = ironwork.spool(p0 = vec3(0, y, rm - 0.02), p1 = vec3(0, y, rm + 0.055), r0 = 0.055, r1 = 0.055, sides = 12)
+    out = mark(unmark(peg, "iron"), "wood", where = true, domain = faces)
+}
+
+def paint(raw: geo<mesh>, rng: rng) -> (out: geo<mesh>) {
+    """Окрас бочки: клёпки, крышка, железо."""
+    wood_col = vec3(0.66, 0.40, 0.18)
+    wood_lt = vec3(0.86, 0.64, 0.36)
+    iron_col = vec3(0.12, 0.12, 0.14)
+    c0 = ingroup("wood") ? wood_col : vec3(1.0, 0.0, 1.0)
+    c1 = ingroup("wood_light") ? wood_lt : c0
+    c2 = ingroup("iron") ? iron_col : c1
+    out = common.ao(set(raw, "Cd", c2, domain = faces), rng = rng)
+}
+
+def assemble(h: f32, re: f32, rm: f32, rng: rng) -> (out: geo<mesh>) {
+    """Бочка: клёпки, обруча, крышка, втулка, окраска."""
+    out = paint(merge(make_body(h = h, re = re, rm = rm), make_hoops(h = h, re = re, rm = rm), make_lid(h = h, re = re), make_bung(h = h, rm = rm)), rng = rng)
+}
+
+root_rng = rng_from_seed(seed)
+body = make_body(h = barrel_h, re = r_end, rm = r_mid)
+hoops = make_hoops(h = barrel_h, re = r_end, rm = r_mid)
+lid = make_lid(h = barrel_h, re = r_end)
+bung = make_bung(h = barrel_h, rm = r_mid)
+scene = paint(merge(body, hoops, lid, bung), rng = split_rng(root_rng, key = "ao"))
+output scene

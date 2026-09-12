@@ -1,0 +1,85 @@
+param box_w: f32 = 0.42
+param box_d: f32 = 0.28
+param box_h: f32 = 0.32
+param post_h: f32 = 0.72
+param seed: int = 2
+
+import lib.parts
+import lib.ironwork
+import common
+
+# Почтовый ящик по референсу props/mailbox.jpg.
+# Столб, ящик из досок, двускатная крыша из рыжих плит, дверца с пластиной, флажок.
+# Верх +Y, дверца в +Z. Именованные узлы: post_unit, box, roof, flag, scene.
+
+def make_post(h: f32) -> (out: geo<mesh>) {
+    """Квадратный столб, низ в 0."""
+    out = parts.piece(size = vec3(0.18, h, 0.18), pos = vec3(0, h * 0.5, 0), grp = "wood")
+}
+
+def make_box(w: f32, d: f32, h: f32, y0: f32) -> (out: geo<mesh>) {
+    """Ящик: пол, бока, зад, фасад из 3 досок, дверца с железной пластиной."""
+    floor = parts.piece(size = vec3(w, 0.04, d), pos = vec3(0, y0 + 0.02, 0), grp = "wood")
+    side_l = parts.piece(size = vec3(0.032, h, d - 0.02), pos = vec3(w * 0.5 - 0.016, y0 + h * 0.5, 0), grp = "wood")
+    side_r = parts.piece(size = vec3(0.032, h, d - 0.02), pos = vec3(0.0 - (w * 0.5 - 0.016), y0 + h * 0.5, 0), grp = "wood")
+    back = parts.piece(size = vec3(w - 0.04, h, 0.032), pos = vec3(0, y0 + h * 0.5, 0.0 - (d * 0.5 - 0.016)), grp = "wood")
+    n = 3
+    pitch = (w - 0.06) / f32(n)
+    plank = parts.cbox(size = vec3(pitch - 0.006, h - 0.04, 0.028), k = 0.16)
+    pts0 = mesh_line(count = n, length = w - 0.06 - pitch, dir = (1, 0, 0))
+    pts = transform(pts0, translate = vec3(0.0 - (w - 0.06 - pitch) * 0.5, y0 + h * 0.5, d * 0.5 - 0.012))
+    front = mark(realize(instance_on_points(pts, source = plank)), "wood", where = true, domain = faces)
+    door = parts.piece(size = vec3(0.13, 0.16, 0.02), pos = vec3(0.0 - w * 0.18, y0 + h * 0.42, d * 0.5 + 0.012), grp = "wood_dark")
+    plate = parts.piece(size = vec3(0.09, 0.09, 0.012), pos = vec3(0.0 - w * 0.18, y0 + h * 0.44, d * 0.5 + 0.022), grp = "iron")
+    latch = parts.piece(size = vec3(0.035, 0.018, 0.04), pos = vec3(0.0 - w * 0.18, y0 + h * 0.44, d * 0.5 + 0.04), grp = "iron")
+    out = merge(floor, side_l, side_r, back, front, door, plate, latch)
+}
+
+def make_roof(w: f32, d: f32, y0: f32) -> (out: geo<mesh>) {
+    """Двускат: по одной плите на скат, конёк, щель во фронтоне."""
+    slope = 40.0
+    slab = parts.cbox(size = vec3(w + 0.16, 0.034, d * 0.72), k = 0.12)
+    a0 = mark(transform(slab, rotate = vec3(slope, 0, 0), translate = vec3(0, y0 + 0.10, d * 0.14)), "roof", where = true, domain = faces)
+    b0 = mark(transform(slab, rotate = vec3(0.0 - slope, 0, 0), translate = vec3(0, y0 + 0.10, 0.0 - d * 0.14)), "roof", where = true, domain = faces)
+    gable = parts.piece(size = vec3(w - 0.06, 0.16, 0.03), pos = vec3(0, y0 + 0.08, d * 0.5 - 0.01), grp = "wood")
+    slot = parts.piece(size = vec3(0.18, 0.028, 0.04), pos = vec3(0, y0 + 0.10, d * 0.5 + 0.02), grp = "wood_dark")
+    out = merge(a0, b0, gable, slot)
+}
+
+def make_flag(w: f32, d: f32, y0: f32) -> (out: geo<mesh>) {
+    """Флажок на правом скате: стойка, полотнище, железная пятка."""
+    shoe = parts.piece(size = vec3(0.05, 0.04, 0.05), pos = vec3(w * 0.22, y0 + 0.10, d * 0.10), grp = "iron")
+    pole = parts.piece(size = vec3(0.024, 0.36, 0.024), pos = vec3(w * 0.22, y0 + 0.28, d * 0.10), grp = "flag")
+    cloth = parts.piece(size = vec3(0.14, 0.11, 0.018), pos = vec3(w * 0.22 + 0.07, y0 + 0.42, d * 0.10), grp = "flag")
+    out = merge(shoe, pole, cloth)
+}
+
+def paint(raw: geo<mesh>, rng: rng) -> (out: geo<mesh>) {
+    """Окрас ящика: дерево, черепица, флажок, железо."""
+    wood_col = vec3(0.48, 0.28, 0.12) * @tint
+    wood_dk = vec3(0.28, 0.16, 0.08)
+    iron_col = vec3(0.22, 0.24, 0.26)
+    roof_col = vec3(0.88, 0.42, 0.18) * @tint
+    flag_col = vec3(0.90, 0.32, 0.16)
+    c0 = ingroup("wood") ? wood_col : vec3(1.0, 0.0, 1.0)
+    c1 = ingroup("wood_dark") ? wood_dk : c0
+    c2 = ingroup("iron") ? iron_col : c1
+    c3 = ingroup("roof") ? roof_col : c2
+    c4 = ingroup("flag") ? flag_col : c3
+    edge_mul = ingroup("edge") ? vec3(1.20, 1.16, 1.08) : vec3(1.0)
+    out = common.ao(set(raw, "Cd", c4 * edge_mul, domain = faces), rng = rng)
+}
+
+def assemble(w: f32, d: f32, h: f32, ph: f32, rng: rng) -> (out: geo<mesh>) {
+    """Ящик на столбе: столб, корпус, крыша, флажок."""
+    y0 = ph - 0.02
+    out = paint(merge(make_post(h = ph), make_box(w = w, d = d, h = h, y0 = y0), make_roof(w = w, d = d, y0 = y0 + h), make_flag(w = w, d = d, y0 = y0 + h)), rng = rng)
+}
+
+root_rng = rng_from_seed(seed)
+post_unit = make_post(h = post_h)
+box = make_box(w = box_w, d = box_d, h = box_h, y0 = post_h - 0.02)
+roof = make_roof(w = box_w, d = box_d, y0 = post_h - 0.02 + box_h)
+flag = make_flag(w = box_w, d = box_d, y0 = post_h - 0.02 + box_h)
+scene = paint(merge(post_unit, box, roof, flag), rng = split_rng(root_rng, key = "ao"))
+output scene

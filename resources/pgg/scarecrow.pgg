@@ -1,0 +1,187 @@
+# Огородное пугало по референсу (тыква-голова в соломенной шляпе, рыжий пиджак
+# в заплатах с распахнутыми лацканами и тёмной подкладкой, солома из рукавов и
+# воротника, столб с наклонной перекладиной рук, у ног — обрезок изгороди).
+#
+# Приёмы: пиджак — тот же рецепт, что trench_coat.pgg (вертикальный sweep с
+# @profile_scale = (глубина, ширина) из ramp'ов по @P.y), V-вырез спереди —
+# delete граней по центру грани, за ним — уменьшенный sweep той же spine
+# (подкладка); лацканы — плоские grid-полосы вдоль кромки V; заплаты и
+# пуговицы садятся на поверхность по тем же ramp'ам (def coat_shape → x/z по
+# углу вокруг оси). Рукава строятся вдоль наклонной перекладины и разводятся
+# поворотом на 180° вокруг Z (mirror дал бы обе руки вниз). Солома — thin-box
+# инстансы на кольце с random_vec-разбросом эйлеров через @orient.
+#
+# Верх +Y, лицо +Z. Именованные узлы: coat, head_unit, post_unit, straw, scene.
+
+param seed: int = 5
+param arm_deg: f32 = 12.0
+param post_h: f32 = 2.05
+
+import lib.parts
+import lib.shapes
+
+def coat_shape(pts: geo<points>) -> (out: geo<points>) {
+    """@profile_scale = (глубина, ширина) пиджака по @P.y точки: подол 0.55, талия
+    1.02, грудь 1.28, плечо 1.40, горло 1.48."""
+    depth = ramp(dot(@P, (0, 1, 0)), 0.55, 0.23, 0.80, 0.19, 1.02, 0.165, 1.28, 0.185, 1.40, 0.175, 1.45, 0.13, 1.48, 0.09)
+    width = ramp(dot(@P, (0, 1, 0)), 0.55, 0.32, 0.80, 0.26, 1.02, 0.225, 1.28, 0.26, 1.40, 0.27, 1.45, 0.17, 1.48, 0.10)
+    out = set(pts, "profile_scale", vec2(depth, width), domain = points)
+}
+
+def coat_patch(theta: f32, y: f32, size: vec2, grp: string, roll: f32 = 0) -> (out: geo<mesh>) {
+    """Заплата на корпусе: тонкий box, нормаль повёрнута на theta градусов вокруг Y
+    (0 — лицо +Z), перекошен на roll в своей плоскости, посажен на эллипс пиджака
+    чуть выше поверхности."""
+    probe = coat_shape(transform(mesh_line(count = 1, length = 0.0), translate = vec3(0, y, 0)))
+    ps = value(@profile_scale, on = probe)
+    d = dot(ps, (1, 0))
+    w = dot(ps, (0, 1))
+    at = vec3(w * sin(radians(theta)) * 1.04, y, d * cos(radians(theta)) * 1.04)
+    b = transform(box(size = vec3(dot(size, (1, 0)), dot(size, (0, 1)), 0.016)), rotate = vec3(0, 0, roll))
+    out = mark(transform(b, rotate = vec3(0, theta, 0), translate = at), grp, where = true, domain = faces)
+}
+
+def straw_tuft(at: vec3, yaw: f32, roll: f32, spread: f32, n: int, len: f32, rng: rng) -> (out: geo<mesh>) {
+    """Пучок соломы: n палочек-инстансов из точки at; ось пучка — +X, повёрнутая
+    на roll вокруг Z и yaw вокруг Y; каждая палочка отклонена случайно на ±spread°."""
+    stick = mark(transform(box(size = vec3(len, 0.011, 0.011)), translate = vec3(len * 0.5, 0, 0)), "straw", where = true, domain = faces)
+    ring0 = transform(circle(sides = n, radius = 0.022), rotate = vec3(0, 90, 0))
+    ring = transform(ring0, rotate = vec3(0, yaw, roll), translate = at)
+    jitter = random_vec(lo = vec3(0.0 - 180.0, 0.0 - spread, 0.0 - spread), hi = vec3(180.0, spread, spread), rng = rng)
+    pts0 = set(ring, "orient", orient_from_euler(vec3(0, yaw, roll) + jitter))
+    pts1 = set(pts0, "scale", random(0.7, 1.15, rng = split_rng(rng, key = "len")), domain = points)
+    shade = random(0.82, 1.1, rng = split_rng(rng, key = "tint"))
+    pts = set(pts1, "tint", vec3(shade, shade * 0.97, shade * 0.9), domain = points)
+    out = realize(instance_on_points(pts, source = stick))
+}
+
+def sleeve(a: f32, side: f32, rng: rng) -> (out: geo<mesh>) {
+    """Рукав вдоль перекладины под углом a (градусы над +X), от плеча (0.14 по оси)
+    до манжеты (0.62); мятость fbm; заплата сверху (side = ±1 — на какой стороне
+    рукава «верх» окажется после разворота левой руки)."""
+    dir = vec3(cos(radians(a)), sin(radians(a)), 0.0)
+    path0 = transform(mesh_line(count = 14, length = 0.50, dir = dir), translate = dir * 0.14)
+    path = set(path0, "scale", ramp(dot(@P, (1, 0, 0)) / cos(radians(a)), 0.14, 0.095, 0.30, 0.088, 0.52, 0.080, 0.64, 0.098), domain = points)
+    tube0 = sweep(path, circle(sides = 28, radius = 1.0), cap = false)
+    tube = set_position(tube0, offset = @N * fbm(scale = 6.0, octaves = 3, rng = rng) * 0.007)
+    cuff = dot(@uv, (0, 1)) > 0.88
+    coat_part = mark(tube, "coat", where = !cuff, domain = faces)
+    cuffed = mark(coat_part, "cuff", where = cuff, domain = faces)
+    up = vec3(0.0 - sin(radians(a)), cos(radians(a)), 0.0) * side
+    patch0 = box(size = vec3(0.10, 0.012, 0.085))
+    patch = mark(transform(patch0, rotate = vec3(0, 0, a), translate = dir * 0.40 + up * 0.092), "patch_light", where = true, domain = faces)
+    out = merge(cuffed, patch)
+}
+
+root_rng = rng_from_seed(seed)
+r_body = split_rng(root_rng, key = "body")
+r_sl = split_rng(root_rng, key = "sleeve")
+r_straw = split_rng(root_rng, key = "straw")
+r_ao = split_rng(root_rng, key = "ao")
+
+shoulder_y = 1.38
+
+# --- пиджак: корпус, V-вырез, подкладка ------------------------------------------
+spine_l = coat_shape(transform(mesh_line(count = 36, length = 0.93, dir = (0, 1, 0)), translate = (0, 0.55, 0)))
+shell0 = sweep(spine_l, circle(sides = 64, radius = 1.0), cap = false)
+u = dot(@uv, (1, 0))
+v = dot(@uv, (0, 1))
+radial = normalize(vec3(dot(@P, (1, 0, 0)), 0.0, dot(@P, (0, 0, 1))))
+hem_wave = sin(u * 6.2831853 * 7.0) * 0.022 * pow(1.0 - v, 2.0)
+crease = fbm(scale = 3.5, octaves = 3, rng = r_body) * 0.008
+shell = set_position(shell0, offset = radial * (hem_wave + crease))
+
+px = abs(dot(@P, (1, 0, 0)))
+py = dot(@P, (0, 1, 0))
+front = dot(@P, (0, 0, 1)) > 0.0
+v_gap = min(0.015 + (py - 1.02) * 0.30, 0.085)
+opening = front & ((py > 1.02) ? (px < v_gap) : (px < 0.012))
+cut = delete(shell, where = opening, domain = faces)
+body = mark(cut, "coat", where = true, domain = faces)
+
+lining_spine = set(spine_l, "profile_scale", @profile_scale * 0.90, domain = points)
+lining = mark(sweep(lining_spine, circle(sides = 32, radius = 1.0), cap = true), "lining", where = true, domain = faces)
+
+# --- лацканы: полосы вдоль кромки V, отогнуты наружу -----------------------------
+lapel0 = transform(grid(size = (0.09, 0.30), res = (1, 3)), rotate = (90, 0, 0))
+lapel_r = transform(transform(lapel0, rotate = (0, 35, 0)), rotate = (0, 0, -17), translate = (0.065, 1.18, 0.215))
+lapel_l = transform(transform(lapel0, rotate = (0, -35, 0)), rotate = (0, 0, 17), translate = (-0.065, 1.18, 0.215))
+lapels = mark(merge(lapel_r, lapel_l), "lapel", where = true, domain = faces)
+
+# --- пояс -----------------------------------------------------------------------
+waist0 = transform(circle(sides = 48, radius = 1.0), rotate = (90, 0, 0))
+waist1 = transform(waist0, translate = (0, 1.02, 0), scale = (0.24, 1, 0.18))
+waist = set(waist1, "profile_scale", vec2(0.016, 0.040), domain = points)
+belt0 = sweep(waist, transform(circle(sides = 4, radius = 1.0), rotate = (0, 0, 45)), closed = true)
+knot = transform(box(size = (0.06, 0.05, 0.03)), translate = (0.02, 1.02, 0.19))
+tail = transform(box(size = (0.035, 0.16, 0.012)), rotate = (0, 0, 8), translate = (0.05, 0.93, 0.195))
+belt = mark(merge(belt0, knot, tail), "belt", where = true, domain = faces)
+
+# --- заплаты на корпусе -----------------------------------------------------------
+pt1 = coat_patch(theta = 40.0, y = 1.22, size = (0.10, 0.12), grp = "patch_light", roll = -8.0)
+pt2 = coat_patch(theta = -30.0, y = 1.30, size = (0.09, 0.10), grp = "patch_dark", roll = 12.0)
+pt3 = coat_patch(theta = -60.0, y = 1.10, size = (0.07, 0.09), grp = "patch_light", roll = -15.0)
+pt4 = coat_patch(theta = 25.0, y = 0.78, size = (0.10, 0.11), grp = "patch_light", roll = 10.0)
+pt5 = coat_patch(theta = -35.0, y = 0.72, size = (0.08, 0.09), grp = "patch_light", roll = -6.0)
+pt6 = coat_patch(theta = 150.0, y = 1.15, size = (0.11, 0.12), grp = "patch_dark", roll = 5.0)
+pt7 = coat_patch(theta = -140.0, y = 0.85, size = (0.09, 0.10), grp = "patch_light", roll = -12.0)
+patches = merge(pt1, pt2, pt3, pt4, pt5, pt6, pt7)
+
+# --- рукава: правый вдоль перекладины, левый — поворот на 180° вокруг Z --------------
+sleeve_r0 = sleeve(a = arm_deg, side = 1.0, rng = split_rng(r_sl, key = "r"))
+sleeve_l0 = transform(sleeve(a = arm_deg, side = -1.0, rng = split_rng(r_sl, key = "l")), rotate = (0, 0, 180))
+sleeves = transform(merge(sleeve_r0, sleeve_l0), translate = vec3(0, shoulder_y, 0))
+
+coat = merge(body, lining, lapels, belt, patches, sleeves)
+
+# --- солома: из манжет и из воротника ---------------------------------------------
+arm_dir = vec3(cos(radians(arm_deg)), sin(radians(arm_deg)), 0.0)
+hand_r = straw_tuft(at = arm_dir * 0.60 + vec3(0, shoulder_y, 0), yaw = 0.0, roll = arm_deg, spread = 16.0, n = 18, len = 0.26, rng = split_rng(r_straw, key = "hr"))
+hand_l = straw_tuft(at = vec3(0, shoulder_y, 0) - arm_dir * 0.60, yaw = 0.0, roll = 180.0 + arm_deg, spread = 16.0, n = 18, len = 0.26, rng = split_rng(r_straw, key = "hl"))
+neck = straw_tuft(at = vec3(0, 1.45, 0.03), yaw = 0.0, roll = 90.0, spread = 45.0, n = 24, len = 0.20, rng = split_rng(r_straw, key = "neck"))
+straw = merge(hand_r, hand_l, neck)
+
+# --- голова: тыква с дольками, шляпа с полями, лента --------------------------------
+head_y = 1.63
+pump0 = transform(ico_sphere(subdiv = 3, radius = 0.185), scale = (1.0, 0.84, 1.0))
+phi = atan2(dot(@P, (0, 0, 1)), dot(@P, (1, 0, 0)))
+lobes = cos(phi * 10.0)
+pump1 = set_position(pump0, offset = @N * (0.010 * lobes - 0.006))
+pump2 = set(compute_normals(pump1, mode = smooth), "lobe", 0.5 + 0.5 * lobes, domain = points)
+pumpkin = mark(transform(pump2, translate = vec3(0, head_y, 0.01)), "pumpkin", where = true, domain = faces)
+
+brim = shapes.ngon_frustum(y0 = 1.725, y1 = 1.742, r0 = 0.37, r1 = 0.36, sides = 14, grp = "hat")
+crown = shapes.ngon_frustum(y0 = 1.742, y1 = 1.89, r0 = 0.17, r1 = 0.14, sides = 14, grp = "hat")
+band = shapes.ngon_frustum(y0 = 1.748, y1 = 1.782, r0 = 0.177, r1 = 0.173, sides = 14, grp = "band")
+head_unit = merge(pumpkin, brim, crown, band)
+
+# --- столб, перекладина, изгородь ----------------------------------------------------
+post = parts.piece(size = vec3(0.07, post_h, 0.07), pos = vec3(0, post_h * 0.5, 0), grp = "wood")
+bar0 = parts.piece(size = vec3(1.46, 0.06, 0.06), pos = vec3(0, 0, 0), grp = "wood")
+bar = transform(bar0, rotate = vec3(0, 0, arm_deg), translate = vec3(0, shoulder_y, 0))
+stake_l = parts.piece(size = vec3(0.05, 0.52, 0.05), pos = vec3(-0.34, 0.26, 0.02), grp = "wood")
+stake_r = parts.piece(size = vec3(0.05, 0.48, 0.05), pos = vec3(0.36, 0.24, 0.02), grp = "wood")
+rail_lo = parts.piece(size = vec3(0.92, 0.05, 0.03), pos = vec3(0.01, 0.17, 0.06), grp = "wood")
+rail_hi = parts.piece(size = vec3(0.92, 0.05, 0.03), pos = vec3(0.01, 0.39, 0.06), grp = "wood")
+post_unit = merge(post, bar, stake_l, stake_r, rail_lo, rail_hi)
+
+# --- окраска -------------------------------------------------------------------------
+raw = merge(coat, straw, head_unit, post_unit)
+r_paint = split_rng(root_rng, key = "paint")
+rust = vec3(0.64, 0.27, 0.16) * (0.92 + 0.12 * fbm(scale = 5.0, octaves = 3, rng = r_paint))
+c0 = ingroup("wood") ? vec3(0.58, 0.40, 0.22) : vec3(1.0, 0.0, 1.0)
+c1 = ingroup("coat") ? rust : c0
+c2 = ingroup("cuff") ? vec3(0.50, 0.20, 0.12) : c1
+c3 = ingroup("lapel") ? vec3(0.56, 0.23, 0.14) : c2
+c4 = ingroup("lining") ? vec3(0.10, 0.08, 0.07) : c3
+c5 = ingroup("belt") ? vec3(0.22, 0.14, 0.10) : c4
+c6 = ingroup("patch_light") ? vec3(0.90, 0.84, 0.70) : c5
+c7 = ingroup("patch_dark") ? vec3(0.74, 0.56, 0.34) : c6
+c8 = ingroup("straw") ? vec3(0.88, 0.68, 0.28) * @tint : c7
+c9 = ingroup("pumpkin") ? mix(vec3(0.80, 0.36, 0.08), vec3(0.98, 0.56, 0.14), @lobe) : c8
+c10 = ingroup("hat") ? vec3(0.82, 0.70, 0.48) : c9
+c11 = ingroup("band") ? vec3(0.24, 0.16, 0.13) : c10
+edge_mul = ingroup("edge") ? vec3(1.14, 1.10, 1.06) : vec3(1.0)
+painted = set(raw, "Cd", c11 * edge_mul, domain = faces)
+scene = bake_ao(painted, rays = 16, distance = 0.4, rng = r_ao, domain = points)
+output scene

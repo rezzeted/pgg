@@ -87,6 +87,21 @@ fs::path findPggResourcesDir(const fs::path& from) {
     return findAncestorSubdir(from, fs::path("resources") / "pgg");
 }
 
+fs::path findPggResourcesParent(const fs::path& from) {
+    return findAncestorSubdir(from, fs::path("resources"));
+}
+
+namespace {
+
+void addBookmark(std::vector<fs::path>& bookmarks, const fs::path& p) {
+    if (p.empty()) return;
+    for (const fs::path& b : bookmarks)
+        if (b == p) return;
+    bookmarks.push_back(p);
+}
+
+}  // namespace
+
 void fileDialogOpen(FileDialogState& st, const fs::path& startDir) {
     std::error_code ec;
     fs::path dir = startDir;
@@ -96,12 +111,18 @@ void fileDialogOpen(FileDialogState& st, const fs::path& startDir) {
     gotoDir(st, dir);
 
     st.bookmarks.clear();
+    const fs::path resources = findPggResourcesParent(fs::current_path(ec));
+    addBookmark(st.bookmarks, resources);
     const fs::path examples = findPggResourcesDir(fs::current_path(ec));
-    if (!examples.empty()) st.bookmarks.push_back(examples);
+    addBookmark(st.bookmarks, examples);
+    if (!resources.empty()) {
+        const fs::path amber = resources / "AmberEstate";
+        if (fs::is_directory(amber, ec)) addBookmark(st.bookmarks, amber);
+    }
     const fs::path corpus = findPggCorpusDir(fs::current_path(ec));
-    if (!corpus.empty()) st.bookmarks.push_back(corpus);
+    addBookmark(st.bookmarks, corpus);
     const fs::path cwd = fs::current_path(ec);
-    if (!cwd.empty() && cwd != corpus && cwd != examples) st.bookmarks.push_back(cwd);
+    addBookmark(st.bookmarks, cwd);
     st.open = true;
 }
 

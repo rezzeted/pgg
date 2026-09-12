@@ -190,6 +190,17 @@ TEST(Expr, Ramp) {
     EXPECT_EQ(evalVec3("ramp(0.5, 0, (0, 0, 0), 1, (1, 2, 3))"), glm::vec3(0.5f, 1.0f, 1.5f));
 }
 
+TEST(Expr, FieldRamp) {
+    // Per-element x: the control points are captured values, not field args, and
+    // the strict runtime re-check must still see them (regression: E202 on any
+    // ramp over a typed field such as dot(@P, ...)).
+    const std::vector<float> xs = probeField("ramp(dot(@P, (0, 0, 1)), 0, 10, 1, 20, 2, 0)", 3, {}, 2.0f);
+    ASSERT_EQ(xs.size(), 3u);
+    EXPECT_FLOAT_EQ(xs[0], 10.0f);
+    EXPECT_FLOAT_EQ(xs[1], 20.0f);
+    EXPECT_FLOAT_EQ(xs[2], 0.0f);
+}
+
 // --- field level -------------------------------------------------------------
 
 TEST(Expr, FieldIndexAndArithmetic) {

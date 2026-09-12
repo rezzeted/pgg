@@ -1,0 +1,92 @@
+param post_h: f32 = 1.55
+param seed: int = 8
+
+import lib.parts
+import lib.shapes
+import lib.ironwork
+import common
+
+# Огородное пугало по референсу props/scarecrow.jpg.
+# Столб с остриём, перекладины, тыква, шляпа, рубаха с заплатами, солома из рукавов.
+# Верх +Y, лицо +Z. Именованные узлы: post_unit, body, head, scene.
+
+def make_post(h: f32) -> (out: geo<mesh>) {
+    """Столб 0.08 и остриё вниз, перекладина бёдер, болт."""
+    shaft = parts.piece(size = vec3(0.08, h - 0.16, 0.08), pos = vec3(0, 0.16 + (h - 0.16) * 0.5, 0), grp = "wood")
+    tip = mark(unmark(ironwork.spool(p0 = vec3(0, 0.18, 0), p1 = vec3(0, 0, 0), r0 = 0.05, r1 = 0.012, sides = 4), "iron"), "wood", where = true, domain = faces)
+    hip = parts.piece(size = vec3(0.32, 0.055, 0.07), pos = vec3(0, 0.70, 0), grp = "wood")
+    bolt = mark(transform(ico_sphere(subdiv = 1, radius = 0.018), translate = vec3(0, 0.70, 0.04)), "iron", where = true, domain = faces)
+    out = merge(shaft, tip, hip, bolt)
+}
+
+def straw_burst(at: vec3, along: f32) -> (out: geo<mesh>) {
+    """Пучок соломы: тонкие палочки веером вокруг точки at, along — знак оси X."""
+    src = mark(parts.cbox(size = vec3(0.22, 0.014, 0.014), k = 0.28), "straw", where = true, domain = faces)
+    n = 11
+    ring = transform(circle(sides = n, radius = 0.012), rotate = vec3(0, 90, 0), translate = at)
+    spread = f32(@index) - 5.0
+    pts = set(ring, "orient", orient_from_euler(vec3(spread * 8.0, along * 12.0 + spread * 9.0, spread * 16.0)))
+    out = realize(instance_on_points(pts, source = src))
+}
+
+def make_arms() -> (out: geo<mesh>) {
+    """Руки-брус и пучки соломы на запястьях."""
+    bar = parts.piece(size = vec3(1.02, 0.07, 0.07), pos = vec3(0, 1.18, 0), grp = "wood")
+    sl = straw_burst(at = vec3(0.52, 1.18, 0), along = 1.0)
+    sr = straw_burst(at = vec3(0.0 - 0.52, 1.18, 0), along = 0.0 - 1.0)
+    out = merge(bar, sl, sr)
+}
+
+def make_shirt() -> (out: geo<mesh>) {
+    """Рубаха: торс, рукава, круглые заплаты, обмотка на поясе."""
+    torso = parts.piece(size = vec3(0.38, 0.40, 0.18), pos = vec3(0, 1.00, 0.02), grp = "cloth")
+    slv_l = parts.piece(size = vec3(0.30, 0.16, 0.15), pos = vec3(0.30, 1.16, 0.01), grp = "cloth")
+    slv_r = parts.piece(size = vec3(0.30, 0.16, 0.15), pos = vec3(0.0 - 0.30, 1.16, 0.01), grp = "cloth")
+    p1 = mark(transform(ico_sphere(subdiv = 1, radius = 0.075), scale = vec3(1.15, 1.15, 0.28), translate = vec3(0.10, 1.06, 0.11)), "patch", where = true, domain = faces)
+    p2 = mark(transform(ico_sphere(subdiv = 1, radius = 0.075), scale = vec3(1.15, 1.15, 0.28), translate = vec3(0.0 - 0.10, 1.06, 0.11)), "patch", where = true, domain = faces)
+    wrap = parts.piece(size = vec3(0.40, 0.055, 0.20), pos = vec3(0, 0.82, 0.02), grp = "patch")
+    out = merge(torso, slv_l, slv_r, p1, p2, wrap)
+}
+
+def make_head() -> (out: geo<mesh>) {
+    """Тыква, широкие поля, тулья, лента, столб над шляпой, солома-ворот."""
+    head = mark(transform(ico_sphere(subdiv = 2, radius = 0.14), scale = vec3(1.08, 0.90, 1.0), translate = vec3(0, 1.36, 0.02)), "pumpkin", where = true, domain = faces)
+    brim = mark(unmark(ironwork.spool(p0 = vec3(0, 1.45, 0), p1 = vec3(0, 1.485, 0), r0 = 0.26, r1 = 0.24, sides = 12), "iron"), "hat", where = true, domain = faces)
+    crown = shapes.ngon_frustum(y0 = 1.48, y1 = 1.64, r0 = 0.13, r1 = 0.075, sides = 8, grp = "hat")
+    band = mark(unmark(ironwork.spool(p0 = vec3(0, 1.47, 0), p1 = vec3(0, 1.50, 0), r0 = 0.135, r1 = 0.135, sides = 12), "iron"), "patch", where = true, domain = faces)
+    peg = parts.piece(size = vec3(0.075, 0.16, 0.075), pos = vec3(0, 1.70, 0), grp = "wood")
+    neck = straw_burst(at = vec3(0, 1.24, 0.05), along = 0.15)
+    out = merge(head, brim, crown, band, peg, neck)
+}
+
+def paint(raw: geo<mesh>, rng: rng) -> (out: geo<mesh>) {
+    """Окрас пугала: дерево, ткань, тыква, шляпа, солома."""
+    wood_col = vec3(0.55, 0.32, 0.14) * @tint
+    iron_col = vec3(0.55, 0.55, 0.58)
+    cloth_col = vec3(0.90, 0.84, 0.68)
+    patch_col = vec3(0.90, 0.42, 0.12)
+    pumpkin_col = vec3(0.92, 0.48, 0.10)
+    straw_col = vec3(0.86, 0.64, 0.22)
+    hat_col = vec3(0.18, 0.14, 0.12)
+    c0 = ingroup("wood") ? wood_col : vec3(1.0, 0.0, 1.0)
+    c1 = ingroup("iron") ? iron_col : c0
+    c2 = ingroup("cloth") ? cloth_col : c1
+    c3 = ingroup("patch") ? patch_col : c2
+    c4 = ingroup("pumpkin") ? pumpkin_col : c3
+    c5 = ingroup("straw") ? straw_col : c4
+    c6 = ingroup("hat") ? hat_col : c5
+    edge_mul = ingroup("edge") ? vec3(1.16, 1.12, 1.06) : vec3(1.0)
+    out = common.ao(set(raw, "Cd", c6 * edge_mul, domain = faces), rng = rng)
+}
+
+def assemble(h: f32, rng: rng) -> (out: geo<mesh>) {
+    """Пугало: столб, руки, рубаха, голова, окраска."""
+    out = paint(merge(make_post(h = h), make_arms(), make_shirt(), make_head()), rng = rng)
+}
+
+root_rng = rng_from_seed(seed)
+post_unit = make_post(h = post_h)
+body = merge(make_arms(), make_shirt())
+head = make_head()
+scene = paint(merge(post_unit, body, head), rng = split_rng(root_rng, key = "ao"))
+output scene
