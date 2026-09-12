@@ -1,0 +1,24 @@
+---
+description: Language policy — chat Russian, code English, docs Russian except README
+alwaysApply: true
+---
+
+# Language
+
+- **Chat:** Russian, unless the user asks otherwise.
+- **Source code:** identifiers and comments in English (`src/`, `tools/`, CMake). Names of variables, functions, and classes are English.
+- **Docs:** Russian. Exception: `README.md` is English. Do not translate existing Russian docs into English unless asked.
+- **Git commits:** subject and body in English (imperative, why over what), even when chat is in Russian.
+
+```
+# Chat / docs — Russian
+Добавь правило про язык коммитов.
+
+# Code comment — English
+// Bind launch params, then pull only the requested outputs.
+
+# Commit — English
+Write git commit messages in English so history stays consistent.
+```
+
+`.pgg` comments follow the surrounding file (art examples in `resources/pgg` are Russian).

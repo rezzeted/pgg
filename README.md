@@ -1,21 +1,21 @@
 # PGG
 
-PGG — язык процедурной генерации геометрии: текст-first нодовый граф для LLM-агентов и нодовая проекция для человека.
+PGG is a procedural geometry language: a text-first node graph for LLM agents, with a node projection for humans.
 
-Раньше жил внутри [Neverwhere](https://github.com/icecampus/neverwhere); этот репозиторий — самостоятельная реализация, CLI, вьюер, тесты и арт-примеры.
+It used to live inside [Neverwhere](https://github.com/icecampus/neverwhere). This repository is a standalone implementation: library, CLI, viewer, tests, and art examples.
 
-| Путь | Что это |
+| Path | What it is |
 |---|---|
-| `src/libs/pgg` | Библиотека: парсер (ANTLR4 4.13.2), AST, ядро исполнения |
+| `src/libs/pgg` | Library: parser (ANTLR4 4.13.2), AST, execution core |
 | `src/apps/PggTool` | CLI: `check` / `fmt` / `ast` / `run` / `docs` / `diff` |
-| `src/apps/PggViewer` | Нодовая проекция + превью геометрии, `--serve` RPC |
-| `src/tests/pgg` | gtest + корпус `corpus/` и голдены `goldens/` |
-| `resources/pgg` | Продуктовые/арт-примеры (cottage, spire_house, inn_hotel, lib, …) |
-| `docs/pgg` | Спецификация, реализация, cheatsheet, контракт RPC |
+| `src/apps/PggViewer` | Node projection + geometry preview, `--serve` RPC |
+| `src/tests/pgg` | gtest + `corpus/` fixtures and `goldens/` fingerprints |
+| `resources/pgg` | Product / art examples (cottage, spire_house, inn_hotel, lib, …) |
+| `docs/pgg` | Language spec, implementation notes, cheatsheet, RPC contract |
 
-## Сборка
+## Build
 
-Сборка — CMake + vcpkg, как в Neverwhere: submodule `toolchain/vcpkg`, пресеты в `CMakePresets.json`, overlay `vcpkg_overlays/ports`. Первая конфигурация бутстрапит зависимости из манифеста `vcpkg.json`.
+Build is CMake + vcpkg, same as Neverwhere: submodule `toolchain/vcpkg`, presets in `CMakePresets.json`, overlay `vcpkg_overlays/ports`. The first configure bootstraps dependencies from `vcpkg.json`.
 
 ```sh
 git submodule update --init toolchain/vcpkg
@@ -26,16 +26,16 @@ cmake --build --preset linux-debug --target PggViewer
 ctest --test-dir _int_linux --output-on-failure
 ```
 
-Windows: `generate_vs.bat` → `_intermediate_64\pgg.sln`, либо `cmake --build --preset debug --target pgg_tests`.
-macOS: `./build_mac.sh`, затем `cmake --build --preset macos-debug --target pgg_tests`.
+Windows: `generate_vs.bat` → `_intermediate_64\pgg.sln`, or `cmake --build --preset debug --target pgg_tests`.
+macOS: `./build_mac.sh`, then `cmake --build --preset macos-debug --target pgg_tests`.
 
-Бинарники: `_int_linux/src/apps/<App>/Debug/<App>` (Ninja кладёт exe в подпапку `$<CONFIG>`).
+Binaries: `_int_linux/src/apps/<App>/Debug/<App>` (Ninja puts the exe under `$<CONFIG>`).
 
-Платформенные грабли, binary cache и `compile_commands.json` — `docs/BUILD.md`.
+Platform notes, binary cache, and `compile_commands.json` — `docs/BUILD.md`.
 
-После правок `src/libs/pgg/grammar/Pgg.g4` — `tools/pgg/regen_parser.sh` (сгенерированный парсер коммитится в `parser_gen/`).
+After changing `src/libs/pgg/grammar/Pgg.g4`, run `tools/pgg/regen_parser.sh` (the generated parser is committed under `parser_gen/`).
 
-## Инструменты
+## Tools
 
 ```sh
 PggTool check resources/pgg/cottage.pgg
@@ -44,6 +44,6 @@ PggViewer resources/pgg/spire_house.pgg
 PggViewer --serve                          # RPC 127.0.0.1:9878
 ```
 
-MCP `pgg` / `pgg-win` — `.mcp.json` / `.cursor/mcp.json`, код `tools/pgg_mcp/`. Контракт: `docs/pgg/viewer_rpc.md`. Переменные: `PGG_REPO_ROOT`, `PGG_VIEWER`.
+MCP servers `pgg` / `pgg-win` — `.mcp.json` / `.cursor/mcp.json`, code in `tools/pgg_mcp/`. Contract: `docs/pgg/viewer_rpc.md`. Env: `PGG_REPO_ROOT`, `PGG_VIEWER`.
 
-Инструкции для агентов — `AGENTS.md`.
+Agent instructions: `AGENTS.md`.
