@@ -20,7 +20,7 @@ def assemble(ground: geo<mesh>, upper: geo<mesh>, bay_unit: geo<mesh>, porch_uni
     c4 = ingroup("roof") ? roof_col * @tint : c3
     c5 = ingroup("glass") ? vec3(0.045, 0.055, 0.075) : c4
     c6 = ingroup("dial") ? vec3(0.88, 0.82, 0.66) : c5
-    c7 = ingroup("brass") ? vec3(0.48, 0.35, 0.14) : c6
+    c7 = ingroup("brass") ? vec3(0.90, 0.72, 0.32) : c6
     c8 = ingroup("iron") ? vec3(0.035, 0.035, 0.04) : c7
     c9 = ingroup("wood") ? vec3(0.09, 0.06, 0.04) * @tint : c8
     c10 = ingroup("lamp") ? vec3(1.0, 0.78, 0.28) : c9
