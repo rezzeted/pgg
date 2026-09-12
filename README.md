@@ -1,8 +1,6 @@
 # PGG
 
-PGG is a procedural geometry language: a text-first node graph for LLM agents, with a node projection for humans.
-
-It used to live inside [Neverwhere](https://github.com/icecampus/neverwhere). This repository is a standalone implementation: library, CLI, viewer, tests, and art examples.
+PGG is a procedural geometry language: a text-first node graph for LLM agents, with a node projection for humans. This repository is the language, library, CLI, viewer, tests, and art examples.
 
 | Path | What it is |
 |---|---|
@@ -15,7 +13,7 @@ It used to live inside [Neverwhere](https://github.com/icecampus/neverwhere). Th
 
 ## Build
 
-Build is CMake + vcpkg, same as Neverwhere: submodule `toolchain/vcpkg`, presets in `CMakePresets.json`, overlay `vcpkg_overlays/ports`. The first configure bootstraps dependencies from `vcpkg.json`.
+Build is CMake + vcpkg: submodule `toolchain/vcpkg`, presets in `CMakePresets.json`, overlay `vcpkg_overlays/ports`. The first configure bootstraps dependencies from `vcpkg.json`.
 
 ```sh
 git submodule update --init toolchain/vcpkg
