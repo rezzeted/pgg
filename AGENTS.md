@@ -86,7 +86,7 @@ Linux-флоу — Ninja (single-config) + CMake Presets, триплет `x64-li
 
 ## MCP
 
-PggViewer поднимает TCP RPC на `127.0.0.1:9878` (`--serve`; `src/apps/PggViewer/ViewerRpcServer.cpp`). MCP-обёртка — `pgg` / `pgg-win` (`tools/pgg_mcp/`, инструменты `pgg_*`; viewer поднимается автоматически, если порт не отвечает). Контракт — `docs/pgg/viewer_rpc.md`. Env: `PGG_REPO_ROOT`, `PGG_VIEWER`.
+PggViewer поднимает TCP RPC на `127.0.0.1:9878` (`--serve`; `src/apps/PggViewer/ViewerRpcServer.cpp`). MCP — один сервер `pgg` (`python3 -m tools.pgg_mcp.launch`, код `tools/pgg_mcp/`): сам поднимает вьюер или отвечает `need_build` с командами сборки. Контракт — `docs/pgg/viewer_rpc.md`. Env: `PGG_REPO_ROOT`, `PGG_VIEWER`.
 
 ## Где что искать
 

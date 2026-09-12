@@ -3,7 +3,7 @@
   "mcp": {
     "pgg": {
       "type": "local",
-      "command": ["/bin/sh", "tools/run_pgg_mcp_server.sh"],
+      "command": ["python3", "-m", "tools.pgg_mcp.launch"],
       "enabled": true
     }
   }
