@@ -64,10 +64,13 @@ def make_frame(r: f32, h: f32, rng: rng) -> (out: geo<mesh>) {
     """Два столба на кладке, широкий конёк, дранка вразбежку, ворот слева."""
     post_h = 0.92
     post_w = 0.12
+    post_d = post_w * 2.0
     y0 = h - 0.03
-    px = r * 0.82
-    p_l = parts.piece(size = vec3(post_w, post_h, post_w), pos = vec3(0.0 - px, y0 + post_h * 0.5, 0), grp = "wood")
-    p_r = parts.piece(size = vec3(post_w, post_h, post_w), pos = vec3(px, y0 + post_h * 0.5, 0), grp = "wood")
+    r_in = r - 0.16
+    r_out = r + 0.05
+    px = (r_in + r_out) * 0.5
+    p_l = parts.piece(size = vec3(post_w, post_h, post_d), pos = vec3(0.0 - px, y0 + post_h * 0.5, 0), grp = "wood")
+    p_r = parts.piece(size = vec3(post_w, post_h, post_d), pos = vec3(px, y0 + post_h * 0.5, 0), grp = "wood")
     hw = r * 1.18
     beam = parts.piece(size = vec3(2.0 * px + 0.22, 0.10, 0.12), pos = vec3(0, y0 + post_h + 0.04, 0), grp = "wood")
     ridge_y = y0 + post_h + 0.12
