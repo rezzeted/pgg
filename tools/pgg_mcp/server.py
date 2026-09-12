@@ -1,37 +1,32 @@
 """PGG MCP server — agent tooling over the PggViewer RPC.
 
-Stdio transport. Started by ``tools/run_pgg_mcp_server.sh`` (macOS/Linux) or
-``tools/run_pgg_mcp_server.ps1`` (Windows) via
-``python -m tools.pgg_mcp.server``.
+Stdio transport. Started as the single MCP server ``pgg`` via
+``python3 -m tools.pgg_mcp.launch`` (venv) then ``python -m tools.pgg_mcp``.
 
-Thin proxy to the PggViewer RPC server (raw TCP + line-delimited JSON on
-127.0.0.1:9878, see ``src/apps/PggViewer/ViewerRpcServer.cpp`` and
-``docs/pgg/viewer_rpc.md``). Unlike the editor MCP this server AUTO-STARTS
-``PggViewer --serve`` when the port does not answer. Every response keeps
-the RPC envelope (``{"ok": true, "data": ...}`` / ``{"ok": false, "error"}``).
+Thin proxy to the PggViewer RPC (TCP + line-delimited JSON on
+127.0.0.1:9878, see ``docs/pgg/viewer_rpc.md``). The same Python session
+auto-starts ``PggViewer --serve`` on every OS; if the binary is missing the
+tools return ``kind=need_build`` with configure/build argv. Every response
+keeps the RPC envelope (``{"ok": true, "data": ...}`` /
+``{"ok": false, "error"}``).
 """
 
 from __future__ import annotations
 
-import os
-import shutil
-import subprocess
-import sys
 from pathlib import Path
 from typing import Any, Optional
 
 from mcp.server.fastmcp import FastMCP
 
-from tools.pgg_mcp.rpc_client import PggRpcClient, PggRpcError, port_open, wait_for_port
-
-_HOST = "127.0.0.1"
-_PORT = 9878
+from tools.pgg_mcp.session import PggSession
 
 _INSTRUCTIONS = """PGG MCP — итеративный цикл отладки .pgg-графов через PggViewer.
 
 Типовой цикл «правка → картинка + числа»:
 
 1. ``pgg_status`` — viewer жив (поднимается автоматически при первом вызове).
+   Если ``error.kind=need_build`` — собрать PggViewer командами из ответа
+   (cwd = корень репо) и повторить вызов; MCP сам стартует бинарь.
 2. ``pgg_load`` (path до .pgg или source целиком) — статическая проверка без
    прогона: диагностики за миллисекунды, has_errors=false → файл валиден.
 3. ``pgg_render`` (node или view) — PNG кадра + статы + ``render_state`` в одном
@@ -53,122 +48,23 @@ _INSTRUCTIONS = """PGG MCP — итеративный цикл отладки .p
 
 mcp = FastMCP("pgg", instructions=_INSTRUCTIONS)
 
-# Lazily-connected persistent TCP client (the MCP stdio server is long-lived).
-_client: Optional[PggRpcClient] = None
-# Auto-started viewer process (kept so it dies with the MCP server).
-_viewer_proc: Optional[subprocess.Popen] = None
-
-
-def _repo_root() -> str:
-    env = os.environ.get("PGG_REPO_ROOT")
-    if env:
-        return env
-    return str(Path(__file__).resolve().parent.parent.parent)
-
-
-def _find_viewer_binary(root: str) -> Optional[str]:
-    """First existing PggViewer binary wins; Release is much faster than Debug."""
-    candidates = []
-    env = os.environ.get("PGG_VIEWER")
-    if env:
-        candidates.append(env)
-    candidates += [
-        "_int_linux_release/src/apps/PggViewer/Release/PggViewer",
-        "_int_linux/src/apps/PggViewer/Debug/PggViewer",
-        "_int_clion_release/src/apps/PggViewer/Release/PggViewer",
-        "_int_clion/src/apps/PggViewer/Debug/PggViewer",
-        "_intermediate_64/src/apps/PggViewer/Debug/PggViewer",
-    ]
-    for c in candidates:
-        p = c if os.path.isabs(c) else os.path.join(root, c)
-        for cand in (p, p + ".exe"):
-            if os.path.isfile(cand):
-                return cand
-    return None
-
-
-def _ensure_viewer() -> Optional[str]:
-    """Make sure a PggViewer --serve answers on the RPC port; start one if not.
-
-    Returns None on success, an error message otherwise.
-    """
-    global _viewer_proc
-    if port_open(_HOST, _PORT):
-        return None
-    root = _repo_root()
-    viewer = _find_viewer_binary(root)
-    if viewer is None:
-        return ("PggViewer binary not found (set PGG_VIEWER or build "
-                "PggViewer into one of the standard build dirs)")
-    cmd = [viewer, "--serve"]
-    if (sys.platform.startswith("linux") and not os.environ.get("DISPLAY")
-            and shutil.which("xvfb-run")):
-        cmd = ["xvfb-run", "-a"] + cmd
-    # Never inherit stdout/stderr: child output would corrupt the MCP stdio
-    # transport; log to a file under tmp/ instead.
-    log_dir = Path(root) / "tmp"
-    log_dir.mkdir(parents=True, exist_ok=True)
-    log = open(log_dir / "pgg_viewer_serve.log", "ab", buffering=0)
-    _viewer_proc = subprocess.Popen(cmd, cwd=root, stdout=log, stderr=log)
-    if wait_for_port(_HOST, _PORT, timeout_s=30.0, step_s=0.5):
-        return None
-    if _viewer_proc.poll() is not None:
-        return f"PggViewer exited early (code {_viewer_proc.returncode}); see tmp/pgg_viewer_serve.log"
-    return "PggViewer did not open the RPC port within 30 s; see tmp/pgg_viewer_serve.log"
+_session = PggSession()
 
 
 def _call(op: str, args: Optional[dict[str, Any]] = None) -> dict:
-    """Send one RPC op; auto-start the viewer, reconnect once on transport failure.
-
-    Server-side errors (ok=false) are returned as-is, not retried.
-    """
-    global _client
-    start_error = _ensure_viewer()
-    if start_error:
-        return {"ok": False, "error": {"kind": "unreachable", "message": start_error}}
-
-    payload: dict[str, Any] = {"op": op}
-    if args:
-        # Drop unset optional args so the server applies its defaults.
-        payload["args"] = {k: v for k, v in args.items() if v is not None}
-
-    last_error: Optional[Exception] = None
-    for _ in range(2):
-        try:
-            if _client is None:
-                _client = PggRpcClient(host=_HOST, port=_PORT)
-            return _client.call(**payload)
-        except PggRpcError as e:
-            return {"ok": False, "error": {"kind": e.kind, "message": e.message}}
-        except (ConnectionError, OSError) as e:
-            last_error = e
-            if _client is not None:
-                _client.close()
-            _client = None
-            # The viewer may have died — give the auto-start one more chance.
-            start_error = _ensure_viewer()
-            if start_error:
-                last_error = start_error
-                break
-    return {
-        "ok": False,
-        "error": {
-            "kind": "unreachable",
-            "message": f"PggViewer RPC unreachable: {last_error}",
-        },
-    }
+    return _session.call(op, args)
 
 
 @mcp.tool()
 def pgg_status() -> dict:
     """Живость viewer'а и состояние сессии.
 
-    Ответ data: {file, params, cache:{size,capacity,hits,misses},
-    preview:{target,has_value}, profile:[{name,ms,field_evals,cache_hit}] (top-20
-    binding'ов последнего прогона по эксклюзивному ms) + profile_total_ms,
-    uptime_s}. Пример: pgg_status().
+    При живом RPC — data: {viewer:"running", binary?, rpc:{host,port}, file,
+    params, cache, preview, profile, uptime_s}. Если бинаря нет —
+    ok=false, error.kind=need_build (configure/build/debug_build argv, cwd,
+    expected, hint). Пример: pgg_status().
     """
-    return _call("status")
+    return _session.status()
 
 
 @mcp.tool()
@@ -444,7 +340,7 @@ def pgg_contact_sheet(views: Any = "*", cols: Optional[int] = None,
         x, y = c * cell_w, r * (cell_h + caption)
         sheet.paste(im, (x + (cell_w - im.width) // 2, y + caption + (cell_h - im.height) // 2))
         draw.text((x + 8, y + 3), name, fill=(230, 230, 230))
-    out_dir = Path(_repo_root()) / "tmp" / "pgg_rpc_shots"
+    out_dir = Path(_session.repo_root) / "tmp" / "pgg_rpc_shots"
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / "contact_sheet.png"
     sheet.save(out_path)

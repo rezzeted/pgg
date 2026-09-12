@@ -1,10 +1,6 @@
 #!/usr/bin/env pwsh
-# Launch PGG MCP server from repo root.
-# Usage: .\tools\run_pgg_mcp_server.ps1
-#
-# Stdio transport — launched by zcode / Cursor via .mcp.json.
-# PggViewer is auto-started with --serve by the server itself when the RPC
-# port (127.0.0.1:9878) does not answer.
+# Optional terminal wrapper for the PGG MCP server (the Cursor entry is
+# python3 -m tools.pgg_mcp.launch). Finds Python, then execs launch.
 
 $ErrorActionPreference = 'Stop'
 
@@ -18,12 +14,12 @@ Set-Location $RepoRoot
 $env:PYTHONIOENCODING = 'utf-8'
 $env:PYTHONUTF8 = '1'
 $env:PYTHONUNBUFFERED = '1'
-$env:PYTHONPATH = $RepoRoot
 $env:PGG_REPO_ROOT = $RepoRoot
 
 function Find-Python {
     $candidates = @(
         { (Get-Command python -ErrorAction SilentlyContinue).Source },
+        { (Get-Command python3 -ErrorAction SilentlyContinue).Source },
         { & py -3 -c 'import sys; print(sys.executable)' 2>$null }
     )
     foreach ($candidate in $candidates) {
@@ -36,9 +32,9 @@ function Find-Python {
             continue
         }
     }
-    throw 'Python not found. Install Python 3.11+ and ensure `python` or `py` is on PATH.'
+    throw 'Python not found. Install Python 3.10+ and ensure `python` or `py` is on PATH.'
 }
 
 $python = Find-Python
-& $python -m tools.pgg_mcp.server
+& $python -m tools.pgg_mcp.launch
 exit $LASTEXITCODE

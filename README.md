@@ -51,6 +51,6 @@ PggViewer resources/pgg/spire_house.pgg
 PggViewer --serve                          # RPC 127.0.0.1:9878
 ```
 
-MCP servers `pgg` / `pgg-win` — `.mcp.json` / `.cursor/mcp.json`, code in `tools/pgg_mcp/`. Contract: `docs/pgg/viewer_rpc.md`. Env: `PGG_REPO_ROOT`, `PGG_VIEWER`.
+MCP server `pgg` — `.mcp.json` / `.cursor/mcp.json`, `python3 -m tools.pgg_mcp.launch`. Missing binary → `need_build`. Contract: `docs/pgg/viewer_rpc.md`. Env: `PGG_REPO_ROOT`, `PGG_VIEWER`.
 
 Agent instructions: `AGENTS.md`.

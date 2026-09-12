@@ -1,31 +1,18 @@
 {
   "mcpServers": {
     "pgg": {
-      "command": "/bin/sh",
+      "type": "stdio",
+      "command": "python3",
       "args": [
-        "tools/run_pgg_mcp_server.sh"
-      ],
-      "cwd": ".",
-      "env": {
-        "PYTHONIOENCODING": "utf-8",
-        "PYTHONUTF8": "1"
-      }
-    },
-    "pgg-win": {
-      "command": "powershell",
-      "args": [
-        "-NoLogo",
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        "${workspaceFolder}/tools/run_pgg_mcp_server.ps1"
+        "-m",
+        "tools.pgg_mcp.launch"
       ],
       "cwd": "${workspaceFolder}",
       "env": {
         "PGG_REPO_ROOT": "${workspaceFolder}",
         "PYTHONIOENCODING": "utf-8",
-        "PYTHONUTF8": "1"
+        "PYTHONUTF8": "1",
+        "PYTHONUNBUFFERED": "1"
       }
     }
   }

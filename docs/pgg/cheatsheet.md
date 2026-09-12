@@ -42,7 +42,7 @@ tube = sweep(mesh_line(count = 2, length = h, dir = (0, 1, 0)), profile = ring)
 
 ## MCP (одна строка)
 
-`pgg_docs("clip")` · `pgg_render(node="house", view="front", wire=False, chrome="off")` · `pgg_render(..., compare="prev"|"baseline", png=False)` · `pgg_contact_sheet(views="*")` · `pgg_measure(node="house", a="group:stone", b="group:brick", axis="x")` · `pgg_probe("house:bbox[group=stone]")` · `pgg_reference(image=..., node="hotel")`
+`pgg_docs("clip")` · `pgg_render(node="house", view="front", wire=False, chrome="off")` · `pgg_render(..., compare="prev"|"baseline", png=False)` · `pgg_contact_sheet(views="*")` · `pgg_measure(node="house", a="group:stone", b="group:brick", axis="x")` · `pgg_probe("house:bbox[group=stone]")` · `pgg_reference(image=..., node="hotel")` · `pgg_status()` → `kind=need_build` → собрать PggViewer из `configure`/`build` и retry
 
 ## Обвязка
 
