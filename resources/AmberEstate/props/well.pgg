@@ -9,34 +9,63 @@ import lib.fixtures
 import common
 
 # Колодец по референсу props/well.jpg.
-# Два ряда камней, столбы, двускатная дранка, ворот, открытая кадка на верёвке.
+# Три ряда клиньев-камней, столбы, двускатная дранка, ворот, открытая кадка на верёвке.
 # Верх +Y, ворот на −X. Именованные узлы: stones, frame, bucket, scene.
 
-def stone_course(y: f32, r: f32, n: int, ch: f32, thick: f32, yaw: f32) -> (out: geo<mesh>) {
-    """Кольцо n камней, внешний радиус r, поворот yaw."""
-    expect n >= 6: "stone_course: мало"
-    w = 2.0 * r * sin(3.14159265 / f32(n)) * 0.94
-    one = parts.piece(size = vec3(w, ch, thick), pos = vec3(0, y + ch * 0.5, r - thick * 0.5), grp = "stone")
-    out = transform(shapes.polar_array(one, n = n), rotate = vec3(0, yaw, 0))
+def stone_wedge(r_in: f32, r_out: f32, n: int, ch: f32) -> (out: geo<mesh>) {
+    """Один камень кольца: усечённая пирамида, апофемы r_in/r_out, грань в +Z.
+    Бока по радиусам ±π/n — соседи стыкуются без щелей."""
+    expect n >= 8: "stone_wedge: мало"
+    expect r_out > r_in: "stone_wedge: толщина"
+    theta = 3.14159265 / f32(n)
+    w_in = 2.0 * r_in * tan(theta)
+    w_out = 2.0 * r_out * tan(theta)
+    thick = r_out - r_in
+    path0 = mesh_line(count = 2, length = thick, dir = (0, 0, 1))
+    path = set(transform(path0, translate = vec3(0, 0, r_in)), "profile_scale", @index == 0 ? vec2(w_in, ch) : vec2(w_out, ch), domain = points)
+    sq = transform(circle(sides = 4, radius = 0.70710678), rotate = vec3(0, 0, 45))
+    body = sweep(path, profile = sq)
+    edged = bevel(body, width = 0.010, bevel_group = "edge")
+    out = mark(compute_normals(edged, mode = flat), "stone", where = true, domain = faces)
 }
 
-def make_stones(r: f32, h: f32) -> (out: geo<mesh>) {
-    """Два ряда кладки + тёмное нутро + пол."""
-    ch = h * 0.48
-    t = 0.20
-    c0 = stone_course(y = 0.0, r = r, n = 10, ch = ch, thick = t, yaw = 0)
-    c1 = stone_course(y = ch, r = r * 0.98, n = 10, ch = ch, thick = t, yaw = 18)
-    floor = common.wood_disc(y = 0.0, r = r - t + 0.02, h = 0.04, grp = "wood_dark")
-    out = merge(c0, c1, floor)
+def stone_course(y: f32, r_in: f32, r_out: f32, n: int, ch: f32, yaw: f32, rng: rng) -> (out: geo<mesh>) {
+    """Кольцо n клиньев, низ на y, перевязка yaw. @tint на якоре: крем / серый / тёплый."""
+    wedge = stone_wedge(r_in = r_in, r_out = r_out, n = n, ch = ch)
+    ring = transform(circle(sides = n, radius = 1.0), rotate = vec3(90, 0, 0))
+    yaw_p = degrees(atan2(dot(@P, (1, 0, 0)), dot(@P, (0, 0, 1)))) + yaw
+    p1 = set(ring, "orient", orient_from_euler(vec3(0, yaw_p, 0)))
+    p2 = set_position(p1, offset = vec3(0, y + ch * 0.5, 0) - @P)
+    kind = random_int(n = 5, rng = split_rng(rng, key = "kind"))
+    cream = vec3(1.04, 1.01, 0.96)
+    grey = vec3(0.68, 0.73, 0.75)
+    warm = vec3(0.88, 0.76, 0.58)
+    t = kind >= 4 ? warm : (kind >= 3 ? grey : cream)
+    p3 = set(p2, "tint", t)
+    out = realize(instance_on_points(p3, source = wedge))
+}
+
+def make_stones(r: f32, h: f32, rng: rng) -> (out: geo<mesh>) {
+    """Три ряда клиньев: внутри вровень, верхний ряд нависает снаружи + пол."""
+    n = 16
+    ch = h / 3.0
+    t = 0.16
+    r_in = r - t
+    over = 0.05
+    step = 180.0 / f32(n)
+    c0 = stone_course(y = 0.0, r_in = r_in, r_out = r, n = n, ch = ch, yaw = 0, rng = split_rng(rng, key = "c0"))
+    c1 = stone_course(y = ch, r_in = r_in, r_out = r, n = n, ch = ch, yaw = step, rng = split_rng(rng, key = "c1"))
+    c2 = stone_course(y = 2.0 * ch, r_in = r_in, r_out = r + over, n = n, ch = ch, yaw = 0, rng = split_rng(rng, key = "c2"))
+    floor = common.wood_disc(y = 0.0, r = r_in - 0.01, h = 0.04, grp = "wood_dark")
+    out = merge(c0, c1, c2, floor)
 }
 
 def make_frame(r: f32, h: f32, rng: rng) -> (out: geo<mesh>) {
     """Два столба на кладке, широкий конёк, дранка вразбежку, ворот слева."""
     post_h = 0.92
     post_w = 0.12
-    stone_top = h * 0.96
-    y0 = stone_top - 0.03
-    px = r * 0.78
+    y0 = h - 0.03
+    px = r * 0.82
     p_l = parts.piece(size = vec3(post_w, post_h, post_w), pos = vec3(0.0 - px, y0 + post_h * 0.5, 0), grp = "wood")
     p_r = parts.piece(size = vec3(post_w, post_h, post_w), pos = vec3(px, y0 + post_h * 0.5, 0), grp = "wood")
     hw = r * 1.18
@@ -109,9 +138,11 @@ def make_frame(r: f32, h: f32, rng: rng) -> (out: geo<mesh>) {
     front = transform(pitched, translate = vec3(0, ridge_y, 0))
     back = transform(transform(pitched, rotate = vec3(0, 180, 0)), translate = vec3(0, ridge_y, 0))
     wy = y0 + post_h * 0.58
-    wheel = mark(unmark(ironwork.spool(p0 = vec3(0.0 - px - 0.10, wy, 0), p1 = vec3(0.0 - px + 0.04, wy, 0), r0 = 0.16, r1 = 0.16, sides = 16), "iron"), "wood", where = true, domain = faces)
-    hub = ironwork.spool(p0 = vec3(0.0 - px - 0.12, wy, 0), p1 = vec3(0.0 - px + 0.06, wy, 0), r0 = 0.04, r1 = 0.04, sides = 8)
-    axle = ironwork.spool(p0 = vec3(0.0 - px - 0.14, wy, 0), p1 = vec3(0.0 - px + 0.08, wy, 0), r0 = 0.018, r1 = 0.018, sides = 8)
+    face = 0.0 - px - post_w * 0.5
+    wt = 0.085
+    wheel = mark(unmark(ironwork.spool(p0 = vec3(face - wt, wy, 0), p1 = vec3(face + 0.004, wy, 0), r0 = 0.16, r1 = 0.16, sides = 16), "iron"), "wood", where = true, domain = faces)
+    hub = ironwork.spool(p0 = vec3(face - wt - 0.016, wy, 0), p1 = vec3(0.0 - px + post_w * 0.5 + 0.02, wy, 0), r0 = 0.04, r1 = 0.04, sides = 8)
+    axle = ironwork.spool(p0 = vec3(face - wt - 0.032, wy, 0), p1 = vec3(0.0 - px + post_w * 0.5 + 0.03, wy, 0), r0 = 0.018, r1 = 0.018, sides = 8)
     out = merge(p_l, p_r, beam, ridge_cap, front, back, wheel, hub, axle)
 }
 
@@ -178,11 +209,11 @@ def paint(raw: geo<mesh>, rng: rng) -> (out: geo<mesh>) {
 
 def assemble(r: f32, h: f32, rng: rng) -> (out: geo<mesh>) {
     """Колодец: камни, навес, ведро, окраска."""
-    out = paint(merge(make_stones(r = r, h = h), make_frame(r = r, h = h, rng = split_rng(rng, key = "frame")), make_bucket(r = r, h = h)), rng = rng)
+    out = paint(merge(make_stones(r = r, h = h, rng = split_rng(rng, key = "st")), make_frame(r = r, h = h, rng = split_rng(rng, key = "frame")), make_bucket(r = r, h = h)), rng = rng)
 }
 
 root_rng = rng_from_seed(seed)
-stones = make_stones(r = well_r, h = wall_h)
+stones = make_stones(r = well_r, h = wall_h, rng = split_rng(root_rng, key = "st"))
 frame = make_frame(r = well_r, h = wall_h, rng = split_rng(root_rng, key = "frame"))
 bucket = make_bucket(r = well_r, h = wall_h)
 scene = paint(merge(stones, frame, bucket), rng = split_rng(root_rng, key = "ao"))
