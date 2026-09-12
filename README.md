@@ -2,6 +2,14 @@
 
 PGG is a procedural geometry language: a text-first node graph for LLM agents, with a node projection for humans. This repository is the language, library, CLI, viewer, tests, and art examples.
 
+| [Spire House](resources/pgg/spire_house.pgg) | [Cottage](resources/pgg/cottage.pgg) |
+|---|---|
+| ![Victorian house with a clock tower and tiled spire](docs/gallery/spire_house.png) | ![Timber-framed cottage with a stone ground floor](docs/gallery/cottage.png) |
+| [Inn Hotel](resources/pgg/inn_hotel.pgg) | [Stone Arch](resources/pgg/stone_arch.pgg) |
+| ![Streamline-moderne corner hotel](docs/gallery/inn_hotel.png) | ![Ashlar arch with voussoirs](docs/gallery/stone_arch.png) |
+
+How the shots were framed and how to regenerate them: [`docs/gallery/README.md`](docs/gallery/README.md).
+
 | Path | What it is |
 |---|---|
 | `src/libs/pgg` | Library: parser (ANTLR4 4.13.2), AST, execution core |
@@ -10,6 +18,7 @@ PGG is a procedural geometry language: a text-first node graph for LLM agents, w
 | `src/tests/pgg` | gtest + `corpus/` fixtures and `goldens/` fingerprints |
 | `resources/pgg` | Product / art examples (cottage, spire_house, inn_hotel, lib, …) |
 | `docs/pgg` | Language spec, implementation notes, cheatsheet, RPC contract |
+| `docs/gallery` | README hero shots of the art examples |
 
 ## Build
 

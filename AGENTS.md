@@ -92,6 +92,7 @@ PggViewer поднимает TCP RPC на `127.0.0.1:9878` (`--serve`; `src/apps
 - `README.md` — что это за проект и как собрать.
 - `docs/BUILD.md` — платформенные особенности сборки, vcpkg/binary cache (`docs/VCPKG_CACHE.md`), индексация для clangd.
 - `docs/pgg/README.md` — индекс документации языка.
+- `docs/gallery/` — геройские кадры арт-примеров для корневого README; пересъёмка — `tools/pgg/regen_gallery.sh`.
 - `docs/pgg/geometry_generation_language.md` — спецификация.
 - `docs/pgg/implementation.md` — заметки по реализации.
 - `docs/pgg/viewer_rpc.md` — RPC вьюера и MCP.
