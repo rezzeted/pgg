@@ -9,6 +9,7 @@ alwaysApply: true
 - **Source code:** identifiers and comments in English (`src/`, `tools/`, CMake). Names of variables, functions, and classes are English.
 - **Docs:** Russian. Exception: `README.md` is English. Do not translate existing Russian docs into English unless asked.
 - **Git commits:** subject and body in English (imperative, why over what), even when chat is in Russian.
+- **No Cursor attribution:** do not add `Co-authored-by: Cursor <cursoragent@cursor.com>`, `Signed-off-by: Cursor`, `--trailer`, or set author/committer to the agent. The commit author is the person who asked for the commit.
 
 ```
 # Chat / docs — Russian
