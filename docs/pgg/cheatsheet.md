@@ -23,6 +23,7 @@ tube = sweep(mesh_line(count = 2, length = h, dir = (0, 1, 0)), profile = ring)
 
 - Тернарник **не** выбирает `geo` — `select(cond, a, b)` или отдельные def.
 - Вертикальный `sweep`: `@profile_scale = (depth, width)`, не `(width, depth)`.
+- `bevel` на `sweep` с несколькими кольцами пути даёт канавку на каждом кольце — клёпка читается стопкой. Швы досок — зазор между экземплярами + `compute_normals(auto)`.
 - `parts.cbox` фаска `k` от **min(размер)**; на этаже — `k_abs` или голый `box`.
 - Нейтраль merge/repeat: `empty_mesh()` / `empty_points()` (`mesh_line(count = 0)` — точки).
 - `orient_from_euler(vec3)` — градусы, GLM `quat(radians)`: pitch X, yaw Y, roll Z.
