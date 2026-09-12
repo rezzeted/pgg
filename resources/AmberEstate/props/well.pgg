@@ -31,7 +31,7 @@ def make_stones(r: f32, h: f32) -> (out: geo<mesh>) {
 }
 
 def make_frame(r: f32, h: f32, rng: rng) -> (out: geo<mesh>) {
-    """Два столба, конёк, дранка вразбежку, ворот слева."""
+    """Два столба, конёк, дранка вразбежку, доски по контуру ската, ворот слева."""
     post_h = 0.92
     y0 = h - 0.02
     px = r * 0.46
@@ -39,31 +39,73 @@ def make_frame(r: f32, h: f32, rng: rng) -> (out: geo<mesh>) {
     p_r = parts.piece(size = vec3(0.11, post_h, 0.11), pos = vec3(px, y0 + post_h * 0.5, 0), grp = "wood")
     beam = parts.piece(size = vec3(r * 1.35, 0.10, 0.12), pos = vec3(0, y0 + post_h + 0.04, 0), grp = "wood")
     ridge_y = y0 + post_h + 0.12
-    ridge_cap = parts.piece(size = vec3(r * 1.40, 0.08, 0.14), pos = vec3(0, ridge_y + 0.08, 0), grp = "wood")
-    tw = 0.16
-    tl = 0.20
-    th = 0.028
-    pu = 0.155
-    pv = 0.14
-    n_rows = 4
-    n_cols = 6
-    a0 = mark(parts.cbox(size = vec3(tw, th, tl), k = 0.16), "wood", where = true, domain = faces)
-    a1 = mark(parts.cbox(size = vec3(tw, th, tl), k = 0.16), "roof", where = true, domain = faces)
-    a2 = mark(parts.cbox(size = vec3(tw, th, tl), k = 0.16), "wood_light", where = true, domain = faces)
+    ridge_cap = parts.piece(size = vec3(r * 1.42, 0.12, 0.20), pos = vec3(0, ridge_y + 0.04, 0), grp = "wood")
+    tl = 0.26
+    th = 0.016
+    pv = 0.11
+    tilt = degrees(atan2(th, pv))
+    n_rows = 7
+    n_a = 5
+    n_b = 6
+    hw = r * 0.70
+    seam = 0.006
+    pu_a = (2.0 * hw) / f32(n_a)
+    pu_b = (2.0 * hw) / f32(n_b)
+    wa = pu_a - seam
+    wb = pu_b - seam
+    hang = vec3(0, 0, 0.0 - tl * 0.5)
+    # Верх плитки на доске, низ на ряде ниже: наклон вокруг конькового края, не y_step.
+    flat_a = transform(parts.cbox(size = vec3(wa, th, tl), k = 0.16), translate = hang)
+    flat_b = transform(parts.cbox(size = vec3(wb, th, tl), k = 0.16), translate = hang)
+    src_a = transform(flat_a, rotate = vec3(tilt, 0, 0))
+    src_b = transform(flat_b, rotate = vec3(tilt, 0, 0))
+    a0 = mark(src_a, "wood", where = true, domain = faces)
+    a1 = mark(src_a, "roof", where = true, domain = faces)
+    a2 = mark(src_a, "wood_light", where = true, domain = faces)
+    b0 = mark(src_b, "wood", where = true, domain = faces)
+    b1 = mark(src_b, "roof", where = true, domain = faces)
+    b2 = mark(src_b, "wood_light", where = true, domain = faces)
     empty = empty_points()
-    anchors = repeat (empty, iterations = n_rows) |acc| {
-        k = f32(@iteration)
-        odd = f32(@iteration % 2)
-        row0 = mesh_line(count = n_cols, length = f32(n_cols - 1) * pu, dir = (1, 0, 0))
-        row = transform(row0, translate = vec3(0.0 - f32(n_cols - 1) * pu * 0.5 + odd * pu * 0.5, th * 0.5, 0.0 - k * pv))
+    # Чёт/нечет — разный шаг (5 и 6 целых досок на ширину ската), без бокового clip.
+    anchors_a = repeat (empty, iterations = (n_rows + 1) / 2) |acc| {
+        k = f32(@iteration) * 2.0
+        row0 = mesh_line(count = n_a, length = f32(n_a - 1) * pu_a, dir = (1, 0, 0))
+        row = transform(row0, translate = vec3(0.0 - f32(n_a - 1) * pu_a * 0.5, th * 0.5, pv - k * pv))
         acc = merge(acc, row)
     }
-    pts = set(anchors, "variant", random_int(n = 3, rng = split_rng(rng, key = "tile")))
-    raw = realize(instance_on_points(pts, source = a0, variants = [a0, a1, a2]))
+    anchors_b = repeat (empty, iterations = n_rows / 2) |acc| {
+        k = f32(@iteration) * 2.0 + 1.0
+        row0 = mesh_line(count = n_b, length = f32(n_b - 1) * pu_b, dir = (1, 0, 0))
+        row = transform(row0, translate = vec3(0.0 - f32(n_b - 1) * pu_b * 0.5, th * 0.5, pv - k * pv))
+        acc = merge(acc, row)
+    }
+    pts_a = set(anchors_a, "variant", random_int(n = 3, rng = split_rng(rng, key = "ta")))
+    pts_b = set(anchors_b, "variant", random_int(n = 3, rng = split_rng(rng, key = "tb")))
+    raw_a = realize(instance_on_points(pts_a, source = a0, variants = [a0, a1, a2]))
+    raw_b = realize(instance_on_points(pts_b, source = b0, variants = [b0, b1, b2]))
+    raw = merge(raw_a, raw_b)
+    # Клип дальше нуля: после −pitch верхний ряд оказывается под коньком, не ниже.
+    c_top = clip(raw, origin = vec3(0, 0, 0.05), normal = vec3(0, 0, 0.0 - 1.0), cap_group = "wood")
+    field = compute_normals(c_top, mode = flat)
+    z_eave = pv - f32(n_rows - 1) * pv - tl
+    bw = 0.070
+    bh = 0.104
+    y_under = 0.0 - bh * 0.52
+    x_b = hw - bw * 0.5
+    z_lo = z_eave
+    z_hi = 0.0 - 0.05
+    span_z = z_hi - z_lo
+    z_mid = (z_hi + z_lo) * 0.5
+    barge_l = parts.piece(size = vec3(bw, bh, span_z), pos = vec3(0.0 - x_b, y_under, z_mid), grp = "wood")
+    barge_r = parts.piece(size = vec3(bw, bh, span_z), pos = vec3(x_b, y_under, z_mid), grp = "wood")
+    fascia_e = parts.piece(size = vec3(2.0 * hw, bh, bw), pos = vec3(0, y_under, z_lo + bw * 0.5), grp = "wood")
+    fascia_r = parts.piece(size = vec3(2.0 * hw, bh, bw), pos = vec3(0, y_under, z_hi - bw * 0.5), grp = "wood")
+    deck = merge(field, barge_l, barge_r, fascia_e, fascia_r)
     slope = 42.0
-    pitched = transform(raw, rotate = vec3(slope, 0, 0))
-    front = transform(pitched, translate = vec3(0, ridge_y - 0.02, 0))
-    back = transform(transform(pitched, rotate = vec3(0, 180, 0)), translate = vec3(0, ridge_y - 0.02, 0))
+    # Ряды от конька в −Z; −pitch опускает скат (иначе получается ендова).
+    pitched = transform(deck, rotate = vec3(0.0 - slope, 0, 0))
+    front = transform(pitched, translate = vec3(0, ridge_y, 0))
+    back = transform(transform(pitched, rotate = vec3(0, 180, 0)), translate = vec3(0, ridge_y, 0))
     wy = y0 + post_h * 0.58
     wheel = mark(unmark(ironwork.spool(p0 = vec3(0.0 - px - 0.10, wy, 0), p1 = vec3(0.0 - px + 0.04, wy, 0), r0 = 0.16, r1 = 0.16, sides = 16), "iron"), "wood", where = true, domain = faces)
     hub = ironwork.spool(p0 = vec3(0.0 - px - 0.12, wy, 0), p1 = vec3(0.0 - px + 0.06, wy, 0), r0 = 0.04, r1 = 0.04, sides = 8)
