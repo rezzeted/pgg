@@ -56,7 +56,7 @@ def roof_spire(h: f32, r0: f32, rng: rng) -> (out: geo<mesh>) {
     k_gold = 0.98
     finial_width_scale = 1.2075
     gold_height_scale = 1.20
-    knob_scale = 1.20
+    knob_scale = 2.40
     tiles_h = h - gold_h - skirt_h
     a_cap = a0 * (gold_h + skirt_h) / h
     r_cap = r0 * (gold_h + skirt_h) / h
