@@ -40,11 +40,17 @@ def clip_circle_hole(g: geo<mesh>, cx: f32, cy: f32, R: f32) -> (out: geo<mesh>)
     out = masonry.clip_circle_hole(g = g, cx = cx, cy = cy, R = R, segments = 12)
 }
 
-def brick_box_veneer(w: f32, d: f32, h: f32, y0: f32, wing_x: f32, wing_z: f32, door_x: f32, has_door: int, rng: rng) -> (out: geo<mesh>) {
+def clip_win_pair(g: geo<mesh>, cx: f32, y_bot: f32, win_w: f32, win_h: f32, bar: f32, gap: f32) -> (out: geo<mesh>) {
+    """Два арочных проёма на ±cx в одной стене кладки."""
+    out = clip_arch_hole(clip_arch_hole(g, cx = cx, y_bot = y_bot, win_w = win_w, win_h = win_h, bar = bar, gap = gap), cx = 0.0 - cx, y_bot = y_bot, win_w = win_w, win_h = win_h, bar = bar, gap = gap)
+}
+
+def brick_box_veneer(w: f32, d: f32, h: f32, y0: f32, wing_x: f32, wing_z: f32, door_x: f32, has_door: int, rng: rng, n_wing: int = 1, win_step: f32 = 1.65) -> (out: geo<mesh>) {
     """Облицовка четырёх стен дома мелким кирпичом между квойнами (inset 0.74
     как у cottage, bricks=1.5). Сплошная кладка, проёмы — clip_arch_hole по
     силуэту stone_arch_window / arch_frame (зазор 3 см). has_door=1 — на
-    фасаде справа дверь вместо окна."""
+    фасаде справа дверь вместо окна. n_wing — окон на крыло фасада/тыла
+    (1 = исходный дом, 3 = широкие крылья); шаг win_step от ближайшего к башне."""
     inset = 0.74
     span_f = w - 2.0 * inset
     span_s = d - 2.0 * inset
@@ -56,6 +62,8 @@ def brick_box_veneer(w: f32, d: f32, h: f32, y0: f32, wing_x: f32, wing_z: f32, 
     door_w = 1.05
     door_h = 2.35
     door_bar = 0.14
+    x2 = wing_x + win_step
+    x3 = wing_x + win_step * 2.0
     rf0 = brick_rows(len = span_f, h = h)
     rs0 = brick_rows(len = span_s, h = h)
     raw_f = brick_from_rows(rf0, rng = split_rng(rng, key = "f"))
@@ -65,10 +73,15 @@ def brick_box_veneer(w: f32, d: f32, h: f32, y0: f32, wing_x: f32, wing_z: f32, 
     w2 = has_door == 1 ? door_w : win_w
     h2 = has_door == 1 ? door_h : win_h
     bar2 = has_door == 1 ? door_bar : win_bar
-    p_f = clip_arch_hole(p_f0, cx = cx2, y_bot = y2, win_w = w2, win_h = h2, bar = bar2, gap = gap)
+    p_f1 = clip_arch_hole(p_f0, cx = cx2, y_bot = y2, win_w = w2, win_h = h2, bar = bar2, gap = gap)
+    p_f2 = clip_win_pair(p_f1, cx = x2, y_bot = win_y, win_w = win_w, win_h = win_h, bar = win_bar, gap = gap)
+    p_f3 = clip_win_pair(p_f2, cx = x3, y_bot = win_y, win_w = win_w, win_h = win_h, bar = win_bar, gap = gap)
+    p_f = select(n_wing > 2, a = p_f3, b = select(n_wing > 1, a = p_f2, b = p_f1))
     raw_b = brick_from_rows(rf0, rng = split_rng(rng, key = "b"))
-    p_b0 = clip_arch_hole(raw_b, cx = 0.0 - wing_x, y_bot = win_y, win_w = win_w, win_h = win_h, bar = win_bar, gap = gap)
-    p_b = clip_arch_hole(p_b0, cx = wing_x, y_bot = win_y, win_w = win_w, win_h = win_h, bar = win_bar, gap = gap)
+    p_b0 = clip_win_pair(raw_b, cx = wing_x, y_bot = win_y, win_w = win_w, win_h = win_h, bar = win_bar, gap = gap)
+    p_b2 = clip_win_pair(p_b0, cx = x2, y_bot = win_y, win_w = win_w, win_h = win_h, bar = win_bar, gap = gap)
+    p_b3 = clip_win_pair(p_b2, cx = x3, y_bot = win_y, win_w = win_w, win_h = win_h, bar = win_bar, gap = gap)
+    p_b = select(n_wing > 2, a = p_b3, b = select(n_wing > 1, a = p_b2, b = p_b0))
     raw_r = brick_from_rows(rs0, rng = split_rng(rng, key = "r"))
     p_r0 = clip_arch_hole(raw_r, cx = wing_z, y_bot = win_y, win_w = win_w, win_h = win_h, bar = win_bar, gap = gap)
     p_r = clip_arch_hole(p_r0, cx = 0.0 - wing_z, y_bot = win_y, win_w = win_w, win_h = win_h, bar = win_bar, gap = gap)

@@ -55,6 +55,8 @@ def roof_spire(h: f32, r0: f32, rng: rng) -> (out: geo<mesh>) {
     skirt_h = 0.11
     k_gold = 0.98
     finial_width_scale = 1.2075
+    gold_height_scale = 1.20
+    knob_scale = 1.20
     tiles_h = h - gold_h - skirt_h
     a_cap = a0 * (gold_h + skirt_h) / h
     r_cap = r0 * (gold_h + skirt_h) / h
@@ -62,6 +64,7 @@ def roof_spire(h: f32, r0: f32, rng: rng) -> (out: geo<mesh>) {
     pitch = degrees(atan2(tiles_h, a0 - a_cap))
     y_soffit = tiles_h - 0.02
     y_gold0 = tiles_h + skirt_h * 0.70
+    y_gold_tip = y_gold0 + (h - y_gold0) * gold_height_scale
     a_gold0 = a0 * (h - y_gold0) / h * k_gold * finial_width_scale
     body0 = common.hexa_frustum(y0 = 0.0, y1 = tiles_h, r0 = a0, r1 = a_cap, grp = "roof")
     body = clip(body0, origin = vec3(0, y_soffit, 0), normal = vec3(0, -1, 0), cap_group = "roof")
@@ -80,10 +83,10 @@ def roof_spire(h: f32, r0: f32, rng: rng) -> (out: geo<mesh>) {
     belt0 = common.hexa_belt(y = y_soffit, h = skirt_h, r = a_gold0 - over_hi, over_lo = over_lo, over_hi = over_hi)
     soff = common.hexa_plate(y = y_soffit - 0.012, h = 0.024, r = a_gold0 - over_hi + over_lo, grp = "iron")
     skirt = merge(mark(unmark(belt0, "stone"), "iron", where = true, domain = faces), soff)
-    gold = common.hexa_frustum(y0 = y_gold0, y1 = h, r0 = a_gold0, r1 = 0.008, grp = "brass")
-    eq = h + 0.055
-    dia_lo = shapes.ngon_frustum(y0 = h - 0.015, y1 = eq, r0 = 0.006, r1 = 0.042, sides = 4, grp = "brass")
-    dia_hi = shapes.ngon_frustum(y0 = eq, y1 = eq + 0.10, r0 = 0.042, r1 = 0.003, sides = 4, grp = "brass")
+    gold = common.hexa_frustum(y0 = y_gold0, y1 = y_gold_tip, r0 = a_gold0, r1 = 0.008, grp = "brass")
+    eq = y_gold_tip + 0.055 * knob_scale
+    dia_lo = shapes.ngon_frustum(y0 = y_gold_tip - 0.015 * knob_scale, y1 = eq, r0 = 0.006 * knob_scale, r1 = 0.042 * knob_scale, sides = 4, grp = "brass")
+    dia_hi = shapes.ngon_frustum(y0 = eq, y1 = eq + 0.10 * knob_scale, r0 = 0.042 * knob_scale, r1 = 0.003 * knob_scale, sides = 4, grp = "brass")
     out = merge(body, tiles, caps, skirt, gold, dia_lo, dia_hi)
 }
 
