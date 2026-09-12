@@ -28,11 +28,13 @@ def tile_field(w_along: f32, slope_len: f32, tw: f32, tl: f32, th: f32, pu: f32,
     out = mark(realize(instance_on_points(p_tint, source = tile)), "roof", where = true, domain = faces)
 }
 
-def tile_face_tri(r0: f32, r1: f32, slope_len: f32, rng: rng) -> (out: geo<mesh>) {
+def tile_face_tri(r0: f32, r1: f32, slope_len: f32, rng: rng, apex_clip: f32 = 0.05) -> (out: geo<mesh>) {
     """Черепица одной треугольной грани (шпиль). Локально: x поперёк, −Z к
     вершине, низ грани на z = 0 (ширина r0), верх на z = −slope_len (ширина r1).
     Сплошные ряды вразбежку, затем clip по двум боковым рёбрам треугольника
-    и под вершиной — ложки на контуре подрезаны."""
+    и плоскостью apex_clip до вершины (посадка навершия, не шестигранная лунка).
+    Якоря с запасом за clip, центры за вершиной не кладутся."""
+    expect apex_clip >= 0.0: "tile_face_tri: apex_clip >= 0"
     tw = 0.24
     tl = 0.30
     th = 0.032
@@ -50,14 +52,15 @@ def tile_face_tri(r0: f32, r1: f32, slope_len: f32, rng: rng) -> (out: geo<mesh>
         row = transform(row0, translate = vec3(0.0 - f32(n_cols - 1) * pu * 0.5 + odd * pu * 0.5, th * 0.5 + 0.020, 0.0 - vk))
         acc = merge(acc, row)
     }
-    anchors = delete(anchors_all, where = (abs(dot(@P, (1, 0, 0))) > 0.5 * (r0 + (r1 - r0) * ((0.0 - dot(@P, (0, 0, 1))) / slope_len)) + 0.18) | (dot(@P, (0, 0, 1)) < 0.08 - slope_len))
+    # Центры за вершиной не кладутся (щепки); плоскость apex_clip подрезает ложки.
+    anchors = delete(anchors_all, where = (abs(dot(@P, (1, 0, 0))) > 0.5 * (r0 + (r1 - r0) * ((0.0 - dot(@P, (0, 0, 1))) / slope_len)) + 0.18) | (dot(@P, (0, 0, 1)) < 0.0 - slope_len))
     t_jit = set_position(anchors, offset = random_vec(lo = vec3(-0.004, -0.001, -0.004), hi = vec3(0.004, 0.001, 0.004), rng = split_rng(rng, key = "jit")))
     shade = random(lo = 0.80, hi = 1.22, rng = split_rng(rng, key = "tint"))
     p_tint = set(t_jit, "tint", vec3(shade * 0.97, shade, shade * 1.05))
     raw = realize(instance_on_points(p_tint, source = tile))
     c_l = clip(raw, origin = vec3(0.0 - r0 * 0.5, 0, 0), normal = vec3(slope_len, 0, (r0 - r1) * 0.5), cap_group = "roof")
     c_r = clip(c_l, origin = vec3(r0 * 0.5, 0, 0), normal = vec3(0.0 - slope_len, 0, (r0 - r1) * 0.5), cap_group = "roof")
-    c_top = clip(c_r, origin = vec3(0, 0, 0.18 - slope_len), normal = vec3(0, 0, 1), cap_group = "roof")
+    c_top = clip(c_r, origin = vec3(0, 0, apex_clip - slope_len), normal = vec3(0, 0, 1), cap_group = "roof")
     out = mark(compute_normals(c_top, mode = flat), "roof", where = true, domain = faces)
 }
 

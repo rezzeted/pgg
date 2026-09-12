@@ -174,6 +174,20 @@ def hexa_corbel(y_top: f32, h: f32, r_top: f32, steps: int = 3) -> (out: geo<mes
     out = merge(s0, s1, s2, drop_cone, drop_ball)
 }
 
+def hexa_plate(y: f32, h: f32, r: f32, grp: string) -> (out: geo<mesh>) {
+    """Сплошная шестигранная плита: низ на y, высота h, апофема r, грань на +Z.
+    Клип бокса шестью плоскостями — у плиты есть верх и софит, в отличие от полого sweep."""
+    k = 0.86602540378
+    c = r / k
+    raw = transform(box(size = vec3(c * 2.05, h, c * 2.05)), translate = vec3(0, y + h * 0.5, 0))
+    p0 = clip(raw, origin = vec3(0, 0, r), normal = vec3(0, 0, 0.0 - 1.0), cap_group = grp)
+    p1 = clip(p0, origin = vec3(r * k, 0, r * 0.5), normal = vec3(0.0 - k, 0, 0.0 - 0.5), cap_group = grp)
+    p2 = clip(p1, origin = vec3(r * k, 0, 0.0 - r * 0.5), normal = vec3(0.0 - k, 0, 0.5), cap_group = grp)
+    p3 = clip(p2, origin = vec3(0, 0, 0.0 - r), normal = vec3(0, 0, 1), cap_group = grp)
+    p4 = clip(p3, origin = vec3(0.0 - r * k, 0, 0.0 - r * 0.5), normal = vec3(k, 0, 0.5), cap_group = grp)
+    out = mark(compute_normals(clip(p4, origin = vec3(0.0 - r * k, 0, r * 0.5), normal = vec3(k, 0, 0.0 - 0.5), cap_group = grp), mode = flat), grp, where = true, domain = faces)
+}
+
 def hexa_belt(y: f32, h: f32, r: f32, over_lo: f32 = 0.22, over_hi: f32 = 0.30) -> (out: geo<mesh>) {
     """Шестигранный двухступенчатый карниз. r — апофема грани корпуса; over_* —
     вынос от грани на сторону (по нормали)."""

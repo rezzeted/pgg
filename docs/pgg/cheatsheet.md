@@ -28,6 +28,7 @@ tube = sweep(mesh_line(count = 2, length = h, dir = (0, 1, 0)), profile = ring)
 - `orient_from_euler(vec3)` — градусы, GLM `quat(radians)`: pitch X, yaw Y, roll Z.
 - Апофема/описанный: `shapes.ngon_circumradius(apothem, sides)`; вынос пояса — **по нормали к грани**.
 - Нахлёст черепицы — только вдоль ската (`pv < tl`); отступ по нормали константа (`lift`), иначе верхние ряды отрываются.
+- Шпиль: полый `sweep`-настил без крышки + наконечник изнутри = колодец. Латунный конус — те же грани, что черепица (апофема `a0*(h−y)/h`, чуть уже); юбка — тонкий карниз на стыке, не площадка; коньки заходят под юбку, не до оси.
 - RPC `render` **stateless**, кроме `orbit`/`distance`. Опущенный `wire`/`ortho`/`target`/`chrome` сбрасывается. Форму — с `wire:false`; «вижу не то» — сначала `render_state`.
 - Сварка вершин — `merge_by_distance`; `weld` — параметр `mirror`.
 - `grid()` → `geo<mesh>`, `instance_on_points` хочет points: якоря — `plan.point_grid` / `mesh_line`+`foreach`. `grid` уже в XZ, нормали +Y.
