@@ -9,7 +9,7 @@ import lib.fixtures
 import common
 
 # Колодец по референсу props/well.jpg.
-# Два ряда камней, столбы, двускатная дранка, ворот, ведро на цепи.
+# Два ряда камней, столбы, двускатная дранка, ворот, открытая кадка на верёвке.
 # Верх +Y, ворот на −X. Именованные узлы: stones, frame, bucket, scene.
 
 def stone_course(y: f32, r: f32, n: int, ch: f32, thick: f32, yaw: f32) -> (out: geo<mesh>) {
@@ -31,23 +31,25 @@ def make_stones(r: f32, h: f32) -> (out: geo<mesh>) {
 }
 
 def make_frame(r: f32, h: f32, rng: rng) -> (out: geo<mesh>) {
-    """Два столба, конёк, дранка вразбежку, доски по контуру ската, ворот слева."""
+    """Два столба на кладке, широкий конёк, дранка вразбежку, ворот слева."""
     post_h = 0.92
-    y0 = h - 0.02
-    px = r * 0.46
-    p_l = parts.piece(size = vec3(0.11, post_h, 0.11), pos = vec3(0.0 - px, y0 + post_h * 0.5, 0), grp = "wood")
-    p_r = parts.piece(size = vec3(0.11, post_h, 0.11), pos = vec3(px, y0 + post_h * 0.5, 0), grp = "wood")
-    beam = parts.piece(size = vec3(r * 1.35, 0.10, 0.12), pos = vec3(0, y0 + post_h + 0.04, 0), grp = "wood")
+    post_w = 0.12
+    stone_top = h * 0.96
+    y0 = stone_top - 0.03
+    px = r * 0.78
+    p_l = parts.piece(size = vec3(post_w, post_h, post_w), pos = vec3(0.0 - px, y0 + post_h * 0.5, 0), grp = "wood")
+    p_r = parts.piece(size = vec3(post_w, post_h, post_w), pos = vec3(px, y0 + post_h * 0.5, 0), grp = "wood")
+    hw = r * 1.18
+    beam = parts.piece(size = vec3(2.0 * px + 0.22, 0.10, 0.12), pos = vec3(0, y0 + post_h + 0.04, 0), grp = "wood")
     ridge_y = y0 + post_h + 0.12
-    ridge_cap = parts.piece(size = vec3(r * 1.42, 0.12, 0.20), pos = vec3(0, ridge_y + 0.04, 0), grp = "wood")
+    ridge_cap = parts.piece(size = vec3(2.0 * hw + 0.06, 0.12, 0.20), pos = vec3(0, ridge_y + 0.04, 0), grp = "wood")
     tl = 0.26
     th = 0.016
     pv = tl * 0.75
     tilt = degrees(atan2(th, pv))
     n_rows = 5
-    n_a = 5
-    n_b = 6
-    hw = r * 0.70
+    n_a = 7
+    n_b = 8
     seam = 0.006
     pu_a = (2.0 * hw) / f32(n_a)
     pu_b = (2.0 * hw) / f32(n_b)
@@ -113,15 +115,47 @@ def make_frame(r: f32, h: f32, rng: rng) -> (out: geo<mesh>) {
     out = merge(p_l, p_r, beam, ridge_cap, front, back, wheel, hub, axle)
 }
 
+def bucket_hoop(y: f32, r: f32, h: f32, n: int) -> (out: geo<mesh>) {
+    """Железный пояс: n брусков вокруг Y, чтобы не заткнуть полость сплошным диском."""
+    expect n >= 8: "bucket_hoop: мало"
+    w = 2.0 * r * sin(3.14159265 / f32(n)) * 1.02
+    one = parts.piece(size = vec3(w, h, 0.018), pos = vec3(0, y + h * 0.5, r), grp = "iron")
+    out = shapes.polar_array(one, n = n)
+}
+
 def make_bucket(r: f32, h: f32) -> (out: geo<mesh>) {
-    """Ведро над водой: lathe, два обруча, дужка, цепь к коньку."""
-    by = h * 0.42
-    body = common.lathe_wood(y0 = by, y1 = by + 0.26, r_end = 0.10, r_mid = 0.125, sides = 12)
-    ho0 = common.hoop_band(y = by + 0.03, r = 0.130, h = 0.022)
-    ho1 = common.hoop_band(y = by + 0.18, r = 0.118, h = 0.022)
-    bail = fixtures.rod(p0 = vec3(0.12, by + 0.22, 0), p1 = vec3(0.07, by + 0.40, 0), p2 = vec3(0.0 - 0.07, by + 0.40, 0), p3 = vec3(0.0 - 0.12, by + 0.22, 0), r = 0.012, n = 10)
-    chain = ironwork.spool(p0 = vec3(0, by + 0.40, 0), p1 = vec3(0, h + 0.92, 0), r0 = 0.012, r1 = 0.012, sides = 6)
-    out = merge(body, ho0, ho1, bail, chain)
+    """Открытая кадка: клёпки, полость, два обруча, дужка с кольцом и крюком, верёвка к балке."""
+    n = 12
+    bh = 0.34
+    r_bot = r * 0.245
+    r_top = r * 0.32
+    thick = 0.028
+    by = h * 0.74
+    path0 = mesh_line(count = 2, length = bh, dir = (0, 1, 0))
+    path = set(transform(path0, translate = vec3(0, by, 0)), "profile_scale", @index == 0 ? vec2(r_bot, r_bot) : vec2(r_top, r_top), domain = points)
+    wall = mark(compute_normals(sweep(path, profile = circle(sides = n, radius = 1.0), cap = false), mode = flat), "wood", where = true, domain = faces)
+    path_i0 = mesh_line(count = 2, length = bh - 0.014, dir = (0, 1, 0))
+    path_i = set(transform(path_i0, translate = vec3(0, by, 0)), "profile_scale", @index == 0 ? vec2(r_bot - thick, r_bot - thick) : vec2(r_top - thick, r_top - thick), domain = points)
+    liner = mark(compute_normals(sweep(path_i, profile = circle(sides = n, radius = 1.0), cap = false), mode = flat), "wood_dark", where = true, domain = faces)
+    floor = common.wood_disc(y = by, r = r_bot - thick * 0.35, h = 0.022, grp = "wood_dark")
+    rim_y = by + bh
+    lip_w = 2.0 * r_top * sin(3.14159265 / f32(n)) * 1.02
+    lip_one = parts.piece(size = vec3(lip_w, 0.014, thick + 0.004), pos = vec3(0, rim_y - 0.006, r_top - thick * 0.5), grp = "wood_light")
+    lip = shapes.polar_array(lip_one, n = n)
+    y_lo = by + bh * 0.10
+    y_hi = by + bh * 0.68
+    r_lo = mix(r_bot, r_top, (y_lo - by) / bh) + 0.006
+    r_hi = mix(r_bot, r_top, (y_hi - by) / bh) + 0.006
+    ho0 = bucket_hoop(y = y_lo, r = r_lo, h = 0.034, n = n)
+    ho1 = bucket_hoop(y = y_hi, r = r_hi, h = 0.034, n = n)
+    rx = r_top * 0.98
+    bail = fixtures.rod(p0 = vec3(rx, rim_y - 0.016, 0), p1 = vec3(rx * 0.18, rim_y + 0.13, 0), p2 = vec3(0.0 - rx * 0.18, rim_y + 0.13, 0), p3 = vec3(0.0 - rx, rim_y - 0.016, 0), r = 0.015, n = 14)
+    ear_l = ironwork.spool(p0 = vec3(rx - 0.01, rim_y - 0.028, 0), p1 = vec3(rx + 0.02, rim_y - 0.028, 0), r0 = 0.015, r1 = 0.015, sides = 8)
+    ear_r = ironwork.spool(p0 = vec3(0.0 - rx - 0.02, rim_y - 0.028, 0), p1 = vec3(0.0 - rx + 0.01, rim_y - 0.028, 0), r0 = 0.015, r1 = 0.015, sides = 8)
+    hang = fixtures.ring(center = vec3(0, rim_y + 0.145, 0), radius = 0.032, r = 0.008, yaw_deg = 90)
+    hook = fixtures.rod(p0 = vec3(0, rim_y + 0.26, 0), p1 = vec3(0.038, rim_y + 0.17, 0), p2 = vec3(0.006, rim_y + 0.10, 0), p3 = vec3(0.0 - 0.028, rim_y + 0.145, 0), r = 0.008, n = 12)
+    rope = mark(unmark(ironwork.spool(p0 = vec3(0, rim_y + 0.26, 0), p1 = vec3(0, h + 0.92, 0), r0 = 0.012, r1 = 0.013, sides = 6), "iron"), "wood", where = true, domain = faces)
+    out = merge(wall, liner, floor, lip, ho0, ho1, bail, ear_l, ear_r, hang, hook, rope)
 }
 
 def paint(raw: geo<mesh>, rng: rng) -> (out: geo<mesh>) {
