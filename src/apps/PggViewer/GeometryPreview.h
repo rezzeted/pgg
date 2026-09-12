@@ -1,7 +1,8 @@
 // Geometry preview (spec §9 L3 groundwork): renders the value of a selected
 // node — geo<mesh>, geo<points>, geo<instances> (realized) or sdf (meshed at
-// a preview voxel) — into an offscreen sokol target shown in the docked
-// preview pane (below the graph, draggable splitter) with an orbit camera.
+// a preview voxel) — into an 8x-MSAA offscreen sokol target (falls back to 4x
+// then 1x; resolved to a 1-sample texture) shown in the docked preview pane
+// below the graph, with an orbit camera.
 // The value comes from a RunParams::pulls run (any binding, not only declared
 // outputs). Optional highlight of one group.
 //
@@ -176,6 +177,7 @@ private:
 
     void ensureTarget(int w, int h);
     void destroyTarget();
+    bool makePipelines(int samples);
     glm::mat4 viewMatrix() const;
 
     sg_shader m_shader{};
@@ -190,11 +192,18 @@ private:
     sg_buffer m_wireIbuf{};
     int m_wireIndexCount = 0;
 
+    // Offscreen MSAA color/depth (prefer 8x, fall back to 4 then 1) plus a
+    // 1-sample resolve image that ImGui samples when MSAA is on. The swapchain
+    // stays 1x so window readback (capturePng) does not have to blit out of a
+    // multisampled default FB.
     sg_image m_color{};
+    sg_image m_resolve{};
     sg_image m_depth{};
     sg_view m_colorAttach{};
+    sg_view m_resolveAttach{};
     sg_view m_depthAttach{};
     sg_view m_texView{};
+    int m_sampleCount = 1;
     int m_targetW = 0, m_targetH = 0;
     int m_wantW = 0, m_wantH = 0;
 

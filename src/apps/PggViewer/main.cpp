@@ -1,6 +1,6 @@
 // PggViewer: read-only node-graph projection of .pgg files (spec §10, stage E8).
 //   PggViewer [file.pgg] [--shot=out.png] [--shot-delay=S] [--shot-frame=window|preview]
-//             [--zoom=Z] [--center=X,Y] [--no-ui]
+//             [--chrome=off] [--zoom=Z] [--center=X,Y] [--no-ui]
 //             [--dive=<ipath>] [--preview=<pull path>] [--preview-highlight=<domain>:<group>]
 //             [--preview-shading=auto|smooth|flat] [--preview-colors=on|off] [--preview-size=W,H]
 //             [--preview-orbit=yaw_deg,pitch_deg[,zoom]]
@@ -233,6 +233,7 @@ std::string g_shotPath;
 double g_shotDelaySec = 1.0;  // --shot-delay=: wall time before the capture
 bool g_shotDelayExplicit = false;  // --shot-delay given: keep the wall-time behaviour
 bool g_shotFramePreview = false;   // --shot-frame=preview: crop the shot to the preview viewport (F1)
+bool g_cliChromeOff = false;       // --chrome=off: preview fills the window (gallery / CLI shots)
 std::optional<float> g_cliZoom;
 std::optional<ImVec2> g_cliCenter;
 std::string g_cliDive;
@@ -1821,7 +1822,8 @@ void frame() {
         // chrome=off (F1): the RPC render handler asked for one frame without
         // the side panel and the graph — the preview pane spans the whole
         // window, so the captured crop carries only the 3D preview.
-        const bool chromeOff = g_chromeOffThisFrame;
+        // CLI --chrome=off is sticky for the session (gallery / --shot).
+        const bool chromeOff = g_chromeOffThisFrame || g_cliChromeOff;
         g_chromeOffThisFrame = false;
         if (chromeOff) {
             drawPreviewWindowAt(0.0f, 0.0f, static_cast<float>(w), static_cast<float>(h));
@@ -2832,6 +2834,15 @@ int main(int argc, char* argv[]) {
             g_noUi = true;
         } else if (arg.rfind("--shot=", 0) == 0) {
             g_shotPath = arg.substr(7);
+        } else if (arg.rfind("--chrome=", 0) == 0) {
+            const std::string v = arg.substr(9);
+            if (v == "off") {
+                g_cliChromeOff = true;
+            } else if (v == "on") {
+                g_cliChromeOff = false;
+            } else {
+                spdlog::warn("PggViewer: unknown --chrome='{}' (want on|off)", v);
+            }
         } else if (arg.rfind("--shot-frame=", 0) == 0) {
             const std::string v = arg.substr(13);
             if (v == "preview") {
@@ -2901,6 +2912,11 @@ int main(int argc, char* argv[]) {
     desc.event_cb = event;
     desc.width = 1440;
     desc.height = 900;
+    // Swapchain stays 1x: capturePng reads the window FB (glReadPixels on a
+    // multisampled default FB is INVALID_OPERATION; D3D CopyResource cannot
+    // copy an MSAA RT into a non-MSAA staging texture). 4x MSAA lives on the
+    // preview offscreen pass (GeometryPreview, 8x with fallback to 4/1), which
+    // is what the 3D image and RPC/CLI shots of it actually show.
     desc.sample_count = 1;
     desc.window_title = "PggViewer - PGG Node Projection";
     desc.high_dpi = true;

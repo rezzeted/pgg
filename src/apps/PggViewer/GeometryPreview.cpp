@@ -583,6 +583,7 @@ fragment float4 _main(constant FsParams& p [[buffer(0)]]) {
 )";
 
 constexpr int kMaxTarget = 4096;
+constexpr int kPreviewMsaa = 8;  // prefer 8x; init() falls back to 4 then 1
 constexpr sg_pixel_format kColorFormat = SG_PIXELFORMAT_RGBA8;
 constexpr sg_pixel_format kDepthFormat = SG_PIXELFORMAT_DEPTH;
 
@@ -642,26 +643,6 @@ void GeometryPreview::init() {
     shd.label = "pggviewer-preview-shd";
     m_shader = sg_make_shader(&shd);
 
-    sg_pipeline_desc pip = {};
-    pip.shader = m_shader;
-    pip.layout.attrs[0].format = SG_VERTEXFORMAT_FLOAT3;
-    pip.layout.attrs[1].format = SG_VERTEXFORMAT_FLOAT3;
-    pip.layout.attrs[2].format = SG_VERTEXFORMAT_FLOAT3;
-    pip.layout.attrs[3].format = SG_VERTEXFORMAT_FLOAT;
-    pip.primitive_type = SG_PRIMITIVETYPE_TRIANGLES;
-    pip.index_type = SG_INDEXTYPE_UINT32;
-    pip.cull_mode = SG_CULLMODE_NONE;  // open meshes / arbitrary winding still read
-    // pgg faces are CCW seen from outside; sokol defaults to CW, which would
-    // make every outward face "back-facing" and the FS normal flip would light
-    // the mesh from inside out.
-    pip.face_winding = SG_FACEWINDING_CCW;
-    pip.depth.pixel_format = kDepthFormat;
-    pip.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
-    pip.depth.write_enabled = true;
-    pip.colors[0].pixel_format = kColorFormat;
-    pip.label = "pggviewer-preview-pip";
-    m_pip = sg_make_pipeline(&pip);
-
     // Wire overlay: same mvp uniform, flat line color, line list, no depth
     // write (the z bias in the VS handles the tie with the shaded surface).
     sg_shader_desc wshd = {};
@@ -697,6 +678,63 @@ void GeometryPreview::init() {
     wshd.label = "pggviewer-preview-wire-shd";
     m_wireShader = sg_make_shader(&wshd);
 
+    if (sg_query_shader_state(m_shader) != SG_RESOURCESTATE_VALID ||
+        sg_query_shader_state(m_wireShader) != SG_RESOURCESTATE_VALID) {
+        spdlog::error("GeometryPreview: shader creation failed");
+        m_ok = false;
+        return;
+    }
+
+    m_sampleCount = 0;
+    for (int samples : {kPreviewMsaa, 4, 1}) {
+        if (samples == m_sampleCount) continue;
+        if (makePipelines(samples)) {
+            m_sampleCount = samples;
+            break;
+        }
+        spdlog::warn("GeometryPreview: MSAA {}x pipelines not supported, trying a lower count", samples);
+    }
+    if (m_sampleCount == 0) {
+        spdlog::error("GeometryPreview: pipeline creation failed");
+        m_ok = false;
+        return;
+    }
+    if (m_sampleCount != kPreviewMsaa)
+        spdlog::info("GeometryPreview: using MSAA {}x", m_sampleCount);
+    m_ok = true;
+}
+
+bool GeometryPreview::makePipelines(int samples) {
+    if (m_pip.id != SG_INVALID_ID) {
+        sg_destroy_pipeline(m_pip);
+        m_pip = {};
+    }
+    if (m_wirePip.id != SG_INVALID_ID) {
+        sg_destroy_pipeline(m_wirePip);
+        m_wirePip = {};
+    }
+
+    sg_pipeline_desc pip = {};
+    pip.shader = m_shader;
+    pip.layout.attrs[0].format = SG_VERTEXFORMAT_FLOAT3;
+    pip.layout.attrs[1].format = SG_VERTEXFORMAT_FLOAT3;
+    pip.layout.attrs[2].format = SG_VERTEXFORMAT_FLOAT3;
+    pip.layout.attrs[3].format = SG_VERTEXFORMAT_FLOAT;
+    pip.primitive_type = SG_PRIMITIVETYPE_TRIANGLES;
+    pip.index_type = SG_INDEXTYPE_UINT32;
+    pip.cull_mode = SG_CULLMODE_NONE;  // open meshes / arbitrary winding still read
+    // pgg faces are CCW seen from outside; sokol defaults to CW, which would
+    // make every outward face "back-facing" and the FS normal flip would light
+    // the mesh from inside out.
+    pip.face_winding = SG_FACEWINDING_CCW;
+    pip.depth.pixel_format = kDepthFormat;
+    pip.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
+    pip.depth.write_enabled = true;
+    pip.colors[0].pixel_format = kColorFormat;
+    pip.sample_count = samples;
+    pip.label = "pggviewer-preview-pip";
+    m_pip = sg_make_pipeline(&pip);
+
     sg_pipeline_desc wpip = {};
     wpip.shader = m_wireShader;
     wpip.layout.attrs[0].format = SG_VERTEXFORMAT_FLOAT3;
@@ -707,18 +745,12 @@ void GeometryPreview::init() {
     wpip.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
     wpip.depth.write_enabled = false;
     wpip.colors[0].pixel_format = kColorFormat;
+    wpip.sample_count = samples;
     wpip.label = "pggviewer-preview-wire-pip";
     m_wirePip = sg_make_pipeline(&wpip);
 
-    if (sg_query_shader_state(m_shader) != SG_RESOURCESTATE_VALID ||
-        sg_query_pipeline_state(m_pip) != SG_RESOURCESTATE_VALID ||
-        sg_query_shader_state(m_wireShader) != SG_RESOURCESTATE_VALID ||
-        sg_query_pipeline_state(m_wirePip) != SG_RESOURCESTATE_VALID) {
-        spdlog::error("GeometryPreview: pipeline creation failed");
-        m_ok = false;
-        return;
-    }
-    m_ok = true;
+    return sg_query_pipeline_state(m_pip) == SG_RESOURCESTATE_VALID &&
+           sg_query_pipeline_state(m_wirePip) == SG_RESOURCESTATE_VALID;
 }
 
 void GeometryPreview::shutdown() {
@@ -867,11 +899,13 @@ void GeometryPreview::setProjection(PreviewProjection p) {
 void GeometryPreview::destroyTarget() {
     if (m_texView.id != SG_INVALID_ID) sg_destroy_view(m_texView);
     if (m_colorAttach.id != SG_INVALID_ID) sg_destroy_view(m_colorAttach);
+    if (m_resolveAttach.id != SG_INVALID_ID) sg_destroy_view(m_resolveAttach);
     if (m_depthAttach.id != SG_INVALID_ID) sg_destroy_view(m_depthAttach);
     if (m_color.id != SG_INVALID_ID) sg_destroy_image(m_color);
+    if (m_resolve.id != SG_INVALID_ID) sg_destroy_image(m_resolve);
     if (m_depth.id != SG_INVALID_ID) sg_destroy_image(m_depth);
-    m_texView = m_colorAttach = m_depthAttach = {};
-    m_color = m_depth = {};
+    m_texView = m_colorAttach = m_resolveAttach = m_depthAttach = {};
+    m_color = m_resolve = m_depth = {};
     m_targetW = m_targetH = 0;
 }
 
@@ -891,26 +925,59 @@ void GeometryPreview::ensureTarget(int w, int h) {
     cd.width = w;
     cd.height = h;
     cd.pixel_format = kColorFormat;
+    cd.sample_count = m_sampleCount;
     cd.label = "pggviewer-preview-color";
     m_color = sg_make_image(&cd);
+
+    if (m_sampleCount > 1) {
+        sg_image_desc rd = {};
+        rd.usage.resolve_attachment = true;
+        rd.width = w;
+        rd.height = h;
+        rd.pixel_format = kColorFormat;
+        rd.sample_count = 1;
+        rd.label = "pggviewer-preview-resolve";
+        m_resolve = sg_make_image(&rd);
+    }
 
     sg_image_desc dd = {};
     dd.usage.depth_stencil_attachment = true;
     dd.width = w;
     dd.height = h;
     dd.pixel_format = kDepthFormat;
+    dd.sample_count = m_sampleCount;
     dd.label = "pggviewer-preview-depth";
     m_depth = sg_make_image(&dd);
 
     sg_view_desc cv = {};
     cv.color_attachment.image = m_color;
     m_colorAttach = sg_make_view(&cv);
+    if (m_sampleCount > 1) {
+        sg_view_desc rv = {};
+        rv.resolve_attachment.image = m_resolve;
+        m_resolveAttach = sg_make_view(&rv);
+    }
     sg_view_desc dv = {};
     dv.depth_stencil_attachment.image = m_depth;
     m_depthAttach = sg_make_view(&dv);
+    // Sample the resolve image when MSAA is on, otherwise the color target.
     sg_view_desc tv = {};
-    tv.texture.image = m_color;
+    tv.texture.image = m_sampleCount > 1 ? m_resolve : m_color;
     m_texView = sg_make_view(&tv);
+
+    const bool imagesOk = sg_query_image_state(m_color) == SG_RESOURCESTATE_VALID &&
+                          sg_query_image_state(m_depth) == SG_RESOURCESTATE_VALID &&
+                          sg_query_view_state(m_colorAttach) == SG_RESOURCESTATE_VALID &&
+                          sg_query_view_state(m_depthAttach) == SG_RESOURCESTATE_VALID &&
+                          sg_query_view_state(m_texView) == SG_RESOURCESTATE_VALID &&
+                          (m_sampleCount <= 1 ||
+                           (sg_query_image_state(m_resolve) == SG_RESOURCESTATE_VALID &&
+                            sg_query_view_state(m_resolveAttach) == SG_RESOURCESTATE_VALID));
+    if (!imagesOk) {
+        spdlog::error("GeometryPreview: MSAA {}x target creation failed ({}x{})", m_sampleCount, w, h);
+        destroyTarget();
+        return;
+    }
 
     m_targetW = w;
     m_targetH = h;
@@ -1028,10 +1095,13 @@ void GeometryPreview::render() {
 
     sg_pass pass = {};
     pass.action.colors[0].load_action = SG_LOADACTION_CLEAR;
+    pass.action.colors[0].store_action =
+        m_sampleCount > 1 ? SG_STOREACTION_DONTCARE : SG_STOREACTION_STORE;
     pass.action.colors[0].clear_value = {kClearColor[0], kClearColor[1], kClearColor[2], kClearColor[3]};
     pass.action.depth.load_action = SG_LOADACTION_CLEAR;
     pass.action.depth.clear_value = 1.0f;
     pass.attachments.colors[0] = m_colorAttach;
+    if (m_sampleCount > 1) pass.attachments.resolves[0] = m_resolveAttach;
     pass.attachments.depth_stencil = m_depthAttach;
     pass.label = "pggviewer-preview-pass";
     sg_begin_pass(&pass);
