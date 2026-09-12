@@ -1,0 +1,4 @@
+def foo(x: f32) -> (out: f32) {
+    """Identity-plus-one. Paired with a same-named wrapper in the caller."""
+    out = x + 1.0
+}
