@@ -1,0 +1,12 @@
+{
+  "dependencies": [
+    "antlr4",
+    "glm",
+    "nlohmann-json",
+    "spdlog",
+    "gtest",
+    "sokol",
+    "imgui",
+    "stb"
+  ]
+}
