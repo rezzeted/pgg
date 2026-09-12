@@ -9,12 +9,54 @@ import lib.ironwork
 import common
 
 # Бочка по референсу props/barrel.jpg.
-# 16 клёпок-граней, выпуклый экватор, 4 обруча с заклёпками, крышка из досок, втулка сбоку.
+# Клёпки-доски с выпуклым брюхом, 4 полых обруча с заклёпками, крышка из досок, втулка сбоку.
 # Верх +Y. Именованные узлы: body, hoops, lid, bung, scene.
 
-def make_body(h: f32, re: f32, rm: f32) -> (out: geo<mesh>) {
-    """Клёпки lathe 16 граней от 0 до h."""
-    out = common.lathe_wood(y0 = 0.0, y1 = h, r_end = re, r_mid = rm, sides = 16)
+def stave(h: f32, re: f32, rm: f32, n: int, thick: f32) -> (out: geo<mesh>) {
+    """Одна клёпка: доска в +Z, ширина по хорде, брюхо sin-смещением по Z."""
+    expect n >= 8: "stave: мало клёпок"
+    expect rm > re: "stave: выпуклость"
+    n_path = 9
+    t = f32(@index) / f32(n_path - 1)
+    k = mix(re, rm, sin(3.14159265 * t))
+    w = 2.0 * k * sin(3.14159265 / f32(n)) * 0.98
+    path0 = mesh_line(count = n_path, length = h, dir = (0, 1, 0))
+    path1 = transform(path0, translate = vec3(0, 0, re - thick * 0.5))
+    path = set(path1, "profile_scale", vec2(thick, w), domain = points)
+    sq = transform(circle(sides = 4, radius = 0.70710678), rotate = vec3(0, 0, 45))
+    board = sweep(path, profile = sq)
+    ty = clamp(dot(@P, (0, 1, 0)) / h, 0.0, 1.0)
+    k_v = mix(re, rm, sin(3.14159265 * ty))
+    bent = set_position(board, offset = vec3(0, 0, k_v - re))
+    out = mark(compute_normals(bent, mode = auto, angle = 40), "wood", where = true, domain = faces)
+}
+
+def make_body(h: f32, re: f32, rm: f32, rng: rng) -> (out: geo<mesh>) {
+    """16 клёпок вокруг Y, каждая со своим @tint, плюс нижнее дно."""
+    n = 16
+    thick = 0.030
+    one = stave(h = h, re = re, rm = rm, n = n, thick = thick)
+    ring = transform(circle(sides = n, radius = 1.0), rotate = vec3(90, 0, 0))
+    yaw_p = degrees(atan2(dot(@P, (1, 0, 0)), dot(@P, (0, 0, 1))))
+    p1 = set(ring, "orient", orient_from_euler(vec3(0, yaw_p, 0)))
+    p2 = set_position(p1, offset = vec3(0, 0, 0) - @P)
+    shade = random(lo = 0.82, hi = 1.16, rng = split_rng(rng, key = "tint"))
+    p3 = set(p2, "tint", vec3(shade * 1.05, shade, shade * 0.92))
+    staves = realize(instance_on_points(p3, source = one))
+    floor = common.wood_disc(y = 0.012, r = re - thick * 0.55, h = 0.018, grp = "wood")
+    out = merge(staves, floor)
+}
+
+def hoop_iron(y: f32, r: f32, bh: f32, band: f32 = 0.016) -> (out: geo<mesh>) {
+    """Полый обруч: прямоугольный профиль по окружности в XZ, без диска внутри."""
+    expect bh > 0.008: "hoop_iron: тонкий"
+    expect band > 0.006: "hoop_iron: узкий"
+    loop0 = transform(circle(sides = 24, radius = r), rotate = vec3(90, 0, 0))
+    loop = transform(loop0, translate = vec3(0, y + bh * 0.5, 0))
+    path = set(loop, "profile_scale", vec2(band, bh), domain = points)
+    sq = transform(circle(sides = 4, radius = 0.70710678), rotate = vec3(0, 0, 45))
+    body = sweep(path, profile = sq, closed = true)
+    out = mark(compute_normals(body, mode = auto, angle = 40), "iron", where = true, domain = faces)
 }
 
 def make_hoops(h: f32, re: f32, rm: f32) -> (out: geo<mesh>) {
@@ -24,55 +66,70 @@ def make_hoops(h: f32, re: f32, rm: f32) -> (out: geo<mesh>) {
     y2 = h * 0.62
     y3 = h - 0.085
     bh = 0.042
-    r0 = mix(re, rm, sin(3.14159265 * (y0 + 0.02) / h)) + 0.012
-    r1 = mix(re, rm, sin(3.14159265 * (y1 + 0.02) / h)) + 0.012
-    r2 = mix(re, rm, sin(3.14159265 * (y2 + 0.02) / h)) + 0.012
-    r3 = mix(re, rm, sin(3.14159265 * (y3 + 0.02) / h)) + 0.012
-    b0 = common.hoop_band(y = y0, r = r0, h = bh)
-    b1 = common.hoop_band(y = y1, r = r1, h = bh)
-    b2 = common.hoop_band(y = y2, r = r2, h = bh)
-    b3 = common.hoop_band(y = y3, r = r3, h = bh)
-    v0 = common.rivet_ring(y = y0 + bh * 0.5, r = r0 + 0.006, n = 8, riv = 0.016)
-    v1 = common.rivet_ring(y = y1 + bh * 0.5, r = r1 + 0.006, n = 8, riv = 0.016)
-    v2 = common.rivet_ring(y = y2 + bh * 0.5, r = r2 + 0.006, n = 8, riv = 0.016)
-    v3 = common.rivet_ring(y = y3 + bh * 0.5, r = r3 + 0.006, n = 8, riv = 0.016)
+    r0 = mix(re, rm, sin(3.14159265 * y0 / h)) + 0.008
+    r1 = mix(re, rm, sin(3.14159265 * y1 / h)) + 0.008
+    r2 = mix(re, rm, sin(3.14159265 * y2 / h)) + 0.008
+    r3 = mix(re, rm, sin(3.14159265 * y3 / h)) + 0.008
+    b0 = hoop_iron(y = y0, r = r0, bh = bh)
+    b1 = hoop_iron(y = y1, r = r1, bh = bh)
+    b2 = hoop_iron(y = y2, r = r2, bh = bh)
+    b3 = hoop_iron(y = y3, r = r3, bh = bh)
+    v0 = common.rivet_ring(y = y0 + bh * 0.5, r = r0 + 0.010, n = 8, riv = 0.016)
+    v1 = common.rivet_ring(y = y1 + bh * 0.5, r = r1 + 0.010, n = 8, riv = 0.016)
+    v2 = common.rivet_ring(y = y2 + bh * 0.5, r = r2 + 0.010, n = 8, riv = 0.016)
+    v3 = common.rivet_ring(y = y3 + bh * 0.5, r = r3 + 0.010, n = 8, riv = 0.016)
     out = merge(b0, b1, b2, b3, v0, v1, v2, v3)
 }
 
-def make_lid(h: f32, re: f32) -> (out: geo<mesh>) {
-    """Круглая крышка: диск + короткий ободок (без прямоугольных досок — силуэт круга)."""
-    disc = common.wood_disc(y = h - 0.010, r = re * 0.96, h = 0.022, grp = "wood_light")
-    rim = common.wood_disc(y = h + 0.008, r = re * 0.98, h = 0.012, grp = "wood")
-    out = merge(disc, rim)
+def make_lid(h: f32, re: f32, rng: rng) -> (out: geo<mesh>) {
+    """Крышка-днище: параллельные доски, обрезанные в круг, деревянный ободок."""
+    t = 0.020
+    span = re * 2.24
+    raw = parts.plank_panel(w = span, h = span, t = t, n = 5, rng = split_rng(rng, key = "planks"))
+    laid = transform(raw, rotate = vec3(90, 0, 0), translate = vec3(0, h + t * 0.5 + 0.003, 0))
+    n_clip = 24
+    r_lid = re * 1.012
+    round = repeat (laid, iterations = n_clip) |acc| {
+        a = f32(@iteration) * 6.2831853 / f32(n_clip)
+        nrm = vec3(sin(a), 0, cos(a))
+        acc = clip(acc, origin = nrm * r_lid, normal = vec3(0, 0, 0) - nrm, cap_group = "wood_light")
+    }
+    planks = mark(unmark(round, "wood"), "wood_light", where = true, domain = faces)
+    rim0 = hoop_iron(y = h, r = r_lid, bh = t + 0.008, band = 0.018)
+    rim = mark(unmark(rim0, "iron"), "wood", where = true, domain = faces)
+    out = merge(planks, rim)
 }
 
-def make_bung(h: f32, rm: f32) -> (out: geo<mesh>) {
+def make_bung(h: f32, re: f32, rm: f32) -> (out: geo<mesh>) {
     """Втулка на +Z в средней трети: короткий цилиндр вдоль Z."""
-    y = h * 0.42
-    peg = ironwork.spool(p0 = vec3(0, y, rm - 0.02), p1 = vec3(0, y, rm + 0.055), r0 = 0.055, r1 = 0.055, sides = 12)
+    t = 0.42
+    y = h * t
+    k = mix(re, rm, sin(3.14159265 * t))
+    peg = ironwork.spool(p0 = vec3(0, y, k - 0.016), p1 = vec3(0, y, k + 0.052), r0 = 0.055, r1 = 0.055, sides = 12)
     out = mark(unmark(peg, "iron"), "wood", where = true, domain = faces)
 }
 
 def paint(raw: geo<mesh>, rng: rng) -> (out: geo<mesh>) {
-    """Окрас бочки: клёпки, крышка, железо."""
-    wood_col = vec3(0.66, 0.40, 0.18)
-    wood_lt = vec3(0.86, 0.64, 0.36)
+    """Окрас бочки: клёпки, крышка, железо, фаски."""
+    wood_col = vec3(0.66, 0.40, 0.18) * @tint
+    wood_lt = vec3(0.86, 0.64, 0.36) * @tint
     iron_col = vec3(0.12, 0.12, 0.14)
     c0 = ingroup("wood") ? wood_col : vec3(1.0, 0.0, 1.0)
     c1 = ingroup("wood_light") ? wood_lt : c0
     c2 = ingroup("iron") ? iron_col : c1
-    out = common.ao(set(raw, "Cd", c2, domain = faces), rng = rng)
+    edge_mul = ingroup("edge") ? vec3(1.16, 1.12, 1.06) : vec3(1.0)
+    out = common.ao(set(raw, "Cd", c2 * edge_mul, domain = faces), rng = rng)
 }
 
 def assemble(h: f32, re: f32, rm: f32, rng: rng) -> (out: geo<mesh>) {
     """Бочка: клёпки, обруча, крышка, втулка, окраска."""
-    out = paint(merge(make_body(h = h, re = re, rm = rm), make_hoops(h = h, re = re, rm = rm), make_lid(h = h, re = re), make_bung(h = h, rm = rm)), rng = rng)
+    out = paint(merge(make_body(h = h, re = re, rm = rm, rng = split_rng(rng, key = "staves")), make_hoops(h = h, re = re, rm = rm), make_lid(h = h, re = re, rng = split_rng(rng, key = "lid")), make_bung(h = h, re = re, rm = rm)), rng = split_rng(rng, key = "ao"))
 }
 
 root_rng = rng_from_seed(seed)
-body = make_body(h = barrel_h, re = r_end, rm = r_mid)
+body = make_body(h = barrel_h, re = r_end, rm = r_mid, rng = split_rng(root_rng, key = "staves"))
 hoops = make_hoops(h = barrel_h, re = r_end, rm = r_mid)
-lid = make_lid(h = barrel_h, re = r_end)
-bung = make_bung(h = barrel_h, rm = r_mid)
+lid = make_lid(h = barrel_h, re = r_end, rng = split_rng(root_rng, key = "lid"))
+bung = make_bung(h = barrel_h, re = r_end, rm = r_mid)
 scene = paint(merge(body, hoops, lid, bung), rng = split_rng(root_rng, key = "ao"))
 output scene
