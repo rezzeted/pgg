@@ -18,7 +18,7 @@ from typing import Any, Optional
 
 from mcp.server.fastmcp import FastMCP
 
-from tools.pgg_mcp.session import PggSession
+from tools.pgg_mcp.session import PggSession, with_product_lib_roots
 
 _INSTRUCTIONS = """PGG MCP — итеративный цикл отладки .pgg-графов через PggViewer.
 
@@ -75,7 +75,9 @@ def pgg_load(path: Optional[str] = None, source: Optional[str] = None,
 
     path — путь до .pgg (относительно cwd viewer'а = корня репо, или абсолютный);
     source — текст файла целиком (пишется в tmp/pgg_rpc_source/src_N.pgg, его
-    каталог становится неявным import root); lib_roots — доп. корни импортов.
+    каталог становится неявным import root); lib_roots — доп. корни импортов
+    (к ним всегда дописывается resources/pgg, поэтому import lib.* работает
+    и из resources/AmberEstate без явного lib_roots)..
     snapshot=true дополнительно прогоняет outputs и записывает их фингерпринты
     как baseline для pgg_diff (в ответе snapshot=true; при ошибках файла
     baseline не пишется, snapshot=false). Без snapshot=true снимок pgg_diff
@@ -92,7 +94,8 @@ def pgg_load(path: Optional[str] = None, source: Optional[str] = None,
     отслеживается — новый текст передаётся новым pgg_load(source=...).
     Пример: pgg_load(path="resources/pgg/cottage.pgg") → has_errors=false.
     """
-    return _call("load", {"path": path, "source": source, "lib_roots": lib_roots,
+    return _call("load", {"path": path, "source": source,
+                          "lib_roots": with_product_lib_roots(_session.repo_root, lib_roots),
                           "snapshot": snapshot})
 
 

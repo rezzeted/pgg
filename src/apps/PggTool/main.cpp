@@ -168,6 +168,10 @@ bool diagsHaveErrors(const std::vector<pgg::Diagnostic>& diags) {
     return false;
 }
 
+void addProductLibRoot(std::vector<std::string>& roots, const std::string& filePath) {
+    pgg::appendImportRoot(roots, pgg::findProductLibRoot(filePath));
+}
+
 int cmdCheck(const std::string& path, bool json) {
     pgg::Document doc = pgg::parseFile(path);
     // F5 (agent_tooling_plan): check runs the full static pipeline — the
@@ -180,6 +184,7 @@ int cmdCheck(const std::string& path, bool json) {
         std::vector<std::string> importRoots;
         const std::string dir = std::filesystem::path(path).parent_path().string();
         if (!dir.empty()) importRoots.push_back(dir);  // like runFile (§7.6)
+        addProductLibRoot(importRoots, path);
         pgg::ModuleClosure closure;
         const pgg::ModuleClosure* closurePtr = nullptr;
         if (pgg::hasImports(*doc.file)) {
@@ -515,6 +520,7 @@ int cmdRun(const std::string& path, const std::vector<std::pair<std::string, std
     for (const auto& [k, v] : params) rp.values.push_back({k, parseCliValue(v)});
     rp.threads = threads;
     rp.importRoots = libRoots;
+    addProductLibRoot(rp.importRoots, path);
     rp.probes = probes;
     rp.debug = debug;
     rp.profile = profile;
@@ -770,6 +776,8 @@ int cmdDiff(const std::string& pathA, const std::string& pathB, const std::strin
     const bool baselineMode = !baselinePath.empty();
     pgg::RunParams rp;
     rp.importRoots = libRoots;
+    addProductLibRoot(rp.importRoots, pathA);
+    if (!pathB.empty()) addProductLibRoot(rp.importRoots, pathB);
     pgg::RunResult ra = pgg::runFile(pathA, rp, outputs);
     pgg::RunResult rb;
     if (!baselineMode) rb = pgg::runFile(pathB, rp, outputs);
@@ -1045,7 +1053,9 @@ int cmdDocs(const std::string& path, const std::string& symbol, const std::vecto
     }
     if (!doc.file) return 1;
 
-    pgg::DocsLookupResult res = pgg::findDef(*doc.file, path, symbol, libRoots);
+    std::vector<std::string> roots = libRoots;
+    addProductLibRoot(roots, path);
+    pgg::DocsLookupResult res = pgg::findDef(*doc.file, path, symbol, roots);
     for (const pgg::Diagnostic& d : res.diagnostics) {
         std::fputs(pgg::formatDiagnostic(d, path).c_str(), stderr);
         std::fputc('\n', stderr);

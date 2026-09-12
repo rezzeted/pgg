@@ -1,0 +1,53 @@
+param log_len: f32 = 0.62
+param n_rows: int = 4
+param seed: int = 5
+
+import lib.parts
+import common
+
+# Стопка дров по референсу props/wood_pile.jpg.
+# 4 ряда полешек вдоль Z, кора сверху; верхний ряд из трёх, нижние из четырёх.
+# Верх +Y. Именованные узлы: pile, scene.
+
+def make_row(len: f32, n: int, y: f32, w: f32, ht: f32, z0: f32) -> (out: geo<mesh>) {
+    """Ряд n полешек вдоль Z через instance_on_points (не def в зоне)."""
+    expect n >= 2: "make_row: мало"
+    pitch = w + 0.012
+    span = pitch * f32(n - 1)
+    src = common.split_log(len = len, w = w, h = ht)
+    pts0 = mesh_line(count = n, length = span, dir = (0, 0, 1))
+    pts = transform(pts0, translate = vec3(0, y, z0 + 0.0 - span * 0.5))
+    out = realize(instance_on_points(pts, source = src))
+}
+
+def make_pile(len: f32, rows: int) -> (out: geo<mesh>) {
+    """Стопка: нижние ряды по 4, верхний по 3, высота наслаивается."""
+    expect rows >= 3: "make_pile: мало рядов"
+    w = 0.13
+    ht = 0.095
+    r0 = make_row(len = len, n = 4, y = ht * 0.5, w = w, ht = ht, z0 = 0)
+    r1 = make_row(len = len * 0.98, n = 4, y = ht * 1.5 + 0.004, w = w, ht = ht, z0 = 0.01)
+    r2 = make_row(len = len * 1.02, n = 4, y = ht * 2.5 + 0.008, w = w, ht = ht, z0 = -0.008)
+    r3 = make_row(len = len * 0.97, n = 3, y = ht * 3.5 + 0.012, w = w, ht = ht, z0 = 0)
+    out = merge(r0, r1, r2, r3)
+}
+
+def paint(raw: geo<mesh>, rng: rng) -> (out: geo<mesh>) {
+    """Окрас полешек: светлый срез и кора."""
+    wood_lt = vec3(0.90, 0.72, 0.42) * @tint
+    bark_col = vec3(0.38, 0.20, 0.08)
+    c0 = ingroup("wood_light") ? wood_lt : vec3(1.0, 0.0, 1.0)
+    c1 = ingroup("bark") ? bark_col : c0
+    edge_mul = ingroup("edge") ? vec3(1.16, 1.12, 1.06) : vec3(1.0)
+    out = common.ao(set(raw, "Cd", c1 * edge_mul, domain = faces), rng = rng)
+}
+
+def assemble(len: f32, rows: int, rng: rng) -> (out: geo<mesh>) {
+    """Стопка дров с окраской."""
+    out = paint(make_pile(len = len, rows = rows), rng = rng)
+}
+
+root_rng = rng_from_seed(seed)
+pile = make_pile(len = log_len, rows = n_rows)
+scene = paint(pile, rng = split_rng(root_rng, key = "ao"))
+output scene

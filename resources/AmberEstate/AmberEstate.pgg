@@ -1,0 +1,12 @@
+param seed: int = 7
+
+import environment.umbrella_table as umb
+
+# AmberEstate — минипроект. Окружение: столик с зонтом
+# (environment/umbrella_table.pgg, референс environment/reference.jpg).
+# Пропы (бочка, стул, дрова, улей, ящик, пугало, колодец, дровник) —
+# resources/AmberEstate/props/*.pgg, референсы рядом (.jpg).
+# import lib.* резолвится в resources/pgg (вьюер и PggTool подмешивают этот root).
+
+estate = umb.assemble(width = 1.02, height = 0.70, thick = 0.045, n = 5, r = 1.12, shaft_h = 0.92, dome_h = 0.32, hang = 0.18, sides = 12, rng = rng_from_seed(seed))
+output estate

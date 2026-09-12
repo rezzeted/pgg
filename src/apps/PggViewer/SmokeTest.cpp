@@ -697,6 +697,13 @@ bool runPggViewerSmokeTest(const std::string& serveAddress) {
                 viewsOk = hasFront;
             }
             check(viewsOk, "rpc views lists named views from spire_house.views.json");
+
+            const nlohmann::json amber = call(
+                {{"op", "load"},
+                 {"args",
+                  {{"path", findRepoRoot() + "/resources/AmberEstate/environment/umbrella_table.pgg"}}}});
+            check(amber.value("ok", false) && !amber["data"].value("has_errors", true),
+                  "rpc load of AmberEstate/umbrella_table.pgg without lib_roots");
             // Restore the corpus file so later probe/render checks still see `base`.
             call({{"op", "load"}, {"args", {{"path", corpus + "/e1_rock.pgg"}}}});
 

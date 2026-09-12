@@ -1,0 +1,76 @@
+param seat_w: f32 = 0.42
+param seat_d: f32 = 0.40
+param seat_y: f32 = 0.44
+param back_h: f32 = 0.46
+param seed: int = 3
+
+import lib.parts
+import common
+
+# Деревянный стул по референсу props/chair.jpg.
+# Сиденье из 4 досок, четыре ножки, две проножки, спинка из стоек и двух перекладин.
+# Верх +Y, лицо спинки −Z. Именованные узлы: seat, legs, back, scene.
+
+def make_seat(w: f32, d: f32, y: f32) -> (out: geo<mesh>) {
+    """Сиденье: 4 доски вдоль Z, тонкий зазор, центр на высоте y."""
+    n = 4
+    pitch = d / f32(n)
+    plank = parts.cbox(size = vec3(w, 0.036, pitch - 0.006), k = 0.18)
+    pts0 = mesh_line(count = n, length = d - pitch, dir = (0, 0, 1))
+    pts = transform(pts0, translate = vec3(0, y, 0.0 - (d - pitch) * 0.5))
+    out = mark(realize(instance_on_points(pts, source = plank)), "wood", where = true, domain = faces)
+}
+
+def make_legs(w: f32, d: f32, y: f32) -> (out: geo<mesh>) {
+    """Четыре ножки сечения 0.045 и две проножки (бок + зад)."""
+    s = 0.045
+    hx = w * 0.5 - 0.028
+    hz = d * 0.5 - 0.028
+    lf = parts.piece(size = vec3(s, y, s), pos = vec3(hx, y * 0.5, hz), grp = "wood")
+    rf = parts.piece(size = vec3(s, y, s), pos = vec3(0.0 - hx, y * 0.5, hz), grp = "wood")
+    lb = parts.piece(size = vec3(s, y + 0.02, s), pos = vec3(hx, y * 0.5 + 0.01, 0.0 - hz), grp = "wood")
+    rb = parts.piece(size = vec3(s, y + 0.02, s), pos = vec3(0.0 - hx, y * 0.5 + 0.01, 0.0 - hz), grp = "wood")
+    rail_z = y * 0.22
+    side_l = parts.piece(size = vec3(0.028, 0.032, d - 0.08), pos = vec3(hx, rail_z, 0), grp = "wood")
+    side_r = parts.piece(size = vec3(0.028, 0.032, d - 0.08), pos = vec3(0.0 - hx, rail_z, 0), grp = "wood")
+    rear = parts.piece(size = vec3(w - 0.08, 0.032, 0.028), pos = vec3(0, rail_z, 0.0 - hz), grp = "wood")
+    out = merge(lf, rf, lb, rb, side_l, side_r, rear)
+}
+
+def make_back(w: f32, d: f32, y: f32, h: f32) -> (out: geo<mesh>) {
+    """Спинка: две стойки от сиденья, средняя перекладина и чуть выгнутый верх."""
+    s = 0.045
+    hz = 0.0 - (d * 0.5 - 0.028)
+    post_h = h + 0.04
+    lp = parts.piece(size = vec3(s, post_h, s), pos = vec3(w * 0.5 - 0.028, y + post_h * 0.5, hz), grp = "wood")
+    rp = parts.piece(size = vec3(s, post_h, s), pos = vec3(0.0 - (w * 0.5 - 0.028), y + post_h * 0.5, hz), grp = "wood")
+    mid = parts.piece(size = vec3(w - 0.10, 0.038, 0.032), pos = vec3(0, y + h * 0.42, hz - 0.004), grp = "wood")
+    n = 7
+    path0 = mesh_line(count = n, length = w - 0.08, dir = (1, 0, 0))
+    t = f32(@index) / f32(n - 1)
+    path1 = transform(path0, translate = vec3(0.0 - (w - 0.08) * 0.5, y + h, hz - 0.01))
+    path = set_position(path1, pos = vec3(dot(@P, (1, 0, 0)), y + h + 0.035 * sin(3.14159265 * t), hz - 0.01))
+    path_s = set(path, "profile_scale", vec2(0.038, 0.055), domain = points)
+    rail = mark(compute_normals(sweep(path_s, profile = transform(circle(sides = 4, radius = 1.0), rotate = vec3(0, 0, 45)), cap = true), mode = flat), "wood", where = true, domain = faces)
+    out = merge(lp, rp, mid, rail)
+}
+
+def paint(raw: geo<mesh>, rng: rng) -> (out: geo<mesh>) {
+    """Окрас стула: wood + фаски."""
+    wood_col = vec3(0.52, 0.32, 0.14) * @tint
+    c0 = ingroup("wood") ? wood_col : vec3(1.0, 0.0, 1.0)
+    edge_mul = ingroup("edge") ? vec3(1.22, 1.18, 1.10) : vec3(1.0)
+    out = common.ao(set(raw, "Cd", c0 * edge_mul, domain = faces), rng = rng)
+}
+
+def assemble(w: f32, d: f32, y: f32, h: f32, rng: rng) -> (out: geo<mesh>) {
+    """Стул целиком: сиденье, ножки, спинка, окраска."""
+    out = paint(merge(make_seat(w = w, d = d, y = y), make_legs(w = w, d = d, y = y), make_back(w = w, d = d, y = y, h = h)), rng = rng)
+}
+
+root_rng = rng_from_seed(seed)
+seat = make_seat(w = seat_w, d = seat_d, y = seat_y)
+legs = make_legs(w = seat_w, d = seat_d, y = seat_y)
+back = make_back(w = seat_w, d = seat_d, y = seat_y, h = back_h)
+scene = paint(merge(seat, legs, back), rng = split_rng(root_rng, key = "ao"))
+output scene

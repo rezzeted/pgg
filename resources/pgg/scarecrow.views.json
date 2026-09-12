@@ -1,0 +1,6 @@
+[
+  {"name": "iso", "node": "scene", "orbit": [32, 16], "zoom": 1.05, "chrome": "off", "wire": false},
+  {"name": "front", "node": "scene", "orbit": [0, 6], "zoom": 1.1, "ortho": "front", "chrome": "off", "wire": false},
+  {"name": "back", "node": "scene", "orbit": [180, 10], "zoom": 1.1, "chrome": "off", "wire": false},
+  {"name": "coat", "node": "coat", "orbit": [25, 10], "zoom": 1.1, "chrome": "off", "wire": false}
+]

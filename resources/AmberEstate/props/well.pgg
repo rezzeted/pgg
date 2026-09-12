@@ -1,0 +1,113 @@
+param well_r: f32 = 0.55
+param wall_h: f32 = 0.58
+param seed: int = 9
+
+import lib.parts
+import lib.shapes
+import lib.ironwork
+import lib.fixtures
+import common
+
+# Колодец по референсу props/well.jpg.
+# Два ряда камней, столбы, двускатная дранка, ворот, ведро на цепи.
+# Верх +Y, ворот на −X. Именованные узлы: stones, frame, bucket, scene.
+
+def stone_course(y: f32, r: f32, n: int, ch: f32, thick: f32, yaw: f32) -> (out: geo<mesh>) {
+    """Кольцо n камней, внешний радиус r, поворот yaw."""
+    expect n >= 6: "stone_course: мало"
+    w = 2.0 * r * sin(3.14159265 / f32(n)) * 0.94
+    one = parts.piece(size = vec3(w, ch, thick), pos = vec3(0, y + ch * 0.5, r - thick * 0.5), grp = "stone")
+    out = transform(shapes.polar_array(one, n = n), rotate = vec3(0, yaw, 0))
+}
+
+def make_stones(r: f32, h: f32) -> (out: geo<mesh>) {
+    """Два ряда кладки + тёмное нутро + пол."""
+    ch = h * 0.48
+    t = 0.20
+    c0 = stone_course(y = 0.0, r = r, n = 10, ch = ch, thick = t, yaw = 0)
+    c1 = stone_course(y = ch, r = r * 0.98, n = 10, ch = ch, thick = t, yaw = 18)
+    floor = common.wood_disc(y = 0.0, r = r - t + 0.02, h = 0.04, grp = "wood_dark")
+    out = merge(c0, c1, floor)
+}
+
+def make_frame(r: f32, h: f32, rng: rng) -> (out: geo<mesh>) {
+    """Два столба, конёк, дранка вразбежку, ворот слева."""
+    post_h = 0.92
+    y0 = h - 0.02
+    px = r * 0.46
+    p_l = parts.piece(size = vec3(0.11, post_h, 0.11), pos = vec3(0.0 - px, y0 + post_h * 0.5, 0), grp = "wood")
+    p_r = parts.piece(size = vec3(0.11, post_h, 0.11), pos = vec3(px, y0 + post_h * 0.5, 0), grp = "wood")
+    beam = parts.piece(size = vec3(r * 1.35, 0.10, 0.12), pos = vec3(0, y0 + post_h + 0.04, 0), grp = "wood")
+    ridge_y = y0 + post_h + 0.12
+    ridge_cap = parts.piece(size = vec3(r * 1.40, 0.08, 0.14), pos = vec3(0, ridge_y + 0.08, 0), grp = "wood")
+    tw = 0.16
+    tl = 0.20
+    th = 0.028
+    pu = 0.155
+    pv = 0.14
+    n_rows = 4
+    n_cols = 6
+    a0 = mark(parts.cbox(size = vec3(tw, th, tl), k = 0.16), "wood", where = true, domain = faces)
+    a1 = mark(parts.cbox(size = vec3(tw, th, tl), k = 0.16), "roof", where = true, domain = faces)
+    a2 = mark(parts.cbox(size = vec3(tw, th, tl), k = 0.16), "wood_light", where = true, domain = faces)
+    empty = empty_points()
+    anchors = repeat (empty, iterations = n_rows) |acc| {
+        k = f32(@iteration)
+        odd = f32(@iteration % 2)
+        row0 = mesh_line(count = n_cols, length = f32(n_cols - 1) * pu, dir = (1, 0, 0))
+        row = transform(row0, translate = vec3(0.0 - f32(n_cols - 1) * pu * 0.5 + odd * pu * 0.5, th * 0.5, 0.0 - k * pv))
+        acc = merge(acc, row)
+    }
+    pts = set(anchors, "variant", random_int(n = 3, rng = split_rng(rng, key = "tile")))
+    raw = realize(instance_on_points(pts, source = a0, variants = [a0, a1, a2]))
+    slope = 42.0
+    pitched = transform(raw, rotate = vec3(slope, 0, 0))
+    front = transform(pitched, translate = vec3(0, ridge_y - 0.02, 0))
+    back = transform(transform(pitched, rotate = vec3(0, 180, 0)), translate = vec3(0, ridge_y - 0.02, 0))
+    wy = y0 + post_h * 0.58
+    wheel = mark(unmark(ironwork.spool(p0 = vec3(0.0 - px - 0.10, wy, 0), p1 = vec3(0.0 - px + 0.04, wy, 0), r0 = 0.16, r1 = 0.16, sides = 16), "iron"), "wood", where = true, domain = faces)
+    hub = ironwork.spool(p0 = vec3(0.0 - px - 0.12, wy, 0), p1 = vec3(0.0 - px + 0.06, wy, 0), r0 = 0.04, r1 = 0.04, sides = 8)
+    axle = ironwork.spool(p0 = vec3(0.0 - px - 0.14, wy, 0), p1 = vec3(0.0 - px + 0.08, wy, 0), r0 = 0.018, r1 = 0.018, sides = 8)
+    out = merge(p_l, p_r, beam, ridge_cap, front, back, wheel, hub, axle)
+}
+
+def make_bucket(r: f32, h: f32) -> (out: geo<mesh>) {
+    """Ведро над водой: lathe, два обруча, дужка, цепь к коньку."""
+    by = h * 0.42
+    body = common.lathe_wood(y0 = by, y1 = by + 0.26, r_end = 0.10, r_mid = 0.125, sides = 12)
+    ho0 = common.hoop_band(y = by + 0.03, r = 0.130, h = 0.022)
+    ho1 = common.hoop_band(y = by + 0.18, r = 0.118, h = 0.022)
+    bail = fixtures.rod(p0 = vec3(0.12, by + 0.22, 0), p1 = vec3(0.07, by + 0.40, 0), p2 = vec3(0.0 - 0.07, by + 0.40, 0), p3 = vec3(0.0 - 0.12, by + 0.22, 0), r = 0.012, n = 10)
+    chain = ironwork.spool(p0 = vec3(0, by + 0.40, 0), p1 = vec3(0, h + 0.92, 0), r0 = 0.012, r1 = 0.012, sides = 6)
+    out = merge(body, ho0, ho1, bail, chain)
+}
+
+def paint(raw: geo<mesh>, rng: rng) -> (out: geo<mesh>) {
+    """Окрас колодца: камень, дерево, черепица, железо."""
+    stone_col = vec3(0.82, 0.76, 0.66) * @tint
+    wood_col = vec3(0.62, 0.38, 0.16) * @tint
+    wood_lt = vec3(0.84, 0.58, 0.30) * @tint
+    wood_dk = vec3(0.22, 0.12, 0.06)
+    iron_col = vec3(0.28, 0.30, 0.32)
+    roof_col = vec3(0.86, 0.42, 0.16) * @tint
+    c0 = ingroup("stone") ? stone_col : vec3(1.0, 0.0, 1.0)
+    c1 = ingroup("wood") ? wood_col : c0
+    c2 = ingroup("wood_light") ? wood_lt : c1
+    c3 = ingroup("wood_dark") ? wood_dk : c2
+    c4 = ingroup("iron") ? iron_col : c3
+    c5 = ingroup("roof") ? roof_col : c4
+    edge_mul = ingroup("edge") ? vec3(1.16, 1.12, 1.06) : vec3(1.0)
+    out = common.ao(set(raw, "Cd", c5 * edge_mul, domain = faces), rng = rng)
+}
+
+def assemble(r: f32, h: f32, rng: rng) -> (out: geo<mesh>) {
+    """Колодец: камни, навес, ведро, окраска."""
+    out = paint(merge(make_stones(r = r, h = h), make_frame(r = r, h = h, rng = split_rng(rng, key = "frame")), make_bucket(r = r, h = h)), rng = rng)
+}
+
+root_rng = rng_from_seed(seed)
+stones = make_stones(r = well_r, h = wall_h)
+frame = make_frame(r = well_r, h = wall_h, rng = split_rng(root_rng, key = "frame"))
+bucket = make_bucket(r = well_r, h = wall_h)
+scene = paint(merge(stones, frame, bucket), rng = split_rng(root_rng, key = "ao"))
+output scene

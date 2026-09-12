@@ -39,7 +39,8 @@ tube = sweep(mesh_line(count = 2, length = h, dir = (0, 1, 0)), profile = ring)
 - Красить только реальные группы (`stats.groups` / чтение def'а); иначе E305.
 - `@tint` points + faces в одном `merge` → E609.
 - `bake_ao` гасит эмиссию — `separate` светящихся **до** бейка, `merge` после. Эмиссия ≤ 1.0.
-- Длинная труба: прямая + короткое колено + прямая, не одна Безье на всю длину.
+- Def, пишущий атрибут по `@P` (ramp формы по высоте), — **после** `transform` на место, иначе читает координаты до переноса (`scarecrow.pgg`: spine сначала translate, потом `coat_shape`).
+- `set("profile_scale", vec2(r, r))` без поля/`domain = points` уходит в detail — `sweep` не масштабирует профиль (цилиндр радиуса `circle`, не `r`). Нужен `@index` или явный `domain = points`.
 
 ## MCP (одна строка)
 
@@ -47,4 +48,4 @@ tube = sweep(mesh_line(count = 2, length = h, dir = (0, 1, 0)), profile = ring)
 
 ## Обвязка
 
-`PggTool check` — только корневой `.pgg` (нет `--lib`; подмодуль → E501). Черновики под `resources/pgg/`. Аргументы: `pgg_docs(symbol=…)`, `pgg_reference(image=…)`. `render`/`probe` — по **загруженному** файлу. `fmt --check` на закоммиченных примерах может расходиться — канон не enforced.
+`PggTool check` — корневой `.pgg` (нет `--lib`; подмодуль без локального `lib/` раньше был E501). `resources/pgg` подмешивается как запасной import root, поэтому `import lib.*` работает и из `resources/AmberEstate/`. Аргументы: `pgg_docs(symbol=…)`, `pgg_reference(image=…)`. `render`/`probe` — по **загруженному** файлу. `fmt --check` на закоммиченных примерах может расходиться — канон не enforced.

@@ -5,6 +5,8 @@
 // docstring), namespace conflicts (E102), version pinning (stage error).
 #include <gtest/gtest.h>
 
+#include <filesystem>
+
 #include "pgg/eval.h"
 #include "pgg/pgg.h"
 #include "pgg/src/eval/expand.h"
@@ -205,6 +207,25 @@ TEST(Module, VersionPinningIsAStageError) {
         "output x\n");
     EXPECT_EQ(countCode(r, "E201"), 1);
     EXPECT_TRUE(hasMessage(r, "E201", "versioning"));
+}
+
+TEST(Module, ProductLibRootFindsShippedLib) {
+    const std::string lib = pgg::findProductLibRoot(kLibRoot);
+    ASSERT_FALSE(lib.empty()) << "walk-up from corpus should find resources/pgg";
+    EXPECT_TRUE(std::filesystem::is_directory(std::filesystem::path(lib) / "lib"));
+}
+
+TEST(Module, ProductLibRootLetsLibImportFromElsewhere) {
+    const std::string lib = pgg::findProductLibRoot(kLibRoot);
+    ASSERT_FALSE(lib.empty());
+    pgg::RunParams p;
+    p.importRoots.push_back(lib);
+    pgg::RunResult r = pgg::run(
+        "import lib.parts\n"
+        "g = parts.cbox(size = vec3(1.0, 1.0, 1.0), k = 0.1)\n"
+        "output g\n",
+        p);
+    pggtest::expectNoErrors(r);
 }
 
 }  // namespace

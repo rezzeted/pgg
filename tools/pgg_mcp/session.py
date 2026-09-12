@@ -209,6 +209,23 @@ def default_repo_root(environ: Optional[Mapping[str, str]] = None) -> str:
     return str(Path(__file__).resolve().parent.parent.parent)
 
 
+def product_lib_root(repo_root: str) -> Optional[str]:
+    """Shipped ``resources/pgg`` library, or None if this checkout has no lib/."""
+    lib = os.path.join(repo_root, "resources", "pgg")
+    if os.path.isdir(os.path.join(lib, "lib")):
+        return lib
+    return None
+
+
+def with_product_lib_roots(repo_root: str, extra: Optional[list[str]] = None) -> list[str]:
+    """Explicit lib_roots plus the shipped product library (deduped, extra first)."""
+    roots: list[str] = list(extra) if extra else []
+    product = product_lib_root(repo_root)
+    if product and product not in roots:
+        roots.append(product)
+    return roots
+
+
 @dataclass
 class PggSession:
     """Long-lived proxy: auto-start PggViewer, then TCP JSON-RPC."""

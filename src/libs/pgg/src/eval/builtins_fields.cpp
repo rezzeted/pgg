@@ -887,6 +887,10 @@ ConstBufferPtr evalFieldCall(int callId, const FieldNode& node,
             std::vector<Type> actual;
             actual.reserve(args.size());
             for (const ConstBufferPtr& a : args) actual.push_back(Type{bufferType(*a), true, GeoKind::Any});
+            // ramp keeps its (pos, value) control points as captured values, not
+            // field args; the static rule counts them, so the strict re-check must too.
+            if (id == BuiltinId::Ramp)
+                for (const Value& p : node.params) actual.push_back(Type{valueBase(p), false, GeoKind::Any});
             std::vector<Diagnostic> diags;
             inferExprFuncType(id, actual, node.span, diags);
             if (!diags.empty()) {

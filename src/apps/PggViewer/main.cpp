@@ -254,7 +254,7 @@ std::string g_lastPreviewError;                       // runPreview failure text
 
 std::string g_serveAddress;  // --serve[=host:port] ("" = off)
 std::unique_ptr<ViewerRpcServer> g_rpc;
-std::vector<std::string> g_rpcImportRoots;  // lib_roots of the last RPC load{source}
+std::vector<std::string> g_rpcImportRoots;  // extra lib_roots of the last RPC load (sticky)
 double g_startTimeSec = 0.0;                // wallNowSec() at init (status uptime)
 uint64_t g_shotCounter = 0;                 // default shot_N.png numbering
 uint64_t g_srcCounter = 0;                  // load{source} temp-file numbering
@@ -348,6 +348,11 @@ std::string literalText(const pgg::Expr* e) {
     }
 }
 
+std::filesystem::path repoRoot();
+std::vector<std::string> sessionImportRoots();
+std::vector<std::string> importRootsForFile(const std::string& path);
+std::string resolveViewerPath(const std::string& path);
+
 void loadNamedViews(const std::string& pggPath) {
     g_namedViews.clear();
     const std::filesystem::path p(pggPath);
@@ -378,7 +383,8 @@ void loadNamedViews(const std::string& pggPath) {
 }
 
 bool loadFile(const std::string& path) {
-    std::ifstream in(path, std::ios::binary);
+    const std::string resolved = resolveViewerPath(path);
+    std::ifstream in(resolved, std::ios::binary);
     if (!in) {
         spdlog::error("PggViewer: cannot open {}", path);
         return false;
@@ -393,15 +399,14 @@ bool loadFile(const std::string& path) {
     g_doc = pgg::Document{};
 
     g_text = ss.str();
-    g_doc = pgg::parse(g_text, path);
-    g_filePath = path;
+    g_doc = pgg::parse(g_text, resolved);
+    g_filePath = resolved;
     g_allDiags = g_doc.diagnostics;
     if (g_doc.file && pgg::hasImports(*g_doc.file)) {
-        // RPC load{source} carries extra lib_roots; they stay in effect until
-        // the next RPC load (like --lib on PggTool).
-        std::vector<std::string> roots = g_rpcImportRoots;
-        const std::string dir = std::filesystem::path(path).parent_path().string();
-        if (!dir.empty()) roots.push_back(dir);
+        // Extra roots: last RPC lib_roots (sticky until the next RPC load),
+        // then the shipped product lib (resources/pgg), then the file's
+        // directory. Files outside resources/pgg can still `import lib.parts`.
+        const std::vector<std::string> roots = importRootsForFile(resolved);
         std::vector<pgg::Diagnostic> diags;
         g_closure = std::make_unique<pgg::ModuleClosure>(pgg::loadModuleClosure(*g_doc.file, roots, diags));
         g_allDiags.insert(g_allDiags.end(), diags.begin(), diags.end());
@@ -447,16 +452,17 @@ bool loadFile(const std::string& path) {
     g_fileMtimes.clear();
     {
         std::error_code ec;
-        const std::filesystem::path canon = std::filesystem::weakly_canonical(std::filesystem::path(path), ec);
-        const std::string mainKey = ec ? path : canon.string();
+        const std::filesystem::path canon =
+            std::filesystem::weakly_canonical(std::filesystem::path(resolved), ec);
+        const std::string mainKey = ec ? resolved : canon.string();
         g_fileMtimes[mainKey] = fileMtimeNs(mainKey);
         if (g_closure)
             for (const pgg::ModuleInfo* m : g_closure->modules)
                 g_fileMtimes[m->canonicalPath] = fileMtimeNs(m->canonicalPath);
     }
-    loadNamedViews(path);
-    std::snprintf(g_pathBuf, sizeof(g_pathBuf), "%s", path.c_str());
-    spdlog::info("PggViewer: loaded {} ({} nodes, {} instance scopes)", path, g_project.top.nodes.size(),
+    loadNamedViews(resolved);
+    std::snprintf(g_pathBuf, sizeof(g_pathBuf), "%s", resolved.c_str());
+    spdlog::info("PggViewer: loaded {} ({} nodes, {} instance scopes)", resolved, g_project.top.nodes.size(),
                  g_project.instanceScopes.size());
     return true;
 }
@@ -547,7 +553,7 @@ void runProbe(const std::string& inspector) {
     pgg::RunParams rp;
     for (const auto& [name, text] : g_paramValues)
         if (!text.empty()) rp.values.push_back({name, parseCliValue(text)});
-    rp.importRoots = g_rpcImportRoots;
+    rp.importRoots = sessionImportRoots();
     rp.cache = g_memoryCache.get();
     rp.profile = true;  // E: status carries the last run's per-binding times
     rp.probes = {target + ":" + inspector};
@@ -672,7 +678,7 @@ bool pullBindingPreview(const std::string& path) {
     pgg::RunParams rp;
     for (const auto& [name, text] : g_paramValues)
         if (!text.empty()) rp.values.push_back({name, parseCliValue(text)});
-    rp.importRoots = g_rpcImportRoots;
+    rp.importRoots = sessionImportRoots();
     rp.cache = g_memoryCache.get();
     rp.profile = true;
     rp.pulls = {path};
@@ -798,7 +804,7 @@ void runPreview(const std::string& target) {
     pgg::RunParams rp;
     for (const auto& [name, text] : g_paramValues)
         if (!text.empty()) rp.values.push_back({name, parseCliValue(text)});
-    rp.importRoots = g_rpcImportRoots;
+    rp.importRoots = sessionImportRoots();
     rp.cache = g_memoryCache.get();
     rp.profile = true;
     rp.pulls = {target};
@@ -852,15 +858,16 @@ void runPreview(const std::string& target) {
     g_framesSincePreviewRun = 0;
 }
 
-// Open... starts next to the current file; with nothing loaded — at the
-// product examples (resources/pgg), else at the test corpus, else at cwd.
+// Open... starts next to the current file; with nothing loaded — at
+// resources/ (AmberEstate sits next to the pgg examples), else corpus, else cwd.
 void openFileDialog() {
     std::filesystem::path start;
     if (!g_filePath.empty()) {
         start = std::filesystem::path(g_filePath).parent_path();
     } else {
         std::error_code ec;
-        start = findPggResourcesDir(std::filesystem::current_path(ec));
+        start = findPggResourcesParent(std::filesystem::current_path(ec));
+        if (start.empty()) start = findPggResourcesDir(std::filesystem::current_path(ec));
         if (start.empty()) start = findPggCorpusDir(std::filesystem::current_path(ec));
     }
     fileDialogOpen(g_fileDialog, start);
@@ -1426,6 +1433,32 @@ std::filesystem::path repoRoot() {
         dir = dir.parent_path();
     }
     return ".";
+}
+
+std::string resolveViewerPath(const std::string& path) {
+    std::error_code ec;
+    const std::filesystem::path p(path);
+    if (std::filesystem::is_regular_file(p, ec)) return p.string();
+    if (!p.empty() && !p.is_absolute()) {
+        const std::filesystem::path fromRepo = repoRoot() / p;
+        if (std::filesystem::is_regular_file(fromRepo, ec)) return fromRepo.string();
+    }
+    return path;
+}
+
+std::vector<std::string> importRootsForFile(const std::string& path) {
+    std::vector<std::string> roots = g_rpcImportRoots;
+    pgg::appendImportRoot(roots, pgg::findProductLibRoot(path));
+    pgg::appendImportRoot(roots, pgg::findProductLibRoot(repoRoot().string()));
+    const std::string dir = std::filesystem::path(path).parent_path().string();
+    pgg::appendImportRoot(roots, dir);
+    return roots;
+}
+
+std::vector<std::string> sessionImportRoots() {
+    std::vector<std::string> roots = g_rpcImportRoots;
+    pgg::appendImportRoot(roots, pgg::findProductLibRoot(g_filePath.empty() ? repoRoot().string() : g_filePath));
+    return roots;
 }
 
 // Wall clock for the RPC layer (std::chrono, not sokol_time: the smoke test
@@ -2222,7 +2255,7 @@ bool runOutputsFingerprints(std::vector<std::pair<std::string, std::optional<uin
     pgg::RunParams rp;
     for (const auto& [name, text] : g_paramValues)
         if (!text.empty()) rp.values.push_back({name, parseCliValue(text)});
-    rp.importRoots = g_rpcImportRoots;
+    rp.importRoots = sessionImportRoots();
     rp.cache = g_memoryCache.get();
     rp.profile = true;
     const double t0 = wallNowSec();
@@ -2291,8 +2324,10 @@ void registerPggViewerRpcHandlers(ViewerRpcServer& server) {
     server.on("load", [](uint64_t, const json& args) -> std::optional<json> {
         std::string path;
         std::vector<std::string> roots;
-        for (const json& r : args.value("lib_roots", json::array()))
-            if (r.is_string()) roots.push_back(r.get<std::string>());
+        if (args.contains("lib_roots") && args["lib_roots"].is_array()) {
+            for (const json& r : args["lib_roots"])
+                if (r.is_string()) roots.push_back(r.get<std::string>());
+        }
         if (args.contains("source")) {
             // load{source} goes through a temp file so every downstream
             // consumer (runPreview/runProbe read the file from disk) works
@@ -2324,9 +2359,7 @@ void registerPggViewerRpcHandlers(ViewerRpcServer& server) {
         const bool wantSnapshot = args.value("snapshot", false);
         // Static check only (closure -> expand -> typecheck): a broken file is
         // answered in milliseconds, no Engine::run.
-        std::vector<std::string> checkRoots = roots;
-        const std::string dir = std::filesystem::path(path).parent_path().string();
-        if (!dir.empty()) checkRoots.push_back(dir);
+        std::vector<std::string> checkRoots = importRootsForFile(g_filePath);
         json data = staticCheckJson(g_doc, checkRoots, boundParamNames());
         data["path"] = path;
         if (wantSnapshot) {
@@ -2605,7 +2638,7 @@ void registerPggViewerRpcHandlers(ViewerRpcServer& server) {
         pgg::RunParams rp;
         for (const auto& [name, text] : g_paramValues)
             if (!text.empty()) rp.values.push_back({name, parseCliValue(text)});
-        rp.importRoots = g_rpcImportRoots;
+        rp.importRoots = sessionImportRoots();
         rp.cache = g_memoryCache.get();
         rp.profile = true;
         rp.probes = {spec};
@@ -2641,7 +2674,7 @@ void registerPggViewerRpcHandlers(ViewerRpcServer& server) {
         pgg::RunParams rp;
         for (const auto& [name, text] : g_paramValues)
             if (!text.empty()) rp.values.push_back({name, parseCliValue(text)});
-        rp.importRoots = g_rpcImportRoots;
+        rp.importRoots = sessionImportRoots();
         rp.cache = g_memoryCache.get();
         rp.profile = true;
         rp.pulls = {node};
@@ -2808,7 +2841,7 @@ void registerPggViewerRpcHandlers(ViewerRpcServer& server) {
             return card;
         }
         if (g_doc.file) {
-            pgg::DocsLookupResult res = pgg::findDef(*g_doc.file, g_filePath, symbol, g_rpcImportRoots);
+            pgg::DocsLookupResult res = pgg::findDef(*g_doc.file, g_filePath, symbol, sessionImportRoots());
             if (res.found)
                 return json{{"symbol", symbol},
                             {"kind", "def"},

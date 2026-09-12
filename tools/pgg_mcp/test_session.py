@@ -18,7 +18,9 @@ from tools.pgg_mcp.session import (
     detect_platform,
     find_viewer_binary,
     need_build_error,
+    product_lib_root,
     viewer_recipe,
+    with_product_lib_roots,
 )
 
 
@@ -240,6 +242,27 @@ class SessionEnsureTests(unittest.TestCase):
         self.assertEqual(resp["data"]["viewer"], "running")
         self.assertEqual(resp["data"]["binary"], "/repo/PggViewer")
         self.assertEqual(resp["data"]["rpc"]["port"], 9878)
+
+
+class ProductLibRootsTests(unittest.TestCase):
+    def test_appends_shipped_lib(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            (Path(root) / "resources" / "pgg" / "lib").mkdir(parents=True)
+            self.assertEqual(
+                with_product_lib_roots(root, None),
+                [os.path.join(root, "resources", "pgg")],
+            )
+            extra = ["/custom"]
+            self.assertEqual(
+                with_product_lib_roots(root, extra),
+                ["/custom", os.path.join(root, "resources", "pgg")],
+            )
+            self.assertIsNotNone(product_lib_root(root))
+
+    def test_skips_when_lib_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            self.assertEqual(with_product_lib_roots(root, ["/custom"]), ["/custom"])
+            self.assertIsNone(product_lib_root(root))
 
 
 class LaunchModuleTests(unittest.TestCase):
