@@ -1,11 +1,11 @@
-"""Thin Python client for the PggViewer RPC server (raw TCP + line-JSON).
+"""Thin Python client for the PggServe RPC server (raw TCP + line-JSON).
 
-PggViewer listens on 127.0.0.1:9878 by default (``--serve[=host:port]``,
-see ``src/apps/PggViewer/ViewerRpcServer.cpp``). Each request is one JSON
+PggServe listens on 127.0.0.1:9878 by default (``--port=`` / ``--host=``,
+see ``src/apps/PggServe/ServeRpcServer.cpp``). Each request is one JSON
 object terminated by '\\n'; each response is one JSON object terminated by
-'\\n'. Replies can be slow: ``render`` is answered only after the frame
-loop commits a frame with the new geometry, and a cold run of a heavy
-graph takes tens of seconds — hence the generous default timeout.
+'\\n'. Replies can be slow: ``render`` is answered only after the GPU
+queue captures a frame, and a cold run of a heavy graph takes tens of
+seconds — hence the generous default timeout.
 
 Usage:
     from tools.pgg_mcp.rpc_client import PggRpcClient
@@ -67,7 +67,7 @@ class PggRpcClient:
         while b"\n" not in self._buf:
             chunk = self.sock.recv(65536)
             if not chunk:
-                raise ConnectionError("PggViewer RPC server closed the connection")
+                raise ConnectionError("PggServe RPC server closed the connection")
             self._buf += chunk
         idx = self._buf.index(b"\n")
         line = self._buf[:idx]

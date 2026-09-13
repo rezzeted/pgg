@@ -14,7 +14,8 @@ How the shots were framed and how to regenerate them: [`docs/gallery/README.md`]
 |---|---|
 | `src/libs/pgg` | Library: parser (ANTLR4 4.13.2), AST, execution core |
 | `src/apps/PggTool` | CLI: `check` / `fmt` / `ast` / `run` / `docs` / `diff` |
-| `src/apps/PggViewer` | Node projection + geometry preview, `--serve` RPC |
+| `src/apps/PggViewer` | Node projection + geometry preview (no TCP) |
+| `src/apps/PggServe` | Agent RPC daemon: slots by `.pgg` path, `:9878` |
 | `src/tests/pgg` | gtest + `corpus/` fixtures and `goldens/` fingerprints |
 | `resources/pgg` | Product / art examples (cottage, spire_house, inn_hotel, lib, …) |
 | `docs/pgg` | Language spec, implementation notes, cheatsheet, RPC contract |
@@ -30,6 +31,7 @@ git submodule update --init toolchain/vcpkg
 cmake --build --preset linux-debug --target pgg_tests
 cmake --build --preset linux-debug --target PggTool
 cmake --build --preset linux-debug --target PggViewer
+cmake --build --preset linux-debug --target PggServe
 ctest --test-dir _int_linux --output-on-failure
 ```
 
@@ -48,9 +50,9 @@ After changing `src/libs/pgg/grammar/Pgg.g4`, run `tools/pgg/regen_parser.sh` (t
 PggTool check resources/pgg/cottage.pgg
 PggTool docs builtins
 PggViewer resources/pgg/spire_house.pgg
-PggViewer --serve                          # RPC 127.0.0.1:9878
+PggServe                                  # RPC 127.0.0.1:9878
 ```
 
-MCP server `pgg` — `.mcp.json` / `.cursor/mcp.json`, `python3 -m tools.pgg_mcp.launch`. Missing binary → `need_build`. Contract: `docs/pgg/viewer_rpc.md`. Env: `PGG_REPO_ROOT`, `PGG_VIEWER`.
+MCP server `pgg` — `.mcp.json` / `.cursor/mcp.json`, `python3 -m tools.pgg_mcp.launch`. Missing binary → `need_build` (`PggServe`). Contract: `docs/pgg/serve_rpc.md`. Env: `PGG_REPO_ROOT`, `PGG_SERVE`.
 
 Agent instructions: `AGENTS.md`.

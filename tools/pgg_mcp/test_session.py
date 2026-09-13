@@ -1,4 +1,4 @@
-"""Unit tests for tools.pgg_mcp.session (no PggViewer, stdlib only).
+"""Unit tests for tools.pgg_mcp.session (no PggServe process, stdlib only).
 
 Run from the repo root:
 
@@ -16,9 +16,11 @@ from unittest import mock
 from tools.pgg_mcp.session import (
     PggSession,
     detect_platform,
+    find_serve_binary,
     find_viewer_binary,
     need_build_error,
     product_lib_root,
+    serve_recipe,
     viewer_recipe,
     with_product_lib_roots,
 )
@@ -40,68 +42,83 @@ class PlatformTests(unittest.TestCase):
         self.assertEqual(detect_platform("cygwin"), "windows")
 
     def test_linux_recipe_prefers_release(self) -> None:
-        r = viewer_recipe("linux")
+        r = serve_recipe("linux")
         self.assertEqual(r.platform, "linux")
         self.assertTrue(r.candidates[0].startswith("_int_linux_release"))
+        self.assertTrue("PggServe" in r.candidates[0])
         self.assertEqual(
             list(r.build),
-            ["cmake", "--build", "--preset", "linux-release", "--target", "PggViewer"],
+            ["cmake", "--build", "--preset", "linux-release", "--target", "PggServe"],
         )
         self.assertEqual(list(r.configure), ["./build_linux.sh"])
         self.assertIn("linux-debug", r.debug_build)
+        self.assertIs(viewer_recipe, serve_recipe)
 
     def test_macos_and_windows_recipes(self) -> None:
-        mac = viewer_recipe("macos")
+        mac = serve_recipe("macos")
         self.assertEqual(list(mac.configure), ["./build_mac.sh"])
         self.assertIn("macos-release", mac.build)
-        win = viewer_recipe("windows")
+        self.assertIn("PggServe", mac.build)
+        win = serve_recipe("windows")
         self.assertEqual(list(win.configure), ["generate_vs.bat"])
         self.assertTrue(win.expected.endswith(".exe"))
         self.assertIn("release", win.build)
+        self.assertIn("PggServe", win.build)
 
 
 class FindBinaryTests(unittest.TestCase):
     def test_prefers_release_over_debug(self) -> None:
         with tempfile.TemporaryDirectory() as root:
-            _touch(root, "_int_linux/src/apps/PggViewer/Debug/PggViewer")
-            rel = _touch(root, "_int_linux_release/src/apps/PggViewer/Release/PggViewer")
-            found = find_viewer_binary(root, platform="linux", environ={})
+            _touch(root, "_int_linux/src/apps/PggServe/Debug/PggServe")
+            rel = _touch(root, "_int_linux_release/src/apps/PggServe/Release/PggServe")
+            found = find_serve_binary(root, platform="linux", environ={})
             self.assertEqual(found, rel)
 
     def test_falls_back_to_debug(self) -> None:
         with tempfile.TemporaryDirectory() as root:
-            rel = _touch(root, "_int_linux/src/apps/PggViewer/Debug/PggViewer")
-            found = find_viewer_binary(root, platform="linux", environ={})
+            rel = _touch(root, "_int_linux/src/apps/PggServe/Debug/PggServe")
+            found = find_serve_binary(root, platform="linux", environ={})
             self.assertEqual(found, rel)
 
-    def test_pgg_viewer_env_wins(self) -> None:
+    def test_pgg_serve_env_wins(self) -> None:
         with tempfile.TemporaryDirectory() as root:
-            _touch(root, "_int_linux_release/src/apps/PggViewer/Release/PggViewer")
-            custom = _touch(root, "custom/PggViewer")
-            found = find_viewer_binary(
+            _touch(root, "_int_linux_release/src/apps/PggServe/Release/PggServe")
+            custom = _touch(root, "custom/PggServe")
+            found = find_serve_binary(
+                root, platform="linux", environ={"PGG_SERVE": custom}
+            )
+            self.assertEqual(found, custom)
+
+    def test_pgg_viewer_env_still_accepted(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            custom = _touch(root, "custom/PggServe")
+            found = find_serve_binary(
                 root, platform="linux", environ={"PGG_VIEWER": custom}
             )
             self.assertEqual(found, custom)
 
     def test_stale_env_falls_through_to_preset(self) -> None:
         with tempfile.TemporaryDirectory() as root:
-            preset = _touch(root, "_int_linux/src/apps/PggViewer/Debug/PggViewer")
-            found = find_viewer_binary(
+            preset = _touch(root, "_int_linux/src/apps/PggServe/Debug/PggServe")
+            found = find_serve_binary(
                 root,
                 platform="linux",
-                environ={"PGG_VIEWER": os.path.join(root, "nope", "PggViewer")},
+                environ={"PGG_SERVE": os.path.join(root, "nope", "PggServe")},
             )
             self.assertEqual(found, preset)
 
     def test_windows_exe_suffix(self) -> None:
         with tempfile.TemporaryDirectory() as root:
-            rel = _touch(root, "_intermediate_64/src/apps/PggViewer/Release/PggViewer.exe")
-            found = find_viewer_binary(root, platform="windows", environ={})
+            rel = _touch(root, "_intermediate_64/src/apps/PggServe/Release/PggServe.exe")
+            found = find_serve_binary(root, platform="windows", environ={})
             self.assertEqual(found, rel)
 
     def test_missing_returns_none(self) -> None:
         with tempfile.TemporaryDirectory() as root:
-            self.assertIsNone(find_viewer_binary(root, platform="linux", environ={}))
+            self.assertIsNone(find_serve_binary(root, platform="linux", environ={}))
+
+    def test_alias_matches_find_serve(self) -> None:
+        self.assertIs(find_viewer_binary, find_serve_binary)
 
 
 class NeedBuildTests(unittest.TestCase):
@@ -110,23 +127,33 @@ class NeedBuildTests(unittest.TestCase):
         self.assertFalse(err["ok"])
         e = err["error"]
         self.assertEqual(e["kind"], "need_build")
-        self.assertEqual(e["target"], "PggViewer")
+        self.assertEqual(e["target"], "PggServe")
         self.assertEqual(e["platform"], "linux")
         self.assertEqual(e["cwd"], "/repo")
         self.assertEqual(e["viewer"], "missing")
+        self.assertEqual(e["serve"], "missing")
         self.assertEqual(e["configure"], ["./build_linux.sh"])
         self.assertEqual(e["build"][0], "cmake")
+        self.assertIn("PggServe", e["build"])
         self.assertIn("candidates", e)
         self.assertIn("hint", e)
 
-    def test_mentions_stale_pgg_viewer(self) -> None:
+    def test_mentions_stale_pgg_serve(self) -> None:
+        err = need_build_error(
+            "/repo",
+            platform="linux",
+            environ={"PGG_SERVE": "/nope/PggServe"},
+        )
+        self.assertIn("PGG_SERVE", err["error"]["message"])
+        self.assertIn("/nope/PggServe", err["error"]["message"])
+
+    def test_mentions_stale_pgg_viewer_fallback(self) -> None:
         err = need_build_error(
             "/repo",
             platform="linux",
             environ={"PGG_VIEWER": "/nope/PggViewer"},
         )
         self.assertIn("PGG_VIEWER", err["error"]["message"])
-        self.assertIn("/nope/PggViewer", err["error"]["message"])
 
 
 class FakeProc:
@@ -167,11 +194,12 @@ class SessionEnsureTests(unittest.TestCase):
             err = session.ensure()
             assert err is not None
             self.assertEqual(err["error"]["kind"], "need_build")
+            self.assertEqual(err["error"]["target"], "PggServe")
             self.assertEqual(err["error"]["cwd"], root)
 
     def test_linux_headless_without_xvfb(self) -> None:
         with tempfile.TemporaryDirectory() as root:
-            _touch(root, "_int_linux/src/apps/PggViewer/Debug/PggViewer")
+            _touch(root, "_int_linux/src/apps/PggServe/Debug/PggServe")
             spawned: list[object] = []
             session = PggSession(
                 repo_root=root,
@@ -189,7 +217,7 @@ class SessionEnsureTests(unittest.TestCase):
 
     def test_spawns_serve_when_binary_exists(self) -> None:
         with tempfile.TemporaryDirectory() as root:
-            binary = _touch(root, "_int_linux/src/apps/PggViewer/Debug/PggViewer")
+            binary = _touch(root, "_int_linux/src/apps/PggServe/Debug/PggServe")
             cmds: list[list[str]] = []
 
             def popen(cmd: list[str], **_k: object) -> FakeProc:
@@ -206,7 +234,7 @@ class SessionEnsureTests(unittest.TestCase):
             )
             self.addCleanup(lambda: session._log_file.close() if session._log_file else None)
             self.assertIsNone(session.ensure())
-            self.assertEqual(cmds, [[binary, "--serve"]])
+            self.assertEqual(cmds, [[binary, "--port=9878", "--host=127.0.0.1"]])
             self.assertEqual(session.binary_path, binary)
 
     def test_call_returns_need_build_without_client(self) -> None:
@@ -236,12 +264,66 @@ class SessionEnsureTests(unittest.TestCase):
             port_open_fn=lambda *_a, **_k: True,
             client_factory=FakeClient,
         )
-        session.binary_path = "/repo/PggViewer"
+        session.binary_path = "/repo/PggServe"
         resp = session.status()
         self.assertTrue(resp["ok"])
+        self.assertEqual(resp["data"]["serve"], "running")
         self.assertEqual(resp["data"]["viewer"], "running")
-        self.assertEqual(resp["data"]["binary"], "/repo/PggViewer")
+        self.assertEqual(resp["data"]["binary"], "/repo/PggServe")
         self.assertEqual(resp["data"]["rpc"]["port"], 9878)
+
+    def test_one_tcp_client_per_call(self) -> None:
+        created: list[int] = []
+        closed: list[int] = []
+
+        class FakeClient:
+            def __init__(self) -> None:
+                created.append(1)
+
+            def call(self, **_kw: object) -> dict:
+                return {"ok": True, "data": {"pong": True}}
+
+            def close(self) -> None:
+                closed.append(1)
+
+        session = PggSession(
+            repo_root="/repo",
+            platform="linux",
+            environ={},
+            port_open_fn=lambda *_a, **_k: True,
+            client_factory=FakeClient,
+        )
+        session.call("ping")
+        session.call("ping")
+        self.assertEqual(created, [1, 1])
+        self.assertEqual(closed, [1, 1])
+
+    def test_injects_last_file_on_slot_ops(self) -> None:
+        calls: list[dict] = []
+
+        class FakeClient:
+            def call(self, **kw: object) -> dict:
+                calls.append(dict(kw))
+                if kw.get("op") == "load":
+                    return {"ok": True, "data": {"session": {"file": "/repo/a.pgg"}, "path": "a.pgg"}}
+                return {"ok": True, "data": {}}
+
+            def close(self) -> None:
+                pass
+
+        session = PggSession(
+            repo_root="/repo",
+            platform="linux",
+            environ={},
+            port_open_fn=lambda *_a, **_k: True,
+            client_factory=FakeClient,
+        )
+        session.call("load", {"path": "a.pgg"})
+        session.call("render", {"node": "house"})
+        session.call("render", {"node": "house", "file": "/other.pgg"})
+        self.assertEqual(session.last_file, "/repo/a.pgg")
+        self.assertEqual(calls[1]["args"]["file"], "/repo/a.pgg")
+        self.assertEqual(calls[2]["args"]["file"], "/other.pgg")
 
 
 class ProductLibRootsTests(unittest.TestCase):

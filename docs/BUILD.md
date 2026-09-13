@@ -43,4 +43,4 @@ export NEVERWHERE_VCPKG_CACHE_AUTH="Authorization: Basic <base64(user:pass)>"
 - Системные зависимости (Ubuntu) для сборки и Sokol/X11: `build-essential pkg-config ninja-build python3 python3-venv libx11-dev libxi-dev libxcursor-dev libxrandr-dev libxinerama-dev libgl1-mesa-dev`.
 - **sokol_app на Linux** идёт через X11 (на Wayland-сессии — XWayland): макрос `nw_configure_sokol_app(target)` линкует `X11 Xi Xcursor GL dl pthread m`.
 - `compile_commands.json` в корне — симлинк на `_int_linux/compile_commands.json` (preset сам эмиттит, отдельный index-preset не нужен).
-- **PggViewer `--serve` / `--shot` без DISPLAY:** `xvfb-run -a _int_linux/src/apps/PggViewer/Debug/PggViewer --serve`.
+- **PggServe / PggViewer `--shot` без DISPLAY:** `xvfb-run -a _int_linux/src/apps/PggServe/Debug/PggServe`; `xvfb-run -a _int_linux/src/apps/PggViewer/Debug/PggViewer --shot=…`.

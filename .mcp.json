@@ -10,6 +10,7 @@
       "cwd": "${workspaceFolder}",
       "env": {
         "PGG_REPO_ROOT": "${workspaceFolder}",
+        "PGG_MCP_DAEMON": "PggServe",
         "PYTHONIOENCODING": "utf-8",
         "PYTHONUTF8": "1",
         "PYTHONUNBUFFERED": "1"

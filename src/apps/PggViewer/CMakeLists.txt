@@ -11,6 +11,7 @@ nw_add_console_app(
     GROUP apps/tools
     LIBS
         pgg
+        pgg_preview
         spdlog::spdlog_header_only
         imgui::imgui
         nlohmann_json::nlohmann_json

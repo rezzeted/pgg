@@ -11,10 +11,8 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
-#include <imgui.h>
 #include <spdlog/spdlog.h>
-#include <sokol_app.h>  // sokol_imgui.h wants it first (declarations only; SOKOL_IMPL lives in main.cpp)
-#include <util/sokol_imgui.h>
+#include <sokol_gfx.h>
 
 #include <pgg/src/eval/builtins.h>  // realizeInstances
 #include <pgg/src/eval/sdf.h>       // meshFromSdfExtract
@@ -582,7 +580,6 @@ fragment float4 _main(constant FsParams& p [[buffer(0)]]) {
 }
 )";
 
-constexpr int kMaxTarget = 4096;
 constexpr int kPreviewMsaa = 8;  // prefer 8x; init() falls back to 4 then 1
 constexpr sg_pixel_format kColorFormat = SG_PIXELFORMAT_RGBA8;
 constexpr sg_pixel_format kDepthFormat = SG_PIXELFORMAT_DEPTH;
@@ -915,8 +912,10 @@ void GeometryPreview::ensureTarget(int w, int h) {
     // the image non-uniformly (HiDPI panes wider than kMaxTarget hit this).
     const float s = std::min(1.0f, std::min(static_cast<float>(kMaxTarget) / static_cast<float>(w),
                                             static_cast<float>(kMaxTarget) / static_cast<float>(h)));
+    const int wantW = w, wantH = h;
     w = std::clamp(static_cast<int>(w * s), 16, kMaxTarget);
     h = std::clamp(static_cast<int>(h * s), 16, kMaxTarget);
+    m_sizeClamped = (w != wantW) || (h != wantH);
     if (w == m_targetW && h == m_targetH) return;
     destroyTarget();
 
@@ -1015,79 +1014,22 @@ glm::mat4 GeometryPreview::viewProj(float aspect) const {
     return proj * view;
 }
 
-void GeometryPreview::drawWindowContents() {
-    // Toolbar.
-    if (ImGui::SmallButton("Fit")) fit();
-    ImGui::SameLine();
-    ImGui::TextDisabled("%s", m_summary.empty() ? "(no geometry)" : m_summary.c_str());
+void GeometryPreview::nudgeOrbit(float dyaw, float dpitch) {
+    m_yaw -= dyaw;
+    m_pitch = std::clamp(m_pitch + dpitch, -1.55f, 1.55f);
+}
 
-    ImVec2 avail = ImGui::GetContentRegionAvail();
-    avail.x = std::max(avail.x, 64.0f);
-    avail.y = std::max(avail.y, 64.0f);
-    // Per-axis points->pixels: the axes' framebuffer scales may differ, and a
-    // wrong axis here stretches the image (the camera aspect follows the
-    // TARGET size, the blit follows the rect — they must match).
-    const ImVec2 fbScale = ImGui::GetIO().DisplayFramebufferScale;
-    m_wantW = static_cast<int>(avail.x * std::max(1.0f, fbScale.x));
-    m_wantH = static_cast<int>(avail.y * std::max(1.0f, fbScale.y));
-    ensureTarget(m_wantW, m_wantH);
+void GeometryPreview::nudgePan(float dx, float dy) {
+    const glm::vec3 dir(std::cos(m_pitch) * std::sin(m_yaw), std::sin(m_pitch),
+                        std::cos(m_pitch) * std::cos(m_yaw));
+    const glm::vec3 right = glm::normalize(glm::cross(glm::vec3(0, 1, 0), dir));
+    const glm::vec3 up = glm::normalize(glm::cross(dir, right));
+    const float k = m_distance * 0.0025f;
+    m_center += (-right * dx + up * dy) * k;
+}
 
-    ImGui::InvisibleButton("##preview_canvas", avail,
-                           ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight |
-                               ImGuiButtonFlags_MouseButtonMiddle);
-    const ImVec2 rmin = ImGui::GetItemRectMin();
-    const ImVec2 rmax = ImGui::GetItemRectMax();
-    // F1: the image rect in framebuffer pixels — the screenshot crop region
-    // (the capture readback covers the whole window; the crop keeps only the
-    // preview viewport, without the toolbar line above).
-    const int px0 = static_cast<int>(std::lround(rmin.x * fbScale.x));
-    const int py0 = static_cast<int>(std::lround(rmin.y * fbScale.y));
-    m_lastImageRectPx.x = px0;
-    m_lastImageRectPx.y = py0;
-    m_lastImageRectPx.w = std::max(0, static_cast<int>(std::lround(rmax.x * fbScale.x)) - px0);
-    m_lastImageRectPx.h = std::max(0, static_cast<int>(std::lround(rmax.y * fbScale.y)) - py0);
-    if (m_texView.id != SG_INVALID_ID) {
-        // GL render targets are stored bottom-up: flip V when the backend's
-        // origin is bottom-left. (Verified on GLCORE: without the flip the
-        // mesh is seen upside down — top faces land at the bottom of the image.)
-        const bool topLeft = sg_query_features().origin_top_left;
-        const ImVec2 uv0 = topLeft ? ImVec2(0, 0) : ImVec2(0, 1);
-        const ImVec2 uv1 = topLeft ? ImVec2(1, 1) : ImVec2(1, 0);
-        ImGui::GetWindowDrawList()->AddImage(simgui_imtextureid(m_texView), rmin, rmax, uv0, uv1);
-    }
-    if (!m_error.empty()) {
-        // Wrapped red text over the (empty) canvas: a truncated one-liner in
-        // the toolbar hid the reason from the user.
-        const float wrapW = std::max(80.0f, rmax.x - rmin.x - 24.0f);
-        const ImVec2 ts = ImGui::CalcTextSize(m_error.c_str(), nullptr, false, wrapW);
-        ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(), ImGui::GetFontSize(),
-                                            ImVec2(rmin.x + 12.0f, std::max(rmin.y + 12.0f, (rmin.y + rmax.y - ts.y) * 0.5f)),
-                                            IM_COL32(255, 120, 100, 255), m_error.c_str(), nullptr, wrapW);
-    } else if (!hasGeometry()) {
-        const char* msg = "select a node and press Preview";
-        const ImVec2 ts = ImGui::CalcTextSize(msg);
-        ImGui::GetWindowDrawList()->AddText(ImVec2((rmin.x + rmax.x - ts.x) * 0.5f, (rmin.y + rmax.y - ts.y) * 0.5f),
-                                            IM_COL32(150, 150, 160, 255), msg);
-    }
-
-    // Orbit / pan / zoom while hovering or dragging the canvas.
-    const ImGuiIO& io = ImGui::GetIO();
-    const bool active = ImGui::IsItemActive();
-    if (ImGui::IsItemHovered() && io.MouseWheel != 0.0f)
-        m_distance = std::clamp(m_distance * std::pow(0.9f, io.MouseWheel), m_radius * 0.05f, m_radius * 50.0f);
-    if (active && ImGui::IsMouseDragging(ImGuiMouseButton_Left, 0.0f)) {
-        m_yaw -= io.MouseDelta.x * 0.01f;
-        m_pitch = std::clamp(m_pitch + io.MouseDelta.y * 0.01f, -1.55f, 1.55f);
-    }
-    if (active && (ImGui::IsMouseDragging(ImGuiMouseButton_Right, 0.0f) ||
-                   ImGui::IsMouseDragging(ImGuiMouseButton_Middle, 0.0f))) {
-        const glm::vec3 dir(std::cos(m_pitch) * std::sin(m_yaw), std::sin(m_pitch),
-                            std::cos(m_pitch) * std::cos(m_yaw));
-        const glm::vec3 right = glm::normalize(glm::cross(glm::vec3(0, 1, 0), dir));
-        const glm::vec3 up = glm::normalize(glm::cross(dir, right));
-        const float k = m_distance * 0.0025f;
-        m_center += (-right * io.MouseDelta.x + up * io.MouseDelta.y) * k;
-    }
+void GeometryPreview::nudgeDistanceWheel(float wheel) {
+    m_distance = std::clamp(m_distance * std::pow(0.9f, wheel), m_radius * 0.05f, m_radius * 50.0f);
 }
 
 void GeometryPreview::render() {

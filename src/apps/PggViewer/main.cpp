@@ -6,7 +6,6 @@
 //             [--preview-orbit=yaw_deg,pitch_deg[,zoom]]
 //             [--preview-target=x,y,z|group:<name>|binding:<path>] [--preview-fit=all|target]
 //             [--preview-ortho=front|side|top] [--preview-wire=on] [--param=name=value]...
-//             [--serve[=host:port]]
 //   PggViewer --smoke
 // The graph is derived from the text (no separate storage): names are nodes,
 // uses are wires, def calls collapse into diveable nodes addressed by their
@@ -18,21 +17,13 @@
 // 1:2). The preview renders the value of the selected node
 // (RunParams::pulls -> GeometryPreview): meshes and points directly,
 // instances realized, sdf meshed at a preview voxel.
-// --serve (agent tooling plan A1, docs/pgg/agent_tooling_plan.md): TCP RPC
-// server (ViewerRpcServer) polled from frame(); a session MemoryCache warms
-// repeated runs; --shot with --preview and no explicit --shot-delay fires on
-// the first committed frame after the run instead of the wall-time delay.
-// F4: render/probe/export auto-reload the file (and its import closure) when
-// an mtime of the watched files changed on disk since the last loadFile.
-// F3: render{compare:"prev"} diffs the capture against the stored previous
-// frame of the same view (FrameCompare.cpp); reference{image,node,...} answers
-// a side-by-side PNG + silhouette metrics of the model vs a reference image.
+// A session MemoryCache warms repeated preview/probe runs. --shot with
+// --preview and no explicit --shot-delay fires on the first committed frame
+// after the run instead of the wall-time delay. Agent RPC lives in PggServe.
 
 #include "pch.h"
 
-#include <array>
 #include <cmath>
-#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -48,25 +39,18 @@
 
 #include <pgg/eval.h>
 #include <pgg/pgg.h>
-#include <pgg/src/eval/builtin_docs.h>  // RPC docs builtin:<name> (D3)
-#include <pgg/src/eval/builtins.h>  // realizeInstances for the RPC export
 #include <pgg/src/eval/cache.h>
-#include <pgg/src/eval/docs_lookup.h>
-#include <pgg/src/eval/expand.h>
-#include <pgg/src/eval/fingerprint.h>  // fingerprintValue for the RPC diff snapshot
 #include <pgg/src/eval/modules.h>
-#include <pgg/src/eval/obj_export.h>
-#include <pgg/src/eval/sdf.h>
-#include <pgg/src/eval/typecheck.h>
 #include <pgg/src/graph.h>
 #include <pgg/src/layout.h>
 
 #include "FileDialog.h"
-#include "FrameCompare.h"
-#include "GeometryPreview.h"
 #include "GraphCanvas.h"
+#include "PreviewPane.h"
 #include "SmokeTest.h"
-#include "ViewerRpcServer.h"
+
+#include "GeometryPreview.h"
+#include "PreviewCapture.h"
 
 #define SOKOL_IMPL
 #define SOKOL_NO_ENTRY
@@ -97,18 +81,12 @@
 #endif
 
 #if defined(SOKOL_METAL) && defined(__APPLE__)
-    #import <Foundation/Foundation.h>
     #import <Metal/Metal.h>
     #import <QuartzCore/CAMetalLayer.h>
     #import <dispatch/dispatch.h>
 #elif defined(SOKOL_D3D11)
     #include <d3d11.h>
 #endif
-
-#if !defined(_WIN32)
-    #define STB_IMAGE_WRITE_IMPLEMENTATION
-#endif
-#include <stb_image_write.h>
 
 namespace {
 
@@ -133,28 +111,6 @@ pgg::LayoutParams g_layout;
 bool g_dirty = false;
 std::vector<std::pair<std::string, std::string>> g_paramValues;  // param name -> field text
 
-// F4 auto-reload (docs/pgg/agent_tooling_plan.md): the files the document
-// state was built from — the main file (canonical path) plus the
-// canonicalPath of every module of its import closure — each mapped to its
-// mtime at load time. The RPC run commands (render/probe/export) stat these
-// before a run and reload on any change, so an on-disk edit of the .pgg (or
-// of a lib/ import) shows up without an explicit load.
-std::map<std::string, std::int64_t> g_fileMtimes;
-// load{source} loads a temp file under tmp/pgg_rpc_source that nothing else
-// edits (the next load{source} replaces it) — mtime tracking is skipped for
-// it. Cleared by loadFile, set by the RPC load handler.
-bool g_mainFileFromRpcSource = false;
-
-// File mtime as an int64 (ns of the file clock; only equality is used, so the
-// epoch does not matter). An unreadable file maps to 0, which never equals a
-// real recorded timestamp and therefore reads as "changed".
-std::int64_t fileMtimeNs(const std::string& path) {
-    std::error_code ec;
-    const std::filesystem::file_time_type t = std::filesystem::last_write_time(path, ec);
-    if (ec) return 0;
-    return std::chrono::duration_cast<std::chrono::nanoseconds>(t.time_since_epoch()).count();
-}
-
 // --- navigation / panels ------------------------------------------------------------
 
 std::vector<std::string> g_dive;  // full instance paths ("" level = top scope)
@@ -167,6 +123,7 @@ FileDialogState g_fileDialog;
 // --- geometry preview -----------------------------------------------------------
 
 GeometryPreview g_preview;
+PreviewPaneRect g_previewPaneRect;
 bool g_showPreview = true;
 float g_splitRatio = 1.0f / 3.0f;  // graph : preview height share (default 1:2)
 bool g_autoPreview = true;           // re-run the preview when the selection changes
@@ -218,8 +175,6 @@ float g_bindingTargetRadius = 1.0f;
 bool g_cameraTargetHasBBox = false;
 glm::vec3 g_cameraTargetBMin{0.0f};
 glm::vec3 g_cameraTargetBMax{0.0f};
-bool g_rpcChromeOff = false;  // last RPC chrome (C5 echo); not the per-frame consume flag
-
 struct NamedView {
     std::string name;
     nlohmann::json fields;
@@ -239,98 +194,18 @@ std::optional<ImVec2> g_cliCenter;
 std::string g_cliDive;
 bool g_noUi = false;
 
-// --- RPC server (--serve) + session run cache -----------------------------------------
-
-// Session-wide cross-run cache (A1): keys are structural AST fingerprints, so
-// editing the file invalidates only downstream bindings and the instance can
-// outlive loadFile/Reload of the same file. Created in init(); absent in
-// --smoke (rp.cache = nullptr then, runs are uncached).
+// Session-wide cross-run cache: keys are structural AST fingerprints, so
+// editing the file invalidates only downstream bindings. Created in init();
+// absent in --smoke (rp.cache = nullptr then, runs are uncached).
 std::unique_ptr<pgg::MemoryCache> g_memoryCache;
-uint64_t g_lastCacheHits = 0, g_lastCacheMisses = 0;  // counters of the last run
-double g_lastRunMs = 0.0;                             // wall time of the last preview/probe run
-std::vector<pgg::Diagnostic> g_lastRunDiags;          // diagnostics of the last preview run
-std::vector<pgg::BindingProfile> g_lastProfile;       // per-binding wall times of the last run (E)
-std::string g_lastPreviewError;                       // runPreview failure text ("" when ok)
+uint64_t g_lastCacheHits = 0, g_lastCacheMisses = 0;
+double g_lastRunMs = 0.0;
+std::vector<pgg::Diagnostic> g_lastRunDiags;
+std::vector<pgg::BindingProfile> g_lastProfile;
+std::string g_lastPreviewError;
 
-std::string g_serveAddress;  // --serve[=host:port] ("" = off)
-std::unique_ptr<ViewerRpcServer> g_rpc;
-std::vector<std::string> g_rpcImportRoots;  // extra lib_roots of the last RPC load (sticky)
-double g_startTimeSec = 0.0;                // wallNowSec() at init (status uptime)
-uint64_t g_shotCounter = 0;                 // default shot_N.png numbering
-uint64_t g_srcCounter = 0;                  // load{source} temp-file numbering
-// Frames committed since runPreview finished (any path): the readiness signal
-// for the RPC render reply and for the CLI --shot without --shot-delay.
+// Frames committed since runPreview finished: CLI --shot without --shot-delay.
 int g_framesSincePreviewRun = 0;
-
-// Deferred RPC render (phase 2): set by the render handler (poll phase), the
-// reply is sent from frame() after the first committed frame carries the new
-// geometry and capturePng grabbed it.
-struct PendingRender {
-    bool active = false;
-    uint64_t clientId = 0;
-    std::string outPath;
-    std::string node;
-    bool previewOnly = true;  // frame=preview|window (F1; RPC default preview)
-    bool chromeOff = false;   // chrome=off was in effect for the captured frame
-    int wantW = 0, wantH = 0; // frame=preview size arg: target crop size in px
-    nlohmann::json stats;  // {kind,pts,tri,bbox,groups,ms} of the pulled value
-    nlohmann::json diagnostics;  // warnings of the run (errors fail the render instead)
-    bool reloaded = false;           // F4: an auto-reload preceded the run
-    nlohmann::json loadDiagnostics;  // F4: load diagnostics of that reload ([] when clean)
-    uint64_t cacheHits = 0, cacheMisses = 0;
-    // F3 compare=prev: the reply gains diff metrics against the stored frame
-    // of the same view key (built at phase 1 from the effective state).
-    bool comparePrev = false;
-    bool compareBaseline = false;
-    bool saveBaseline = false;
-    bool writePng = true;
-    nlohmann::json renderState;
-    std::string frameKey;
-    // F3 reference command: same two-phase pipeline, but the capture stays in
-    // memory (no model-only PNG) and the reply carries the side-by-side PNG +
-    // silhouette metrics of the model vs this stashed reference image.
-    bool isReference = false;
-    std::string refImagePath;
-    std::vector<std::uint8_t> refPixels;
-    int refW = 0, refH = 0;
-};
-PendingRender g_pendingRender;
-
-// F3: the single stored frame compare=prev diffs against. Replaced by every
-// successful render (with or without compare — the "previous frame of this
-// view" is then the most recent one); the reference command does not touch it.
-// One slot by design (~8 MB per frame).
-std::string g_lastFrameKey;
-int g_lastFrameW = 0, g_lastFrameH = 0;
-std::vector<std::uint8_t> g_lastFramePixels;
-uint64_t g_diffCounter = 0;  // diff_N.png numbering (compare=prev)
-uint64_t g_refCounter = 0;   // ref_N.png numbering (reference)
-
-struct BaselineFrame {
-    int w = 0, h = 0;
-    std::vector<std::uint8_t> pixels;
-};
-std::map<std::string, BaselineFrame> g_baselineFrames;
-
-// RPC diff (agent_tooling_plan C2, the server half): the snapshot of the
-// outputs' structural fingerprints the diff command compares against.
-// Created by the first `diff` call (answer baseline_created) or by
-// `load {snapshot:true}`; refreshed ONLY by `diff {update:true}` or an
-// explicit `load` (which clears it — a new document context). The F4
-// auto-reload inside the run commands does NOT clear it: catching exactly
-// that on-disk edit is what diff is for.
-struct DiffSnapshot {
-    std::string filePath;  // the document the snapshot belongs to
-    // output name -> fingerprint (nullopt = sdf/field, no structural hash), in
-    // output order.
-    std::vector<std::pair<std::string, std::optional<uint64_t>>> fps;
-};
-std::optional<DiffSnapshot> g_diffSnapshot;
-
-// chrome=off (F1): the RPC render handler asks for one frame without the side
-// panel and the graph — the preview pane spans the whole window. Set during
-// the poll phase, consumed by the drawing section of the same frame().
-bool g_chromeOffThisFrame = false;
 
 constexpr float kPanelWidth = 380.0f;
 constexpr float kSplitterHeight = 6.0f;
@@ -444,22 +319,6 @@ bool loadFile(const std::string& path) {
     for (const auto& [name, text] : g_cliParams)
         for (auto& [pname, ptext] : g_paramValues)
             if (pname == name) ptext = text;
-    // F4: remember what was loaded (main file + every module of the import
-    // closure) for the auto-reload check of the RPC run commands. A load
-    // that failed to even open the file returns earlier and keeps the
-    // previous watch set — the intact state still belongs to it.
-    g_mainFileFromRpcSource = false;
-    g_fileMtimes.clear();
-    {
-        std::error_code ec;
-        const std::filesystem::path canon =
-            std::filesystem::weakly_canonical(std::filesystem::path(resolved), ec);
-        const std::string mainKey = ec ? resolved : canon.string();
-        g_fileMtimes[mainKey] = fileMtimeNs(mainKey);
-        if (g_closure)
-            for (const pgg::ModuleInfo* m : g_closure->modules)
-                g_fileMtimes[m->canonicalPath] = fileMtimeNs(m->canonicalPath);
-    }
     loadNamedViews(resolved);
     std::snprintf(g_pathBuf, sizeof(g_pathBuf), "%s", resolved.c_str());
     spdlog::info("PggViewer: loaded {} ({} nodes, {} instance scopes)", resolved, g_project.top.nodes.size(),
@@ -1179,7 +1038,7 @@ void drawPreviewWindowAt(float x, float y, float w, float h) {
     ImGui::Begin("##preview", nullptr,
                  ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
                      ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoBringToFrontOnFocus);
-    g_preview.drawWindowContents();
+    drawPreviewWindowContents(g_preview, g_previewPaneRect);
     ImGui::End();
 }
 
@@ -1231,17 +1090,7 @@ void flipVertically(std::vector<std::uint8_t>& pixels, int width, int height) {
     }
 }
 
-bool writePng(const char* path, int width, int height, const std::vector<std::uint8_t>& pixels) {
-    const int ok = stbi_write_png(path, width, height, 4, pixels.data(), width * 4);
-    if (!ok) {
-        spdlog::error("capturePng: stbi_write_png failed for {}", path);
-        return false;
-    }
-    return true;
-}
-
-// What the capture keeps (F1): the whole window, or the preview viewport rect
-// (GeometryPreview::lastImageRectPx, refreshed every frame). wantW/wantH > 0
+// What the capture keeps (F1): the whole window, or the preview FBO.
 // ask for a target crop size in pixels, centered on the viewport; the window
 // is never resized (sokol cannot do that on every backend), so a larger
 // request clamps to the actual rect and the reply says size_clamped.
@@ -1264,6 +1113,18 @@ struct CaptureResult {
 // own file).
 CaptureResult capturePng(const char* path, const ShotCrop& crop) {
     CaptureResult res;
+    if (crop.previewOnly) {
+        PreviewCaptureResult fbo = capturePreview(g_preview);
+        if (!fbo.ok) return res;
+        res.ok = true;
+        res.width = fbo.width;
+        res.height = fbo.height;
+        res.sizeClamped = fbo.sizeClamped;
+        res.pixels = std::move(fbo.pixels);
+        if (path && path[0] != '\0') res.ok = writePngRgba(path, res.width, res.height, res.pixels);
+        return res;
+    }
+
     const int width = sapp_width();
     const int height = sapp_height();
     if (width <= 0 || height <= 0) return res;
@@ -1388,41 +1249,17 @@ CaptureResult capturePng(const char* path, const ShotCrop& crop) {
     return res;
 #endif
 
-    // Common tail: F1 crop (the buffer is top-down on every backend, in
-    // framebuffer pixels — same space as GeometryPreview::lastImageRectPx).
-    int outW = width, outH = height;
-    std::vector<std::uint8_t> cropped;
-    if (crop.previewOnly) {
-        const GeometryPreview::ImageRectPx rect = g_preview.lastImageRectPx();
-        int cx = rect.x, cy = rect.y, cw = rect.w, ch = rect.h;
-        if (crop.wantW > 0 && crop.wantH > 0) {
-            res.sizeClamped = crop.wantW > rect.w || crop.wantH > rect.h;
-            cw = std::min(crop.wantW, rect.w);
-            ch = std::min(crop.wantH, rect.h);
-            cx = rect.x + (rect.w - cw) / 2;
-            cy = rect.y + (rect.h - ch) / 2;
-        }
-        if (!cropShotPixels(pixels, width, height, cx, cy, cw, ch, cropped, outW, outH)) {
-            spdlog::error("capturePng: empty preview crop ({}x{} at {},{})", cw, ch, cx, cy);
-            return res;
-        }
-    }
-    const std::vector<std::uint8_t>& finalPixels = crop.previewOnly ? cropped : pixels;
     res.ok = true;
-    if (path && path[0] != '\0') res.ok = writePng(path, outW, outH, finalPixels);
+    if (path && path[0] != '\0') res.ok = writePngRgba(path, width, height, pixels);
     if (res.ok) {
-        res.width = outW;
-        res.height = outH;
-        res.pixels = crop.previewOnly ? std::move(cropped) : std::move(pixels);
+        res.width = width;
+        res.height = height;
+        res.pixels = std::move(pixels);
     }
     return res;
 }
 
-// --- RPC helpers (--serve) ----------------------------------------------------------
 
-// Repository root for default RPC output dirs (tmp/pgg_rpc_shots,
-// tmp/pgg_rpc_source): .git walk-up from the cwd, like SmokeTest's
-// findRepoRoot; falls back to the cwd.
 std::filesystem::path repoRoot() {
     std::error_code ec;
     std::filesystem::path dir = std::filesystem::current_path(ec);
@@ -1447,7 +1284,7 @@ std::string resolveViewerPath(const std::string& path) {
 }
 
 std::vector<std::string> importRootsForFile(const std::string& path) {
-    std::vector<std::string> roots = g_rpcImportRoots;
+    std::vector<std::string> roots;
     pgg::appendImportRoot(roots, pgg::findProductLibRoot(path));
     pgg::appendImportRoot(roots, pgg::findProductLibRoot(repoRoot().string()));
     const std::string dir = std::filesystem::path(path).parent_path().string();
@@ -1456,252 +1293,9 @@ std::vector<std::string> importRootsForFile(const std::string& path) {
 }
 
 std::vector<std::string> sessionImportRoots() {
-    std::vector<std::string> roots = g_rpcImportRoots;
+    std::vector<std::string> roots;
     pgg::appendImportRoot(roots, pgg::findProductLibRoot(g_filePath.empty() ? repoRoot().string() : g_filePath));
     return roots;
-}
-
-// Wall clock for the RPC layer (std::chrono, not sokol_time: the smoke test
-// runs handlers without init()/stm_setup()).
-double wallNowSec() {
-    return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
-}
-
-bool diagsHaveErrors(const std::vector<pgg::Diagnostic>& diags) {
-    for (const pgg::Diagnostic& d : diags)
-        if (!d.isWarning) return true;
-    return false;
-}
-
-// F4: true when any file the current document state was built from changed
-// on disk since the last loadFile (mtime mismatch or unreadable).
-bool watchedFilesChanged() {
-    for (const auto& [path, mtime] : g_fileMtimes)
-        if (fileMtimeNs(path) != mtime) return true;
-    return false;
-}
-
-struct AutoReloadResult {
-    bool reloaded = false;
-    std::vector<pgg::Diagnostic> diags;  // load diagnostics of the reload (warnings may ride along)
-};
-
-// F4 auto-reload: if the loaded file or one of its imports changed on disk,
-// reload before the run — the explicit load the agent forgot (the graph, the
-// diagnostics panel and the param set all rebuild). Skipped for load{source}
-// temp files. A reload with load errors throws RpcError("run_errors") — the
-// same envelope as a run-time error (b3383a1) — and the caller's run never
-// happens: a broken file must not produce half a scene.
-AutoReloadResult autoReloadIfChanged() {
-    AutoReloadResult out;
-    if (g_mainFileFromRpcSource || g_filePath.empty() || g_fileMtimes.empty()) return out;
-    if (!watchedFilesChanged()) return out;
-    spdlog::info("PggViewer: auto-reload {} (a watched file changed on disk)", g_filePath);
-    if (!loadFile(g_filePath))
-        ViewerRpcServer::fail("io_error", "auto-reload: cannot open " + g_filePath);
-    out.reloaded = true;
-    out.diags = g_allDiags;
-    if (diagsHaveErrors(g_allDiags)) {
-        std::string why = "auto-reload of " + g_filePath + " has errors (run skipped):";
-        for (const pgg::Diagnostic& d : g_allDiags)
-            if (!d.isWarning) why += "\n" + pgg::formatDiagnostic(d, g_filePath);
-        ViewerRpcServer::fail("run_errors", why);
-    }
-    return out;
-}
-
-nlohmann::json diagnosticsJson(const std::vector<pgg::Diagnostic>& diags) {
-    nlohmann::json arr = nlohmann::json::array();
-    for (const pgg::Diagnostic& d : diags) {
-        nlohmann::json j = {{"code", d.code},      {"line", d.span.line}, {"col", d.span.col},
-                            {"warning", d.isWarning}, {"message", d.message}};
-        if (!d.hint.empty()) j["hint"] = d.hint;
-        arr.push_back(std::move(j));
-    }
-    return arr;
-}
-
-// The static prefix of pgg::run (engine.cpp): parse findings, then import
-// closure, expansion and typecheck — no Engine::run, so a broken file is
-// answered in milliseconds without evaluating the graph.
-nlohmann::json staticCheckJson(const pgg::Document& doc, const std::vector<std::string>& importRoots,
-                               const std::vector<std::string>& boundParams) {
-    const double t0 = wallNowSec();
-    std::vector<pgg::Diagnostic> diags = doc.diagnostics;
-    if (doc.file && !doc.hasErrors()) {
-        pgg::ModuleClosure closure;
-        const pgg::ModuleClosure* closurePtr = nullptr;
-        if (pgg::hasImports(*doc.file)) {
-            closure = pgg::loadModuleClosure(*doc.file, importRoots, diags);
-            closurePtr = &closure;
-        }
-        pgg::FlatProgram flat = pgg::expandProgram(*doc.file, closurePtr, diags);
-        if (!diagsHaveErrors(diags)) {
-            std::vector<size_t> runtimeContracts;
-            pgg::typecheckFlat(flat, boundParams, diags, runtimeContracts);
-        }
-    }
-    return {{"diagnostics", diagnosticsJson(diags)},
-            {"has_errors", diagsHaveErrors(diags)},
-            {"ms", (wallNowSec() - t0) * 1000.0}};
-}
-
-nlohmann::json vec3Json(const glm::vec3& v) { return nlohmann::json::array({v.x, v.y, v.z}); }
-
-nlohmann::json cameraJson() {
-    nlohmann::json cam = {{"center", vec3Json(g_preview.center())},
-                          {"radius", g_preview.fitRadius()},
-                          {"distance", g_preview.distance()}};
-    if (g_cameraTargetHasBBox) {
-        const glm::vec3 c = (g_cameraTargetBMin + g_cameraTargetBMax) * 0.5f;
-        cam["target_bbox"] = {{"min", vec3Json(g_cameraTargetBMin)},
-                              {"max", vec3Json(g_cameraTargetBMax)},
-                              {"center", vec3Json(c)}};
-    }
-    return cam;
-}
-
-nlohmann::json mergeNamedViewArgs(const nlohmann::json& args, std::string& err) {
-    nlohmann::json out = args;
-    if (!args.contains("view")) return out;
-    const std::string name = args.value("view", std::string{});
-    const NamedView* found = nullptr;
-    for (const NamedView& v : g_namedViews)
-        if (v.name == name) {
-            found = &v;
-            break;
-        }
-    if (!found) {
-        std::string known;
-        for (const NamedView& v : g_namedViews) known += (known.empty() ? "" : ", ") + v.name;
-        err = "unknown view '" + name + "' (views: " + (known.empty() ? std::string("none") : known) + ")";
-        return {};
-    }
-    for (auto it = found->fields.begin(); it != found->fields.end(); ++it) {
-        if (it.key() == "name") continue;
-        if (!args.contains(it.key()) || args[it.key()].is_null()) out[it.key()] = it.value();
-    }
-    out.erase("view");
-    return out;
-}
-
-// F3 frame key (compare=prev): the EFFECTIVE view state — node + frame/chrome
-// + camera + preview options — so an arg-less repeat render of the same view
-// hits the stored frame, while any option that changes the picture misses it.
-// Launch params are deliberately NOT part of the key: a params/seed edit
-// followed by the same render is exactly what compare=prev exists to show.
-std::string currentFrameKey(const std::string& node, bool previewOnly, bool chromeOff) {
-    const nlohmann::json k = {{"node", node},
-                              {"frame", previewOnly ? "preview" : "window"},
-                              {"chrome", chromeOff ? "off" : "on"},
-                              {"center", vec3Json(g_preview.center())},
-                              {"radius", g_preview.fitRadius()},
-                              {"distance", g_preview.distance()},
-                              {"yaw", g_preview.yawDeg()},
-                              {"pitch", g_preview.pitchDeg()},
-                              {"projection", static_cast<int>(g_preview.projection())},
-                              {"fit", g_preview.fitMode() == PreviewFitMode::Target ? "target" : "all"},
-                              {"has_target", g_preview.hasTarget()},
-                              {"highlight", g_previewOpts.highlightGroup},
-                              {"shading", static_cast<int>(g_previewOpts.shading)},
-                              {"colors", g_previewOpts.vertexColors},
-                              {"sdf_res", g_previewOpts.sdfResolution},
-                              {"wire", g_preview.wireframe()}};
-    return k.dump();
-}
-
-nlohmann::json silhouetteJson(const SilhouetteMetrics& m) {
-    return {{"bbox_frac", {m.bboxX0, m.bboxY0, m.bboxX1, m.bboxY1}},
-            {"w_over_h", m.wOverH},
-            {"rows", m.rows},
-            {"empty", m.empty}};
-}
-
-// The known exact background of preview captures (the offscreen pass clear
-// color) in RGBA8 — the bg for the model silhouette (F3).
-std::array<std::uint8_t, 3> previewClearRgb8() {
-    std::array<std::uint8_t, 3> bg{};
-    for (int i = 0; i < 3; ++i)
-        bg[i] = static_cast<std::uint8_t>(
-            std::clamp<long>(std::lround(GeometryPreview::kClearColor[i] * 255.0f), 0, 255));
-    return bg;
-}
-
-// Value-level stats of a pulled value (render/export responses): kind,
-// counts, bbox, groups ("<domain>:<name>", sorted for determinism).
-nlohmann::json valueStatsJson(const pgg::Value& v, double ms) {
-    nlohmann::json s;
-    const pgg::ScalarType base = pgg::valueBase(v);
-    s["kind"] = pgg::scalarName(base);
-    s["pts"] = 0;
-    s["tri"] = 0;
-    s["groups"] = nlohmann::json::array();
-    if (base == pgg::ScalarType::Geo) {
-        const pgg::Geo& g = *pgg::asGeo(v);
-        s["kind"] = pgg::geoKindName(g.kind);
-        s["pts"] = g.pointCount();
-        size_t tri = 0;
-        if (g.kind == pgg::GeoKind::Mesh && g.faceOffsets)
-            for (size_t f = 0; f < g.faceCount(); ++f) {
-                const int32_t corners = (*g.faceOffsets)[f + 1] - (*g.faceOffsets)[f];
-                if (corners >= 3) tri += static_cast<size_t>(corners - 2);
-            }
-        s["tri"] = tri;
-        if (g.pointCount() > 0) {
-            glm::vec3 mn, mx;
-            pgg::geoBBox(g, mn, mx);
-            s["bbox"] = {{"min", vec3Json(mn)}, {"max", vec3Json(mx)}};
-        }
-        std::vector<std::string> groups;
-        for (pgg::Domain d : {pgg::Domain::Points, pgg::Domain::Corners, pgg::Domain::Faces}) {
-            const pgg::GroupSet* gs = g.groups(d);
-            if (!gs) continue;
-            for (const auto& [name, column] : gs->columns)
-                groups.push_back(std::string(pgg::domainName(d)) + ":" + name);
-        }
-        std::sort(groups.begin(), groups.end());
-        groups.erase(std::unique(groups.begin(), groups.end()), groups.end());
-        s["groups"] = groups;
-    } else if (base == pgg::ScalarType::Sdf) {
-        glm::vec3 mn, mx;
-        pgg::asSdf(v)->conservativeBBox(mn, mx);
-        if (mn.x <= mx.x && mn.y <= mx.y && mn.z <= mx.z)
-            s["bbox"] = {{"min", vec3Json(mn)}, {"max", vec3Json(mx)}};
-    }
-    s["ms"] = ms;
-    return s;
-}
-
-// JSON value -> param field text (same syntax as the panel fields / --param).
-std::string jsonToParamText(const nlohmann::json& v) {
-    if (v.is_string()) return v.get<std::string>();
-    if (v.is_boolean()) return v.get<bool>() ? "true" : "false";
-    if (v.is_number_integer()) return std::to_string(v.get<int64_t>());
-    if (v.is_number_unsigned()) return std::to_string(v.get<uint64_t>());
-    if (v.is_number_float()) {
-        char buf[32];
-        std::snprintf(buf, sizeof(buf), "%g", v.get<double>());
-        return buf;
-    }
-    if (v.is_array()) {
-        std::string out = "(";
-        for (size_t i = 0; i < v.size(); ++i) out += (i ? ", " : "") + jsonToParamText(v[i]);
-        return out + ")";
-    }
-    return v.dump();
-}
-
-nlohmann::json paramsJson() {
-    nlohmann::json out = nlohmann::json::object();
-    for (const auto& [name, text] : g_paramValues) out[name] = text;
-    return out;
-}
-
-std::vector<std::string> boundParamNames() {
-    std::vector<std::string> names;
-    for (const auto& [name, text] : g_paramValues)
-        if (!text.empty()) names.push_back(name);
-    return names;
 }
 
 void init() {
@@ -1710,8 +1304,6 @@ void init() {
 
     stm_setup();
     g_state.lastTime = stm_now();
-    g_startTimeSec = wallNowSec();
-
     // Session-wide run cache (A1): outlives loadFile/Reload of the same file.
     // Capacity must cover the file's cacheable binding count, otherwise the
     // LRU thrashes (cottage_mansard evaluates ~2.2k bindings: at 512 the warm
@@ -1784,50 +1376,12 @@ void init() {
     if (g_cliPreviewWire) g_preview.setWireframe(true);
     if (!g_cliPreview.empty() && g_state.imguiOk) runPreview(g_cliPreview);
 
-    // --serve[=host:port]: TCP RPC server, polled from frame() (A1). A busy
-    // port is not fatal — log and run without the server, like the map editor.
-    if (!g_serveAddress.empty()) {
-        std::string host = "127.0.0.1";
-        uint16_t port = ViewerRpcServer::kDefaultPort;
-        const size_t colon = g_serveAddress.rfind(':');
-        if (colon != std::string::npos) {
-            host = g_serveAddress.substr(0, colon);
-            if (host.empty()) host = "127.0.0.1";
-            port = static_cast<uint16_t>(std::atoi(g_serveAddress.substr(colon + 1).c_str()));
-        } else if (g_serveAddress.find_first_not_of("0123456789") == std::string::npos) {
-            port = static_cast<uint16_t>(std::atoi(g_serveAddress.c_str()));
-        } else {
-            host = g_serveAddress;
-        }
-        g_rpc = std::make_unique<ViewerRpcServer>();
-        registerPggViewerRpcHandlers(*g_rpc);
-        if (!g_rpc->start(host, port)) {
-            spdlog::error("PggViewer: --serve could not listen on {}:{} — running without the RPC server",
-                          host, port);
-            g_rpc.reset();
-        }
-#if defined(SOKOL_METAL) && defined(__APPLE__)
-        if (g_rpc) {
-            // macOS stops frame callbacks when the display idle-sleeps (and
-            // App Naps the process), which would stall the RPC loop and any
-            // pending render — hold a UserInitiated activity for the session.
-            // A user-locked screen still stops frames (documented limit).
-            [[NSProcessInfo processInfo] beginActivityWithOptions:NSActivityUserInitiated
-                                                           reason:@"PggViewer --serve RPC server"];
-        }
-#endif
-    }
 }
 
 void frame() {
     const uint64_t now = stm_now();
     g_state.dt = static_cast<float>(stm_sec(stm_diff(now, g_state.lastTime)));
     g_state.lastTime = now;
-
-    // RPC commands run on the GUI thread; a render command may run a
-    // synchronous pull here (MVP: heavy graphs freeze the window, same as the
-    // interactive Preview button).
-    if (g_rpc) g_rpc->poll();
 
     if (!g_state.gfxOk) return;
 
@@ -1852,12 +1406,8 @@ void frame() {
         const float graphH =
             g_showPreview ? std::clamp(g_splitRatio, 0.12f, 0.88f) * (static_cast<float>(h) - kSplitterHeight)
                           : static_cast<float>(h);
-        // chrome=off (F1): the RPC render handler asked for one frame without
-        // the side panel and the graph — the preview pane spans the whole
-        // window, so the captured crop carries only the 3D preview.
         // CLI --chrome=off is sticky for the session (gallery / --shot).
-        const bool chromeOff = g_chromeOffThisFrame || g_cliChromeOff;
-        g_chromeOffThisFrame = false;
+        const bool chromeOff = g_cliChromeOff;
         if (chromeOff) {
             drawPreviewWindowAt(0.0f, 0.0f, static_cast<float>(w), static_cast<float>(h));
         } else {
@@ -1885,160 +1435,6 @@ void frame() {
     sg_commit();
     ++g_framesSincePreviewRun;
 
-    // RPC render phase 2: the frame with the new geometry is committed — grab
-    // the framebuffer and answer the deferred client.
-    if (g_pendingRender.active && g_framesSincePreviewRun >= 1) {
-        const PendingRender pr = std::move(g_pendingRender);
-        g_pendingRender = PendingRender{};
-        ShotCrop crop;
-        crop.previewOnly = pr.previewOnly;
-        crop.wantW = pr.wantW;
-        crop.wantH = pr.wantH;
-        if (pr.isReference) {
-            // F3 reference: the model frame stays in memory; the reply carries
-            // the side-by-side PNG (model left, reference right) + silhouette
-            // metrics of both halves.
-            const CaptureResult cap = capturePng(nullptr, crop);
-            if (!cap.ok) {
-                if (g_rpc) g_rpc->replyError(pr.clientId, "capture_failed", "capturePng failed (reference)");
-                spdlog::error("PggViewer: RPC reference capture failed");
-            } else {
-                const auto bg = previewClearRgb8();
-                const SilhouetteMetrics modelM =
-                    silhouetteMetrics(cap.pixels, cap.width, cap.height, bg[0], bg[1], bg[2]);
-                const auto refBg = estimateBackground(pr.refPixels, pr.refW, pr.refH);
-                const SilhouetteMetrics refM =
-                    silhouetteMetrics(pr.refPixels, pr.refW, pr.refH, refBg[0], refBg[1], refBg[2]);
-                const SideBySideImage sbs =
-                    composeSideBySide(cap.pixels, cap.width, cap.height, pr.refPixels, pr.refW, pr.refH);
-                if (!sbs.ok || !writePng(pr.outPath.c_str(), sbs.width, sbs.height, sbs.pixels)) {
-                    if (g_rpc)
-                        g_rpc->replyError(pr.clientId, "capture_failed",
-                                          "side-by-side compose/write failed for " + pr.outPath);
-                    spdlog::error("PggViewer: RPC reference compose/write failed ({})", pr.outPath);
-                } else {
-                    nlohmann::json data = {{"path", pr.outPath},
-                                           {"width", sbs.width},
-                                           {"height", sbs.height},
-                                           {"node", pr.node},
-                                           {"model", silhouetteJson(modelM)},
-                                           {"reference", silhouetteJson(refM)},
-                                           {"reference_background", refBg},
-                                           {"ms", pr.stats.value("ms", 0.0)},
-                                           {"stats", pr.stats},
-                                           {"diagnostics", pr.diagnostics},
-                                           {"camera",
-                                            {{"center", vec3Json(g_preview.center())},
-                                             {"radius", g_preview.fitRadius()},
-                                             {"distance", g_preview.distance()}}},
-                                           {"cache", {{"hits", pr.cacheHits}, {"misses", pr.cacheMisses}}}};
-                    if (cap.sizeClamped) data["size_clamped"] = true;
-                    data["reloaded"] = pr.reloaded;
-                    if (pr.reloaded) data["load_diagnostics"] = pr.loadDiagnostics;
-                    if (g_rpc) g_rpc->reply(pr.clientId, data);
-                    spdlog::info("PggViewer: RPC reference {} vs {} -> {}", pr.node, pr.refImagePath,
-                                 pr.outPath);
-                }
-            }
-        } else {
-            const char* pngPath = pr.writePng && !pr.outPath.empty() ? pr.outPath.c_str() : "";
-            const CaptureResult cap = capturePng(pngPath, crop);
-            if (cap.ok) {
-                nlohmann::json data = {{"width", cap.width},
-                                       {"height", cap.height},
-                                       {"node", pr.node},
-                                       {"frame", pr.previewOnly ? "preview" : "window"},
-                                       {"chrome", pr.chromeOff ? "off" : "on"},
-                                       {"stats", pr.stats},
-                                       {"diagnostics", pr.diagnostics},
-                                       {"camera", cameraJson()},
-                                       {"render_state", pr.renderState.is_null() ? pggViewerRenderStateJson()
-                                                                                 : pr.renderState},
-                                       {"cache", {{"hits", pr.cacheHits}, {"misses", pr.cacheMisses}}}};
-                if (pr.writePng && !pr.outPath.empty()) data["path"] = pr.outPath;
-                if (cap.sizeClamped) data["size_clamped"] = true;
-                data["reloaded"] = pr.reloaded;
-                if (pr.reloaded) data["load_diagnostics"] = pr.loadDiagnostics;
-
-                auto packCompare = [&](const std::vector<std::uint8_t>& prev, int prevW, int prevH,
-                                       const std::string& missing) -> nlohmann::json {
-                    nlohmann::json cmp;
-                    if (prev.empty()) {
-                        cmp = {{"available", false}, {"reason", missing}};
-                    } else if (prevW != cap.width || prevH != cap.height) {
-                        cmp = {{"available", false},
-                               {"reason", "size mismatch (prev " + std::to_string(prevW) + "x" +
-                                              std::to_string(prevH) + ", now " +
-                                              std::to_string(cap.width) + "x" + std::to_string(cap.height) +
-                                              ")"}};
-                    } else {
-                        const FrameCompareResult d = compareFrames(prev, cap.pixels, cap.width, cap.height);
-                        cmp = {{"available", true},
-                               {"changed_pct", d.changedPct},
-                               {"change_bbox_px", {d.changeX0, d.changeY0, d.changeX1, d.changeY1}}};
-                        const std::filesystem::path diffPath =
-                            repoRoot() / "tmp" / "pgg_rpc_shots" /
-                            ("diff_" + std::to_string(++g_diffCounter) + ".png");
-                        std::error_code ec;
-                        std::filesystem::create_directories(diffPath.parent_path(), ec);
-                        if (writePng(diffPath.string().c_str(), cap.width, cap.height, d.diffPixels)) {
-                            cmp["diff_png"] = diffPath.string();
-                        } else {
-                            cmp["diff_png"] = nullptr;
-                        }
-                    }
-                    return cmp;
-                };
-
-                if (pr.comparePrev) {
-                    if (g_lastFrameKey != pr.frameKey)
-                        data["compare"] = packCompare({}, 0, 0, "no previous frame");
-                    else
-                        data["compare"] =
-                            packCompare(g_lastFramePixels, g_lastFrameW, g_lastFrameH, "no previous frame");
-                }
-                if (pr.compareBaseline) {
-                    const auto it = g_baselineFrames.find(pr.frameKey);
-                    if (it == g_baselineFrames.end()) {
-                        data["compare"] = {{"available", false},
-                                           {"reason", "baseline created"},
-                                           {"baseline_created", true}};
-                        BaselineFrame bf;
-                        bf.w = cap.width;
-                        bf.h = cap.height;
-                        bf.pixels = cap.pixels;
-                        g_baselineFrames[pr.frameKey] = std::move(bf);
-                    } else {
-                        data["compare"] = packCompare(it->second.pixels, it->second.w, it->second.h,
-                                                      "no baseline frame");
-                    }
-                }
-                if (pr.saveBaseline) {
-                    BaselineFrame bf;
-                    bf.w = cap.width;
-                    bf.h = cap.height;
-                    bf.pixels = cap.pixels;
-                    g_baselineFrames[pr.frameKey] = std::move(bf);
-                    data["baseline_saved"] = true;
-                }
-
-                g_lastFrameKey = pr.frameKey;
-                g_lastFrameW = cap.width;
-                g_lastFrameH = cap.height;
-                g_lastFramePixels = cap.pixels;
-                if (g_rpc) g_rpc->reply(pr.clientId, data);
-                spdlog::info("PggViewer: RPC render {} -> {}", pr.node,
-                             pr.writePng ? pr.outPath : std::string("(png=false)"));
-            } else {
-                if (g_rpc)
-                    g_rpc->replyError(pr.clientId, "capture_failed",
-                                      pr.writePng ? "capturePng failed for " + pr.outPath
-                                                  : "capturePng failed");
-                spdlog::error("PggViewer: RPC render capture failed ({})", pr.outPath);
-            }
-        }
-    }
-
     // Headless capture: the graph is laid out at load time, so a short
     // wall-time settle is enough before grabbing the framebuffer. A1: with
     // --preview and no explicit --shot-delay the first committed frame after
@@ -2065,10 +1461,6 @@ void frame() {
 }
 
 void cleanup() {
-    if (g_rpc) {
-        g_rpc->stop();
-        g_rpc.reset();
-    }
     if (g_state.imguiOk) {
         g_preview.shutdown();
         simgui_shutdown();
@@ -2113,750 +1505,6 @@ bool cropShotPixels(const std::vector<std::uint8_t>& src, int srcW, int srcH, in
     return true;
 }
 
-nlohmann::json pggViewerRenderStateJson() {
-    std::string ortho = "off";
-    switch (g_preview.projection()) {
-        case PreviewProjection::OrthoFront: ortho = "front"; break;
-        case PreviewProjection::OrthoSide: ortho = "side"; break;
-        case PreviewProjection::OrthoTop: ortho = "top"; break;
-        default: break;
-    }
-    return {{"wire", g_preview.wireframe()},
-            {"chrome", g_rpcChromeOff ? "off" : "on"},
-            {"ortho", ortho},
-            {"target", g_cameraTarget.raw},
-            {"zoom", g_preview.fitZoom()},
-            {"fit", g_preview.fitMode() == PreviewFitMode::Target ? "target" : "all"}};
-}
-
-std::string pggViewerApplyRpcRenderArgs(const nlohmann::json& args) {
-    if (!args.contains("wire"))
-        g_preview.setWireframe(false);
-    else
-        g_preview.setWireframe(args.value("wire", false));
-
-    if (!args.contains("ortho")) {
-        g_preview.setProjection(PreviewProjection::Perspective);
-    } else {
-        const std::string o = args.value("ortho", std::string{});
-        if (o == "front") {
-            g_preview.setProjection(PreviewProjection::OrthoFront);
-        } else if (o == "side") {
-            g_preview.setProjection(PreviewProjection::OrthoSide);
-        } else if (o == "top") {
-            g_preview.setProjection(PreviewProjection::OrthoTop);
-        } else if (o == "off" || o == "perspective") {
-            g_preview.setProjection(PreviewProjection::Perspective);
-        } else {
-            return "ortho must be front|side|top|off";
-        }
-    }
-
-    if (!args.contains("highlight"))
-        g_previewOpts.highlightGroup.clear();
-    else
-        g_previewOpts.highlightGroup = args.value("highlight", std::string{});
-
-    if (!args.contains("shading")) {
-        g_previewOpts.shading = PreviewShading::Auto;
-    } else {
-        const std::string v = args.value("shading", std::string{"auto"});
-        if (v == "flat")
-            g_previewOpts.shading = PreviewShading::Flat;
-        else if (v == "smooth")
-            g_previewOpts.shading = PreviewShading::Smooth;
-        else if (v == "auto")
-            g_previewOpts.shading = PreviewShading::Auto;
-        else
-            return "shading must be auto|flat|smooth";
-    }
-
-    if (!args.contains("colors"))
-        g_previewOpts.vertexColors = true;
-    else
-        g_previewOpts.vertexColors = args.value("colors", true);
-
-    if (!args.contains("chrome")) {
-        g_rpcChromeOff = false;
-    } else {
-        const std::string c = args.value("chrome", std::string{});
-        if (c == "off")
-            g_rpcChromeOff = true;
-        else if (c == "on")
-            g_rpcChromeOff = false;
-        else
-            return "chrome must be 'on' or 'off'";
-    }
-
-    g_cameraTargetAutoYaw = !args.contains("orbit");
-    if (args.contains("orbit")) {
-        const nlohmann::json& o = args["orbit"];
-        if (o.is_array() && o.size() >= 2) {
-            const float yaw = o[0].get<float>();
-            const float pitch = o[1].get<float>();
-            const float zoom = o.size() >= 3 ? o[2].get<float>() : g_preview.fitZoom();
-            g_preview.setOrbit(yaw, pitch, zoom);
-        } else {
-            return "orbit must be [yaw, pitch] or [yaw, pitch, zoom]";
-        }
-    }
-
-    const bool hasOrbitZoom =
-        args.contains("orbit") && args["orbit"].is_array() && args["orbit"].size() >= 3;
-    if (args.contains("zoom")) {
-        g_preview.setZoom(args.value("zoom", 1.0f));
-    } else if (!args.contains("distance") && !hasOrbitZoom) {
-        g_preview.setZoom(1.0f);
-    }
-
-    if (!args.contains("target")) {
-        g_cameraTarget = CameraTargetSpec{};
-        g_cameraTargetHasBBox = false;
-        g_preview.setFitMode(PreviewFitMode::All);
-    } else {
-        const std::string t = args.value("target", std::string{});
-        if (t.empty()) {
-            g_cameraTarget = CameraTargetSpec{};
-            g_cameraTargetHasBBox = false;
-            g_preview.setFitMode(PreviewFitMode::All);
-        } else {
-            g_cameraTarget = parseCameraTargetSpec(t);
-            if (g_cameraTarget.kind == CameraTargetSpec::Kind::None)
-                return "unparseable target '" + t +
-                       "' (want x,y,z | group:<name> | group:<name>@<binding> | binding:<path>)";
-            if (!args.contains("fit")) g_preview.setFitMode(PreviewFitMode::Target);
-        }
-    }
-    if (args.contains("fit")) {
-        const std::string f = args.value("fit", std::string{});
-        if (f == "target") {
-            g_preview.setFitMode(PreviewFitMode::Target);
-        } else if (f == "all") {
-            g_preview.setFitMode(PreviewFitMode::All);
-        } else {
-            return "fit must be 'all' or 'target'";
-        }
-    }
-    return {};
-}
-
-// Registers the --serve command handlers (declared in SmokeTest.h so the
-// smoke test can drive the same handlers on its own server instance). The
-// handlers close over main.cpp's globals; the server class itself is
-// stateless about the viewer.
-
-// RPC diff (C2): runs the loaded file to its declared outputs with the
-// session params/cache (the probe/export commands' setup) and fingerprints
-// every output (nullopt for sdf/compiled fields — no structural hash). Run
-// errors report false with the run_errors message body in `why`; the run
-// stats globals update either way (status shows the attempt).
-bool runOutputsFingerprints(std::vector<std::pair<std::string, std::optional<uint64_t>>>& outFps,
-                            double& outMs, std::string& why) {
-    pgg::RunParams rp;
-    for (const auto& [name, text] : g_paramValues)
-        if (!text.empty()) rp.values.push_back({name, parseCliValue(text)});
-    rp.importRoots = sessionImportRoots();
-    rp.cache = g_memoryCache.get();
-    rp.profile = true;
-    const double t0 = wallNowSec();
-    pgg::RunResult r = pgg::runFile(g_filePath, rp);
-    outMs = (wallNowSec() - t0) * 1000.0;
-    g_lastRunMs = outMs;
-    g_lastCacheHits = r.stats.cacheHits;
-    g_lastCacheMisses = r.stats.cacheMisses;
-    g_lastProfile = r.stats.profile;
-    g_lastRunDiags = r.diagnostics;
-    if (r.hasErrors()) {
-        for (const pgg::Diagnostic& d : r.diagnostics)
-            if (!d.isWarning) why += (why.empty() ? "" : "\n") + d.code + " " + d.message;
-        return false;
-    }
-    outFps.clear();
-    for (const pgg::RunOutput& o : r.outputs) {
-        uint64_t fp = 0;
-        std::optional<uint64_t> v;
-        if (pgg::fingerprintValue(o.value, fp)) v = fp;
-        outFps.push_back({o.name, v});
-    }
-    return true;
-}
-
-nlohmann::json fingerprintJson(const std::optional<uint64_t>& fp) {
-    if (!fp) return nullptr;
-    char buf[17];
-    std::snprintf(buf, sizeof(buf), "%016llx", static_cast<unsigned long long>(*fp));
-    return buf;
-}
-
-void registerPggViewerRpcHandlers(ViewerRpcServer& server) {
-    using nlohmann::json;
-
-    server.on("ping", [](uint64_t, const json&) -> std::optional<json> {
-        return json{{"pong", true}, {"app", "PggViewer"}, {"protocol", 1}};
-    });
-
-    server.on("status", [](uint64_t, const json&) -> std::optional<json> {
-        // E (agent_tooling_plan §5): the last run's per-binding wall times,
-        // top-20 by exclusive ms (name asc on ties) + the total over all rows.
-        json prof = json::array();
-        double profTotalMs = 0.0;
-        for (const pgg::BindingProfile& b : pgg::profileByTime(g_lastProfile)) {
-            profTotalMs += b.ms;
-            if (prof.size() < 20)
-                prof.push_back({{"name", b.name},
-                                {"ms", b.ms},
-                                {"field_evals", b.fieldEvals},
-                                {"cache_hit", b.cacheHit}});
-        }
-        return json{{"file", g_filePath},
-                    {"params", paramsJson()},
-                    {"cache",
-                     {{"size", g_memoryCache ? g_memoryCache->size() : 0},
-                      {"capacity", g_memoryCache ? g_memoryCache->capacity() : 0},
-                      {"hits", g_lastCacheHits},
-                      {"misses", g_lastCacheMisses}}},
-                    {"preview", {{"target", g_previewTarget}, {"has_value", g_previewHasValue}}},
-                    {"profile", prof},
-                    {"profile_total_ms", profTotalMs},
-                    {"uptime_s", g_startTimeSec > 0.0 ? wallNowSec() - g_startTimeSec : 0.0}};
-    });
-
-    server.on("load", [](uint64_t, const json& args) -> std::optional<json> {
-        std::string path;
-        std::vector<std::string> roots;
-        if (args.contains("lib_roots") && args["lib_roots"].is_array()) {
-            for (const json& r : args["lib_roots"])
-                if (r.is_string()) roots.push_back(r.get<std::string>());
-        }
-        if (args.contains("source")) {
-            // load{source} goes through a temp file so every downstream
-            // consumer (runPreview/runProbe read the file from disk) works
-            // unchanged. The file's directory is the implicit import root.
-            const std::filesystem::path dir = repoRoot() / "tmp" / "pgg_rpc_source";
-            std::error_code ec;
-            std::filesystem::create_directories(dir, ec);
-            path = (dir / ("src_" + std::to_string(++g_srcCounter) + ".pgg")).string();
-            std::ofstream out(path, std::ios::binary | std::ios::trunc);
-            if (!out) ViewerRpcServer::fail("io_error", "cannot write " + path);
-            out << args.value("source", std::string{});
-            out.close();
-            if (!out) ViewerRpcServer::fail("io_error", "cannot write " + path);
-        } else if (args.contains("path")) {
-            path = args.value("path", std::string{});
-        } else {
-            ViewerRpcServer::fail("bad_args", "load needs 'path' or 'source'");
-        }
-        g_rpcImportRoots = roots;
-        if (!loadFile(path)) ViewerRpcServer::fail("io_error", "cannot open " + path);
-        // F4: a load{source} temp file is never edited externally (the next
-        // load{source} replaces it), so it is exempt from mtime tracking.
-        g_mainFileFromRpcSource = args.contains("source");
-        // RPC diff (C2): an explicit load is a new document context — the old
-        // snapshot is dropped; snapshot:true immediately records a fresh one
-        // (runs the outputs; a broken file gets no baseline).
-        g_diffSnapshot.reset();
-        g_baselineFrames.clear();
-        const bool wantSnapshot = args.value("snapshot", false);
-        // Static check only (closure -> expand -> typecheck): a broken file is
-        // answered in milliseconds, no Engine::run.
-        std::vector<std::string> checkRoots = importRootsForFile(g_filePath);
-        json data = staticCheckJson(g_doc, checkRoots, boundParamNames());
-        data["path"] = path;
-        if (wantSnapshot) {
-            bool recorded = false;
-            if (!data.value("has_errors", true)) {
-                std::vector<std::pair<std::string, std::optional<uint64_t>>> fps;
-                double ms = 0.0;
-                std::string why;
-                if (!runOutputsFingerprints(fps, ms, why))
-                    ViewerRpcServer::fail("run_errors", why.empty() ? "run failed" : why);
-                g_diffSnapshot = DiffSnapshot{path, fps};
-                recorded = true;
-            }
-            data["snapshot"] = recorded;
-        }
-        return data;
-    });
-
-    server.on("params", [](uint64_t, const json& args) -> std::optional<json> {
-        json unknown = json::array();
-        for (const auto& [name, val] : args.items()) {
-            bool found = false;
-            for (auto& [pname, ptext] : g_paramValues)
-                if (pname == name) {
-                    ptext = jsonToParamText(val);
-                    found = true;
-                }
-            if (!found) unknown.push_back(name);
-        }
-        return json{{"params", paramsJson()}, {"unknown", unknown}};
-    });
-
-    server.on("views", [](uint64_t, const json&) -> std::optional<json> {
-        json arr = json::array();
-        for (const NamedView& v : g_namedViews) arr.push_back(v.fields);
-        return json{{"file", g_filePath}, {"views", arr}};
-    });
-
-    server.on("render", [](uint64_t clientId, const json& argsIn) -> std::optional<json> {
-        if (!g_state.gfxOk || !g_state.imguiOk)
-            ViewerRpcServer::fail("no_frame_loop",
-                                  "render needs the frame loop and the preview pane (unavailable with "
-                                  "--no-ui or in --smoke)");
-        if (g_filePath.empty()) ViewerRpcServer::fail("no_file", "no .pgg file loaded");
-        if (g_pendingRender.active) ViewerRpcServer::fail("busy", "a previous render is still pending");
-        const AutoReloadResult reload = autoReloadIfChanged();
-        std::string viewErr;
-        const json args = mergeNamedViewArgs(argsIn, viewErr);
-        if (!viewErr.empty()) ViewerRpcServer::fail("bad_args", viewErr);
-        const std::string node = args.value("node", std::string{});
-        if (node.empty()) ViewerRpcServer::fail("bad_args", "render needs 'node' (or a named view that sets it)");
-
-        bool previewOnly = true;
-        if (args.contains("frame")) {
-            const std::string f = args.value("frame", std::string{});
-            if (f == "preview") {
-                previewOnly = true;
-            } else if (f == "window") {
-                previewOnly = false;
-            } else {
-                ViewerRpcServer::fail("bad_args", "frame must be 'preview' or 'window'");
-            }
-        }
-
-        bool comparePrev = false;
-        bool compareBaseline = false;
-        if (args.contains("compare")) {
-            const std::string c = args.value("compare", std::string{});
-            if (c == "prev") {
-                comparePrev = true;
-            } else if (c == "baseline") {
-                compareBaseline = true;
-            } else {
-                ViewerRpcServer::fail("bad_args", "compare must be 'prev' or 'baseline'");
-            }
-        }
-        const bool saveBaseline = args.value("save_baseline", false);
-        const bool writePng = args.value("png", true);
-
-        const std::string applyErr = pggViewerApplyRpcRenderArgs(args);
-        if (!applyErr.empty()) ViewerRpcServer::fail("bad_args", applyErr);
-        const bool chromeOff = g_rpcChromeOff;
-
-        ShotCrop crop;
-        crop.previewOnly = previewOnly;
-        if (args.contains("size")) {
-            const json& sz = args["size"];
-            if (sz.is_array() && sz.size() >= 2) {
-                if (previewOnly) {
-                    crop.wantW = std::max(0, static_cast<int>(std::lround(sz[0].get<float>())));
-                    crop.wantH = std::max(0, static_cast<int>(std::lround(sz[1].get<float>())));
-                } else {
-                    g_cliPreviewSize = ImVec2(sz[0].get<float>(), sz[1].get<float>());
-                }
-            }
-        }
-
-        runPreview(node);
-        if (!g_previewHasValue)
-            ViewerRpcServer::fail("run_failed",
-                                  g_lastPreviewError.empty() ? "run failed for '" + node + "'"
-                                                             : g_lastPreviewError);
-        if (diagsHaveErrors(g_lastRunDiags)) {
-            std::string why;
-            for (const pgg::Diagnostic& d : g_lastRunDiags) {
-                if (d.isWarning) continue;
-                why += (why.empty() ? "" : "\n") + d.code + " " + d.message;
-            }
-            ViewerRpcServer::fail("run_errors", why);
-        }
-        if (!g_cameraTargetError.empty()) {
-            const std::string why = g_cameraTargetError;
-            g_cameraTarget = CameraTargetSpec{};
-            g_cameraTargetError.clear();
-            g_cameraTargetHasBBox = false;
-            g_preview.setFitMode(PreviewFitMode::All);
-            ViewerRpcServer::fail("target_unresolved", why);
-        }
-
-        if (args.contains("distance")) g_preview.setDistance(args.value("distance", 0.0f));
-
-        std::filesystem::path out;
-        if (writePng) {
-            const std::string outArg = args.value("out", std::string{});
-            if (!outArg.empty()) {
-                out = outArg;
-            } else {
-                out = repoRoot() / "tmp" / "pgg_rpc_shots" /
-                      ("shot_" + std::to_string(++g_shotCounter) + ".png");
-            }
-            std::error_code ec;
-            if (out.has_parent_path()) std::filesystem::create_directories(out.parent_path(), ec);
-        }
-
-        if (chromeOff) g_chromeOffThisFrame = true;
-        g_pendingRender.active = true;
-        g_pendingRender.clientId = clientId;
-        g_pendingRender.outPath = out.string();
-        g_pendingRender.node = node;
-        g_pendingRender.previewOnly = previewOnly;
-        g_pendingRender.chromeOff = chromeOff;
-        g_pendingRender.wantW = crop.wantW;
-        g_pendingRender.wantH = crop.wantH;
-        g_pendingRender.stats = valueStatsJson(g_previewValue, g_lastRunMs);
-        g_pendingRender.diagnostics = diagnosticsJson(g_lastRunDiags);
-        g_pendingRender.reloaded = reload.reloaded;
-        if (reload.reloaded) g_pendingRender.loadDiagnostics = diagnosticsJson(reload.diags);
-        g_pendingRender.cacheHits = g_lastCacheHits;
-        g_pendingRender.cacheMisses = g_lastCacheMisses;
-        g_pendingRender.comparePrev = comparePrev;
-        g_pendingRender.compareBaseline = compareBaseline;
-        g_pendingRender.saveBaseline = saveBaseline;
-        g_pendingRender.writePng = writePng;
-        g_pendingRender.renderState = pggViewerRenderStateJson();
-        g_pendingRender.frameKey = currentFrameKey(node, previewOnly, chromeOff);
-        return std::nullopt;
-    });
-
-    // F3: model vs reference image, side by side. Same two-phase pipeline as
-    // render (the capture needs a committed frame), but phase 2 keeps the
-    // model frame in memory, composes model|divider|reference into one PNG of
-    // the model's height and answers silhouette metrics of both halves. The
-    // framing is deterministic: the camera target of earlier render calls is
-    // dropped, the fit is forced to the whole scene, and the default view is
-    // ortho=front.
-    server.on("reference", [](uint64_t clientId, const json& args) -> std::optional<json> {
-        if (!g_state.gfxOk || !g_state.imguiOk)
-            ViewerRpcServer::fail("no_frame_loop",
-                                  "reference needs the frame loop and the preview pane (unavailable with "
-                                  "--no-ui or in --smoke)");
-        if (g_filePath.empty()) ViewerRpcServer::fail("no_file", "no .pgg file loaded");
-        const std::string node = args.value("node", std::string{});
-        const std::string image = args.value("image", std::string{});
-        if (node.empty() || image.empty())
-            ViewerRpcServer::fail("bad_args", "reference needs 'node' and 'image'");
-        if (g_pendingRender.active) ViewerRpcServer::fail("busy", "a previous render is still pending");
-        // F4: same auto-reload contract as render (the run below reads the
-        // current file).
-        const AutoReloadResult reload = autoReloadIfChanged();
-
-        // The reference image is read up front — a missing/undecodable file
-        // fails the command before any run or frame is spent on it.
-        std::vector<std::uint8_t> refPixels;
-        int refW = 0, refH = 0;
-        if (!loadImageRgba(image, refPixels, refW, refH))
-            ViewerRpcServer::fail("invalid_input", "cannot read reference image '" + image + "'");
-
-        g_cameraTargetAutoYaw = !args.contains("orbit");
-        if (args.contains("orbit")) {
-            const json& o = args["orbit"];
-            if (o.is_array() && o.size() >= 2) {
-                const float yaw = o[0].get<float>();
-                const float pitch = o[1].get<float>();
-                const float zoom = o.size() >= 3 ? o[2].get<float>() : 1.0f;
-                g_preview.setOrbit(yaw, pitch, zoom);
-            }
-        }
-        if (args.contains("zoom")) g_preview.setZoom(args.value("zoom", 1.0f));
-        g_cameraTarget = CameraTargetSpec{};
-        g_preview.setFitMode(PreviewFitMode::All);
-        {
-            const std::string o = args.value("ortho", std::string{"front"});
-            if (o == "front") {
-                g_preview.setProjection(PreviewProjection::OrthoFront);
-            } else if (o == "side") {
-                g_preview.setProjection(PreviewProjection::OrthoSide);
-            } else if (o == "top") {
-                g_preview.setProjection(PreviewProjection::OrthoTop);
-            } else if (o == "off" || o == "perspective") {
-                g_preview.setProjection(PreviewProjection::Perspective);
-            } else {
-                ViewerRpcServer::fail("bad_args", "ortho must be front|side|top|off");
-            }
-        }
-        ShotCrop crop;
-        crop.previewOnly = true;  // always the preview viewport (known bg)
-        if (args.contains("size")) {
-            const json& sz = args["size"];
-            if (sz.is_array() && sz.size() >= 2) {
-                // Same contract as render frame=preview: target crop size in
-                // px, clamped to the actual viewport rect.
-                crop.wantW = std::max(0, static_cast<int>(std::lround(sz[0].get<float>())));
-                crop.wantH = std::max(0, static_cast<int>(std::lround(sz[1].get<float>())));
-            }
-        }
-
-        runPreview(node);
-        if (!g_previewHasValue)
-            ViewerRpcServer::fail("run_failed",
-                                  g_lastPreviewError.empty() ? "run failed for '" + node + "'"
-                                                             : g_lastPreviewError);
-        if (diagsHaveErrors(g_lastRunDiags)) {
-            std::string why;
-            for (const pgg::Diagnostic& d : g_lastRunDiags) {
-                if (d.isWarning) continue;
-                why += (why.empty() ? "" : "\n") + d.code + " " + d.message;
-            }
-            ViewerRpcServer::fail("run_errors", why);
-        }
-        // runPreview refits only when the pull path changed — force the
-        // whole-scene fit so repeated reference calls frame identically.
-        g_preview.fit();
-
-        const std::filesystem::path out =
-            repoRoot() / "tmp" / "pgg_rpc_shots" / ("ref_" + std::to_string(++g_refCounter) + ".png");
-        std::error_code ec;
-        std::filesystem::create_directories(out.parent_path(), ec);
-
-        g_pendingRender.active = true;
-        g_pendingRender.clientId = clientId;
-        g_pendingRender.outPath = out.string();
-        g_pendingRender.node = node;
-        g_pendingRender.previewOnly = true;
-        g_pendingRender.chromeOff = false;
-        g_pendingRender.wantW = crop.wantW;
-        g_pendingRender.wantH = crop.wantH;
-        g_pendingRender.stats = valueStatsJson(g_previewValue, g_lastRunMs);
-        g_pendingRender.diagnostics = diagnosticsJson(g_lastRunDiags);
-        g_pendingRender.reloaded = reload.reloaded;
-        if (reload.reloaded) g_pendingRender.loadDiagnostics = diagnosticsJson(reload.diags);
-        g_pendingRender.cacheHits = g_lastCacheHits;
-        g_pendingRender.cacheMisses = g_lastCacheMisses;
-        g_pendingRender.isReference = true;
-        g_pendingRender.refImagePath = image;
-        g_pendingRender.refPixels = std::move(refPixels);
-        g_pendingRender.refW = refW;
-        g_pendingRender.refH = refH;
-        return std::nullopt;  // deferred reply from frame()
-    });
-
-    server.on("probe", [](uint64_t, const json& args) -> std::optional<json> {
-        if (g_filePath.empty()) ViewerRpcServer::fail("no_file", "no .pgg file loaded");
-        const std::string spec = args.value("spec", std::string{});
-        if (spec.empty()) ViewerRpcServer::fail("bad_args", "probe needs 'spec'");
-        const AutoReloadResult reload = autoReloadIfChanged();  // F4: reload on on-disk edits first
-        pgg::RunParams rp;
-        for (const auto& [name, text] : g_paramValues)
-            if (!text.empty()) rp.values.push_back({name, parseCliValue(text)});
-        rp.importRoots = sessionImportRoots();
-        rp.cache = g_memoryCache.get();
-        rp.profile = true;
-        rp.probes = {spec};
-        // Synchronous run by design (MVP), same trade-off as the Probe panel.
-        const double t0 = wallNowSec();
-        pgg::RunResult r = pgg::runFile(g_filePath, rp);
-        const double ms = (wallNowSec() - t0) * 1000.0;
-        g_lastRunMs = ms;
-        g_lastCacheHits = r.stats.cacheHits;
-        g_lastCacheMisses = r.stats.cacheMisses;
-        g_lastProfile = r.stats.profile;
-        json records = json::array();
-        for (const pgg::ProbeRecord& pr : r.probes)
-            records.push_back(
-                {{"origin", pr.origin}, {"path", pr.path}, {"inspector", pr.inspector}, {"text", pr.text}});
-        json data = json{{"records", records},
-                         {"diagnostics", diagnosticsJson(r.diagnostics)},
-                         {"has_errors", r.hasErrors()},
-                         {"ms", ms},
-                         {"cache", {{"hits", g_lastCacheHits}, {"misses", g_lastCacheMisses}}},
-                         {"reloaded", reload.reloaded}};
-        if (reload.reloaded) data["load_diagnostics"] = diagnosticsJson(reload.diags);
-        return data;
-    });
-
-    server.on("export", [](uint64_t, const json& args) -> std::optional<json> {
-        if (g_filePath.empty()) ViewerRpcServer::fail("no_file", "no .pgg file loaded");
-        const std::string node = args.value("node", std::string{});
-        const std::string objPath = args.value("obj_path", std::string{});
-        if (node.empty() || objPath.empty())
-            ViewerRpcServer::fail("bad_args", "export needs 'node' and 'obj_path'");
-        const AutoReloadResult reload = autoReloadIfChanged();  // F4: reload on on-disk edits first
-        pgg::RunParams rp;
-        for (const auto& [name, text] : g_paramValues)
-            if (!text.empty()) rp.values.push_back({name, parseCliValue(text)});
-        rp.importRoots = sessionImportRoots();
-        rp.cache = g_memoryCache.get();
-        rp.profile = true;
-        rp.pulls = {node};
-        const double t0 = wallNowSec();
-        pgg::RunResult r = pgg::runFile(g_filePath, rp);
-        const double ms = (wallNowSec() - t0) * 1000.0;
-        g_lastRunMs = ms;
-        g_lastCacheHits = r.stats.cacheHits;
-        g_lastCacheMisses = r.stats.cacheMisses;
-        g_lastProfile = r.stats.profile;
-        g_lastRunDiags = r.diagnostics;
-
-        pgg::Value value;
-        bool found = false;
-        for (const pgg::RunOutput& o : r.pulled) {
-            const pgg::ScalarType base = pgg::valueBase(o.value);
-            if (base == pgg::ScalarType::Geo || base == pgg::ScalarType::Sdf) {
-                value = o.value;
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
-            std::string why;
-            for (const pgg::Diagnostic& d : r.diagnostics)
-                if (!d.isWarning) why += (why.empty() ? "" : "\n") + d.code + " " + d.message;
-            ViewerRpcServer::fail("run_failed",
-                                  why.empty() ? "no geometry value at '" + node + "'" : why);
-        }
-        if (pgg::valueBase(value) == pgg::ScalarType::Sdf)
-            ViewerRpcServer::fail("no_geometry",
-                                  "sdf values are not exported; mesh them with mesh_from_sdf");
-        pgg::GeoPtr geo = pgg::asGeo(value);
-        bool realized = false;
-        if (geo->kind == pgg::GeoKind::Instances) {
-            // Instances have no polygons of their own: realize first (§8.8).
-            geo = pgg::realizeInstances(*geo);
-            realized = true;
-            if (!geo) ViewerRpcServer::fail("run_failed", "realizeInstances returned null");
-            value = pgg::Value(geo);
-        }
-        std::error_code ec;
-        const std::filesystem::path parent = std::filesystem::path(objPath).parent_path();
-        if (!parent.empty()) std::filesystem::create_directories(parent, ec);
-        std::string err;
-        if (!pgg::writeObj(objPath, *geo, &err)) ViewerRpcServer::fail("io_error", err);
-        json data = json{{"path", objPath},
-                         {"realized", realized},
-                         {"stats", valueStatsJson(value, ms)},
-                         {"cache", {{"hits", g_lastCacheHits}, {"misses", g_lastCacheMisses}}},
-                         {"reloaded", reload.reloaded}};
-        if (reload.reloaded) data["load_diagnostics"] = diagnosticsJson(reload.diags);
-        return data;
-    });
-
-    // RPC diff (agent_tooling_plan C2, server half): compares the outputs'
-    // structural fingerprints of the CURRENT file against the session
-    // snapshot. First call (or a call after an explicit load of another
-    // context) records the baseline and answers baseline_created:true; later
-    // calls answer per-output identical/changed/added/removed/skipped
-    // (sdf/field — no structural fingerprint, fp-level only, no ΔP). The
-    // snapshot updates only on diff{update:true} or an explicit load; the F4
-    // auto-reload runs INSIDE diff (so a plain on-disk edit is what gets
-    // reported) and never clears the snapshot by itself.
-    server.on("diff", [](uint64_t, const json& args) -> std::optional<json> {
-        if (g_filePath.empty()) ViewerRpcServer::fail("no_file", "no .pgg file loaded");
-        const bool update = args.value("update", false);
-        const AutoReloadResult reload = autoReloadIfChanged();  // F4: catch the edit first
-        std::vector<std::pair<std::string, std::optional<uint64_t>>> fps;
-        double ms = 0.0;
-        std::string why;
-        if (!runOutputsFingerprints(fps, ms, why))
-            ViewerRpcServer::fail("run_errors", why.empty() ? "run failed" : why);
-        json data;
-        data["ms"] = ms;
-        data["cache"] = {{"hits", g_lastCacheHits}, {"misses", g_lastCacheMisses}};
-        data["reloaded"] = reload.reloaded;
-        if (reload.reloaded) data["load_diagnostics"] = diagnosticsJson(reload.diags);
-        if (!g_diffSnapshot || g_diffSnapshot->filePath != g_filePath) {
-            g_diffSnapshot = DiffSnapshot{g_filePath, fps};
-            json outs = json::array();
-            for (const auto& [n, fp] : fps)
-                outs.push_back({{"name", n}, {"fingerprint", fingerprintJson(fp)}});
-            data["baseline_created"] = true;
-            data["outputs"] = std::move(outs);
-            return data;
-        }
-        std::map<std::string, std::optional<uint64_t>> prev;
-        for (const auto& [n, fp] : g_diffSnapshot->fps) prev[n] = fp;
-        json outs = json::array();
-        std::map<std::string, bool> seen;
-        bool identical = true;
-        for (const auto& [n, fp] : fps) {
-            seen[n] = true;
-            json jo;
-            jo["name"] = n;
-            jo["fingerprint_now"] = fingerprintJson(fp);
-            const auto it = prev.find(n);
-            if (it == prev.end()) {
-                jo["status"] = "added";
-                jo["fingerprint_prev"] = nullptr;
-                identical = false;
-            } else if (!fp || !it->second) {
-                // sdf/field payloads have no structural fingerprint (skipped,
-                // does not affect the verdict — same rule as PggTool diff).
-                jo["status"] = "skipped";
-                jo["note"] = "no structural fingerprint";
-                jo["fingerprint_prev"] = fingerprintJson(it->second);
-            } else if (*fp == *it->second) {
-                jo["status"] = "identical";
-                jo["fingerprint_prev"] = fingerprintJson(it->second);
-            } else {
-                jo["status"] = "changed";
-                jo["fingerprint_prev"] = fingerprintJson(it->second);
-                identical = false;
-            }
-            outs.push_back(std::move(jo));
-        }
-        for (const auto& [n, fp] : g_diffSnapshot->fps) {
-            if (seen.count(n)) continue;
-            identical = false;
-            outs.push_back({{"name", n},
-                            {"status", "removed"},
-                            {"fingerprint_prev", fingerprintJson(fp)},
-                            {"fingerprint_now", nullptr}});
-        }
-        data["baseline_created"] = false;
-        data["identical"] = identical;
-        data["outputs"] = std::move(outs);
-        data["snapshot_updated"] = update;
-        if (update) g_diffSnapshot->fps = fps;
-        return data;
-    });
-
-    server.on("docs", [](uint64_t, const json& args) -> std::optional<json> {
-        const std::string symbol = args.value("symbol", std::string{});
-        if (symbol.empty()) ViewerRpcServer::fail("bad_args", "docs needs 'symbol'");
-        auto builtinCard = [&](const std::string& name, const std::string& shown) -> json {
-            const pgg::BuiltinDoc* bdoc = pgg::findBuiltinDoc(name);
-            const pgg::BuiltinSig* bsig = pgg::findBuiltin(name);
-            if (!bdoc || !bsig) return {};
-            return json{{"symbol", shown},
-                        {"kind", "builtin"},
-                        {"name", name},
-                        {"signature", pgg::builtinSignatureText(*bsig)},
-                        {"group", bdoc->group},
-                        {"summary", bdoc->summary},
-                        {"example", bdoc->example}};
-        };
-        auto notFound = [&](const std::string& name, const std::string& msg) {
-            std::string full = msg;
-            const auto near = pgg::suggestBuiltinNames(name);
-            if (!near.empty()) {
-                full += "; did you mean:";
-                for (const std::string& n : near) full += " " + n;
-            }
-            full += " (try builtin:<name> or PggTool docs builtins | rg -i …)";
-            ViewerRpcServer::fail("not_found", full);
-        };
-        if (symbol.rfind("builtin:", 0) == 0) {
-            const std::string name = symbol.substr(8);
-            json card = builtinCard(name, symbol);
-            if (card.empty()) notFound(name, "builtin not found: " + name);
-            return card;
-        }
-        if (g_doc.file) {
-            pgg::DocsLookupResult res = pgg::findDef(*g_doc.file, g_filePath, symbol, sessionImportRoots());
-            if (res.found)
-                return json{{"symbol", symbol},
-                            {"kind", "def"},
-                            {"signature", res.signature},
-                            {"docstring", res.hasDoc ? res.docstring : std::string{}}};
-        }
-        json card = builtinCard(symbol, symbol);
-        if (!card.empty()) return card;
-        std::string msg = "def not found: " + symbol;
-        if (!g_doc.file) msg = "no .pgg file loaded and not a builtin: " + symbol;
-        notFound(symbol, msg);
-        return {};
-    });
-}
-
 int main(int argc, char* argv[]) {
     bool smoke = false;
     for (int i = 1; i < argc; ++i) {
@@ -2888,10 +1536,6 @@ int main(int argc, char* argv[]) {
         } else if (arg.rfind("--shot-delay=", 0) == 0) {
             g_shotDelaySec = std::max(0.0, std::atof(arg.substr(13).c_str()));
             g_shotDelayExplicit = true;
-        } else if (arg == "--serve") {
-            g_serveAddress = "127.0.0.1:" + std::to_string(ViewerRpcServer::kDefaultPort);
-        } else if (arg.rfind("--serve=", 0) == 0) {
-            g_serveAddress = arg.substr(8);
         } else if (arg.rfind("--zoom=", 0) == 0) {
             g_cliZoom = static_cast<float>(std::atof(arg.substr(7).c_str()));
         } else if (arg.rfind("--center=", 0) == 0) {
@@ -2928,6 +1572,9 @@ int main(int argc, char* argv[]) {
             const std::string kv = arg.substr(8);
             const size_t eq = kv.find('=');
             if (eq != std::string::npos) g_cliParams.push_back({kv.substr(0, eq), kv.substr(eq + 1)});
+        } else if (arg == "--serve" || arg.rfind("--serve=", 0) == 0) {
+            spdlog::error("PggViewer: --serve was removed; start PggServe for agent RPC");
+            return 1;
         } else if (arg.rfind("--", 0) != 0) {
             g_pendingLoad = arg;
         }
@@ -2935,7 +1582,7 @@ int main(int argc, char* argv[]) {
 
     if (smoke) {
         spdlog::set_level(spdlog::level::info);
-        return runPggViewerSmokeTest(g_serveAddress) ? 0 : 1;
+        return runPggViewerSmokeTest() ? 0 : 1;
     }
 
     sapp_desc desc = {};

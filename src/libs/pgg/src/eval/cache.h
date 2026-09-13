@@ -10,8 +10,9 @@
 // Only value bindings are stored (geometry, scalars, strings, lists): field
 // and rng bindings recompile for pennies and never enter the cache. The
 // instance is owned by the caller and passed through RunParams::cache
-// (nullptr disables caching); the engine itself is single-threaded across
-// runs, the mutex guards concurrent hosts sharing one cache.
+// (nullptr disables caching). One Engine instance is used from one thread at
+// a time (PggServe serializes per file); the mutex guards concurrent hosts
+// sharing one cache.
 //
 // By design inspector/debug sessions (stage E6) get their own cache instance:
 // enabling debug must not evict production entries (spec §5.3).
