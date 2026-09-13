@@ -1,0 +1,154 @@
+# Проёмы: стрельчатые окна (тёмные ниши, стекла нет), жалюзи звона, роза,
+# портал с филёнчатыми створками, ступени, контрфорсы придела.
+# Прозрачности в превью нет — infill группа glass почти чёрный.
+
+import lib.parts
+import lib.ironwork
+import lib.fixtures
+import church.common as common
+
+def lancet(w: f32, h: f32) -> (out: geo<mesh>) {
+    """Стрельчатое окно: кирпичная рамка, тёмная ниша впереди, средник, подоконник.
+    Лицо +Z, низ рамы на y = 0."""
+    frame = common.pointed_panel(w = w + 0.42, h = h + 0.18, t = 0.24, grp = "brick")
+    infill = transform(common.pointed_panel(w = w, h = h, t = 0.06, grp = "glass"), translate = vec3(0, 0.05, 0.11))
+    straight = h - w * 0.72
+    mull = common.slab(size = vec3(0.06, straight * 0.90, 0.08), pos = vec3(0, straight * 0.48, 0.13), grp = "brick")
+    sill = common.slab(size = vec3(w + 0.58, 0.12, 0.32), pos = vec3(0, -0.02, 0.08), grp = "brick")
+    out = merge(frame, infill, mull, sill)
+}
+
+def louver(w: f32, h: f32) -> (out: geo<mesh>) {
+    """Ярус звона: кирпичная стрельчатая рама и горизонтальные деревянные жалюзи."""
+    frame = common.pointed_panel(w = w + 0.34, h = h + 0.14, t = 0.20, grp = "brick")
+    n = 8
+    slat0 = common.slab(size = vec3(w - 0.06, 0.048, 0.11), pos = vec3(0, 0, 0), grp = "wood")
+    span = h * 0.78
+    pts0 = mesh_line(count = n, length = span, dir = (0, 1, 0))
+    pts = transform(pts0, translate = vec3(0, h * 0.10, 0.08))
+    slats_raw = mark(realize(instance_on_points(pts, source = slat0)), "wood", where = true, domain = faces)
+    slats = common.pointed_clip(g = slats_raw, w = w + 0.02, h = h, y0 = 0.0)
+    sill = common.slab(size = vec3(w + 0.48, 0.10, 0.26), pos = vec3(0, -0.01, 0.06), grp = "brick")
+    out = merge(frame, slats, sill)
+}
+
+def rose(r: f32) -> (out: geo<mesh>) {
+    """Роза: тёмный диск, кирпичный обод, восемь средников. Центр в origin, лицо +Z."""
+    disc = common.to_group(g = ironwork.spool(p0 = vec3(0, 0, -0.05), p1 = vec3(0, 0, 0.05), r0 = r, r1 = r, sides = 24), src = "iron", dst = "glass")
+    rim = common.to_group(g = fixtures.ring(center = vec3(0, 0, 0.04), radius = r + 0.08, r = 0.11, yaw_deg = 0.0), src = "iron", dst = "brick")
+    mull0 = common.slab(size = vec3(0.055, r * 2.08, 0.055), pos = vec3(0, 0, 0.08), grp = "brick")
+    mulls = repeat (mull0, iterations = 7) |acc| {
+        a = (f32(@iteration) + 1.0) * 22.5
+        acc = merge(acc, transform(mull0, rotate = vec3(0, 0, a)))
+    }
+    hub = common.to_group(g = ironwork.spool(p0 = vec3(0, 0, 0.02), p1 = vec3(0, 0, 0.12), r0 = 0.16, r1 = 0.16, sides = 12), src = "iron", dst = "brick")
+    out = merge(disc, rim, mulls, hub)
+}
+
+def portal(w: f32, h: f32, rng: rng) -> (out: geo<mesh>) {
+    """Тройной стрельчатый портал: три ордера кирпича, тёмная ниша, две створки."""
+    outer = common.pointed_panel(w = w + 1.05, h = h + 0.50, t = 0.30, grp = "brick")
+    mid = transform(common.pointed_panel(w = w + 0.58, h = h + 0.22, t = 0.22, grp = "brick"), translate = vec3(0, 0.02, 0.16))
+    inner = transform(common.pointed_panel(w = w + 0.18, h = h - 0.04, t = 0.16, grp = "brick"), translate = vec3(0, 0.04, 0.30))
+    dark = transform(common.pointed_panel(w = w, h = h - 0.10, t = 0.06, grp = "glass"), translate = vec3(0, 0.06, 0.36))
+    leaf_h = h - w * 0.72 - 0.08
+    leaf = parts.plank_panel(w = w * 0.46, h = leaf_h, t = 0.07, n = 4, rng = rng)
+    l0 = transform(leaf, translate = vec3(0.0 - w * 0.24, leaf_h * 0.5 + 0.08, 0.40))
+    l1 = transform(leaf, translate = vec3(w * 0.24, leaf_h * 0.5 + 0.08, 0.40))
+    bar = common.slab(size = vec3(w * 0.96, 0.08, 0.08), pos = vec3(0, leaf_h + 0.14, 0.40), grp = "wood")
+    out = merge(outer, mid, inner, dark, l0, l1, bar)
+}
+
+def steps(w: f32, n: int, rise: f32) -> (out: geo<mesh>) {
+    """Каменные ступени в +Z: низ на y = 0, верх на n·rise, верхняя ступень у z = 0."""
+    tread = 0.32
+    s0 = common.slab(size = vec3(w, rise, tread), pos = vec3(0, rise * 0.5, tread * (f32(n) - 0.5)), grp = "stone")
+    out = repeat (s0, iterations = n - 1) |acc| {
+        k = f32(@iteration) + 1.0
+        acc = merge(acc, common.slab(size = vec3(w - k * 0.08, rise, tread), pos = vec3(0, rise * (k + 0.5), tread * (f32(n) - k - 0.5)), grp = "stone"))
+    }
+}
+
+def buttress(h: f32) -> (out: geo<mesh>) {
+    """Ступенчатый контрфорс, лицо +Z, низ на y = 0."""
+    lo = common.slab(size = vec3(0.50, h * 0.58, 0.58), pos = vec3(0, h * 0.29, 0.08), grp = "brick")
+    hi = common.slab(size = vec3(0.38, h * 0.48, 0.40), pos = vec3(0, h * 0.72, 0.02), grp = "brick")
+    cap = common.slab(size = vec3(0.58, 0.11, 0.64), pos = vec3(0, h * 0.58, 0.06), grp = "brick")
+    out = merge(lo, hi, cap)
+}
+
+def place_lancet(w: f32, h: f32, at: vec3, yaw: f32) -> (out: geo<mesh>) {
+    """Поставить lancet: yaw 0 = +Z."""
+    out = parts.place(g = lancet(w = w, h = h), yaw_deg = yaw, at = at)
+}
+
+def place_louver(w: f32, h: f32, at: vec3, yaw: f32) -> (out: geo<mesh>) {
+    """Поставить жалюзи звона: yaw 0 = +Z."""
+    out = parts.place(g = louver(w = w, h = h), yaw_deg = yaw, at = at)
+}
+
+def wall_row(n: int, w: f32, h: f32, x: f32, y: f32, z0: f32, step: f32, yaw: f32) -> (out: geo<mesh>) {
+    """n одинаковых lancet вдоль Z (для yaw = 90 — вдоль южной стены, x фиксирован)."""
+    u0 = place_lancet(w = w, h = h, at = vec3(x, y, z0), yaw = yaw)
+    out = repeat (u0, iterations = n - 1) |acc| {
+        z = z0 + (f32(@iteration) + 1.0) * step
+        acc = merge(acc, place_lancet(w = w, h = h, at = vec3(x, y, z), yaw = yaw))
+    }
+}
+
+def all_openings(nave_w: f32, nave_len: f32, tower_w: f32, aisle_w: f32, nave_h: f32, aisle_h: f32, plinth_h: f32, low_h: f32, belfry_h: f32, rng: rng) -> (out: geo<mesh>) {
+    """Все видимые проёмы изометрии: фасад, южный придел, клеристорий, башни, восток."""
+    total_d = tower_w + nave_len
+    facade_z = total_d * 0.5
+    east_z = 0.0 - total_d * 0.5
+    tcx = nave_w * 0.5 + tower_w * 0.5
+    tcz = facade_z - tower_w * 0.5
+    aisle_cz = east_z + nave_len * 0.5
+    aisle_x = nave_w * 0.5 + aisle_w
+
+    # Фасад нефа
+    door_w = 2.45
+    door_h = 3.95
+    port = transform(portal(w = door_w, h = door_h, rng = split_rng(rng, key = "door")), translate = vec3(0, plinth_h + 0.02, facade_z + 0.02))
+    stair = transform(steps(w = door_w + 1.15, n = 4, rise = plinth_h * 0.25), translate = vec3(0, 0, facade_z + 0.12))
+    ros = transform(rose(r = 1.18), translate = vec3(0, 6.55, facade_z + 0.04))
+    gwin = place_lancet(w = 0.58, h = 1.22, at = vec3(0, nave_h + 0.12, facade_z + 0.02), yaw = 0.0)
+
+    # Придел юг + клеристорий
+    n_win = 4
+    span = nave_len - 2.6
+    z0 = aisle_cz - span * 0.5
+    stepz = span / f32(n_win - 1)
+    aisle_wins = wall_row(n = n_win, w = 1.08, h = 2.55, x = aisle_x + 0.02, y = plinth_h + 0.78, z0 = z0, step = stepz, yaw = 90.0)
+    cler = wall_row(n = n_win, w = 0.88, h = 1.95, x = nave_w * 0.5 + 0.02, y = aisle_h + 1.15, z0 = z0, step = stepz, yaw = 90.0)
+
+    # Контрфорсы только между окнами, не за торцом придела
+    b0 = parts.place(g = buttress(h = aisle_h - 0.20), yaw_deg = 90.0, at = vec3(aisle_x + 0.02, 0.0, z0 + stepz * 0.5))
+    butts = repeat (b0, iterations = n_win - 2) |acc| {
+        z = z0 + (f32(@iteration) + 1.5) * stepz
+        acc = merge(acc, parts.place(g = buttress(h = aisle_h - 0.20), yaw_deg = 90.0, at = vec3(aisle_x + 0.02, 0.0, z)))
+    }
+
+    # Восточные торцы
+    east_aisle = place_lancet(w = 1.05, h = 2.45, at = vec3(nave_w * 0.5 + aisle_w * 0.5, plinth_h + 0.90, east_z - 0.02), yaw = 180.0)
+    east_nave = place_lancet(w = 0.95, h = 2.20, at = vec3(0, aisle_h + 1.40, east_z - 0.02), yaw = 180.0)
+
+    # Башни: запад + юг/север
+    tw = 1.05
+    th = 2.70
+    lw = 1.15
+    lh = 2.55
+    ly = low_h + 0.45
+    # Южная башня: запад и юг
+    ts_w = place_lancet(w = tw, h = th, at = vec3(tcx, plinth_h + 1.15, tcz + tower_w * 0.5 + 0.02), yaw = 0.0)
+    ts_s = place_lancet(w = tw, h = th, at = vec3(tcx + tower_w * 0.5 + 0.02, plinth_h + 1.15, tcz), yaw = 90.0)
+    ts_wl = place_louver(w = lw, h = lh, at = vec3(tcx, ly, tcz + tower_w * 0.5 + 0.02), yaw = 0.0)
+    ts_sl = place_louver(w = lw, h = lh, at = vec3(tcx + tower_w * 0.5 + 0.02, ly, tcz), yaw = 90.0)
+    # Северная башня: запад и север
+    tn_w = place_lancet(w = tw, h = th, at = vec3(0.0 - tcx, plinth_h + 1.15, tcz + tower_w * 0.5 + 0.02), yaw = 0.0)
+    tn_n = place_lancet(w = tw, h = th, at = vec3(0.0 - tcx - tower_w * 0.5 - 0.02, plinth_h + 1.15, tcz), yaw = 270.0)
+    tn_wl = place_louver(w = lw, h = lh, at = vec3(0.0 - tcx, ly, tcz + tower_w * 0.5 + 0.02), yaw = 0.0)
+    tn_nl = place_louver(w = lw, h = lh, at = vec3(0.0 - tcx - tower_w * 0.5 - 0.02, ly, tcz), yaw = 270.0)
+
+    out = merge(port, stair, ros, gwin, aisle_wins, cler, butts, east_aisle, east_nave, ts_w, ts_s, ts_wl, ts_sl, tn_w, tn_n, tn_wl, tn_nl)
+}

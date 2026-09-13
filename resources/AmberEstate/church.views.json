@@ -1,0 +1,6 @@
+[
+  {"name": "iso", "node": "church", "orbit": [45, 28], "zoom": 1.12, "chrome": "off", "wire": false},
+  {"name": "front", "node": "church", "orbit": [0, 8], "zoom": 1.08, "ortho": "front", "chrome": "off"},
+  {"name": "side", "node": "church", "orbit": [90, 10], "zoom": 1.08, "ortho": "side", "chrome": "off"},
+  {"name": "facade", "node": "church", "orbit": [10, 8], "zoom": 0.78, "chrome": "off", "wire": false}
+]

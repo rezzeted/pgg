@@ -1,0 +1,340 @@
+param ring_r: f32 = 1.42
+param wall_h: f32 = 0.52
+param seed: int = 4
+
+import lib.parts
+import lib.plan
+import lib.masonry
+import lib.blockwork
+import lib.architecture
+import lib.fixtures
+import lib.ironwork
+import lib.greenery
+import common
+
+# Вход в погреб по референсу props/cellar.jpg.
+# Круглая подпорная кладка с проёмом в +Z, земляной холм с травой,
+# каменный портал, крытая траншея-спуск в холм (низкие борта, крыша вниз,
+# ступени в колодец), распахнутые двери.
+# Верх +Y, фасад +Z. Именованные узлы: ring, entrance, frame, roof, doors, grass, scene.
+
+def pitch_down(g: geo<mesh>, py: f32, pz: f32, deg: f32) -> (out: geo<mesh>) {
+    """Поворот вокруг оси X через (0, py, pz): зад (−Z) опускается."""
+    a = transform(g, translate = vec3(0, 0.0 - py, 0.0 - pz))
+    b = transform(a, rotate = vec3(0.0 - deg, 0, 0))
+    out = transform(b, translate = vec3(0, py, pz))
+}
+
+def ring_course(y: f32, r: f32, n: int, ch: f32, thick: f32, a0: f32, a1: f32, rng: rng) -> (out: geo<mesh>) {
+    """Ряд тёсаных камней по дуге: якоря в серединах сегментов, лицо наружу."""
+    expect n >= 6: "ring_course: мало камней"
+    span = a1 - a0
+    step = span / f32(n)
+    w = plan.chord(r = r, span_deg = step) - 0.014
+    pts0 = plan.arc_mid_anchors(cx = 0, cz = 0, r = r, y = y + ch * 0.5, a0 = a0, a1 = a1, n = n)
+    kind = random_int(n = 5, rng = split_rng(rng, key = "kind"))
+    cream = vec3(1.04, 1.01, 0.96)
+    grey = vec3(0.74, 0.76, 0.74)
+    warm = vec3(0.92, 0.82, 0.66)
+    t = kind >= 4 ? warm : (kind >= 3 ? grey : cream)
+    pts = set(pts0, "tint", t)
+    blk = mark(parts.cbox(size = vec3(w, ch - 0.010, thick), k = 0.14), "stone", where = true, domain = faces)
+    out = realize(instance_on_points(pts, source = blk))
+}
+
+def make_ring(r_out: f32, h: f32, rng: rng) -> (out: geo<mesh>) {
+    """Четыре ряда кладки + нависающий верх, ядро-раствор, проём спереди."""
+    thick = 0.26
+    r_in = r_out - thick
+    r_mid = (r_in + r_out) * 0.5
+    a0 = 118.0
+    a1 = 422.0
+    ch = h / 4.0
+    c0 = ring_course(y = 0.0, r = r_mid, n = 22, ch = ch, thick = thick - 0.02, a0 = a0, a1 = a1, rng = split_rng(rng, key = "c0"))
+    c1 = ring_course(y = ch, r = r_mid, n = 21, ch = ch, thick = thick - 0.02, a0 = a0 + 7.0, a1 = a1 - 7.0, rng = split_rng(rng, key = "c1"))
+    c2 = ring_course(y = 2.0 * ch, r = r_mid, n = 22, ch = ch, thick = thick - 0.02, a0 = a0, a1 = a1, rng = split_rng(rng, key = "c2"))
+    c3 = ring_course(y = 3.0 * ch, r = r_mid + 0.03, n = 21, ch = ch, thick = thick + 0.02, a0 = a0 + 7.0, a1 = a1 - 7.0, rng = split_rng(rng, key = "c3"))
+    core = plan.arc_shell(cx = 0, cz = 0, r_in = r_in + 0.03, r_out = r_out - 0.04, a0 = a0, a1 = a1, y0 = 0, y1 = h - 0.02, grp = "mortar", n = 18)
+    jw = 0.20
+    jh = h - 0.02
+    jx = 0.62
+    jz = r_mid * 0.88
+    jl = parts.piece(size = vec3(jw, jh, thick + 0.02), pos = vec3(0.0 - jx, jh * 0.5, jz), grp = "stone")
+    jr = parts.piece(size = vec3(jw, jh, thick + 0.02), pos = vec3(jx, jh * 0.5, jz), grp = "stone")
+    out = merge(core, c0, c1, c2, c3, jl, jr)
+}
+
+def ashlar_face(len: f32, h: f32, thick: f32, rng: rng) -> (out: geo<mesh>) {
+    """Кладка в локали стены: x вдоль, y от 0 вверх, z наружу, центр x=0."""
+    ch = 0.125
+    n_rows = int(h / ch)
+    cols = int(len / 0.26)
+    n_c = cols < 3 ? 3 : cols
+    n_r = n_rows < 3 ? 3 : n_rows
+    rows = blockwork.bond_anchors(len = len, cols = n_c, n_rows = n_r, course_h = ch, y0 = 0, z = 0)
+    raw = blockwork.stone_wall(rows = rows, len = len, blk = vec3(0.24, ch - 0.012, thick), rng = rng)
+    out = mark(raw, "stone", where = true, domain = faces)
+}
+
+def barrel_tile(len: f32, rad: f32) -> (out: geo<mesh>) {
+    """Желоб черепицы: полуцилиндр, ось +X (вниз по скату), брюхо +Y."""
+    body = ironwork.spool(p0 = vec3(0.0 - len * 0.5, 0, 0), p1 = vec3(len * 0.5, 0, 0), r0 = rad, r1 = rad, sides = 10)
+    half = clip(body, origin = vec3(0, 0, 0), normal = vec3(0, 1, 0), cap_group = "roof")
+    out = mark(unmark(half, "iron"), "roof", where = true, domain = faces)
+}
+
+def tile_slope(along: f32, slope_len: f32, rng: rng) -> (out: geo<mesh>) {
+    """Поле черепицы: вниз +X, вдоль конька +Z. После поворота x=0 — конёк."""
+    r_tile = 0.055
+    tl = 0.22
+    pu = 0.108
+    pv = 0.145
+    n_rows = int(slope_len / pv) + 1
+    n_cols = int(along / pu) + 1
+    tile = barrel_tile(len = tl, rad = r_tile)
+    empty = empty_points()
+    anchors = repeat (empty, iterations = n_rows) |acc| {
+        k = f32(@iteration)
+        odd = f32(@iteration % 2)
+        row0 = mesh_line(count = n_cols, length = f32(n_cols - 1) * pu, dir = (0, 0, 1))
+        row = transform(row0, translate = vec3(k * pv + tl * 0.15, r_tile, 0.0 - f32(n_cols - 1) * pu * 0.5 + odd * pu * 0.5))
+        acc = merge(acc, row)
+    }
+    shade = random(lo = 0.82, hi = 1.18, rng = split_rng(rng, key = "tint"))
+    pts = set(anchors, "tint", vec3(shade * 0.97, shade, shade * 1.04))
+    field = realize(instance_on_points(pts, source = tile))
+    deck = parts.piece(size = vec3(slope_len + 0.04, 0.018, along - 0.04), pos = vec3(slope_len * 0.48, 0.0 - 0.006, 0), grp = "wood")
+    bw = 0.055
+    barge_f = parts.piece(size = vec3(slope_len, 0.070, bw), pos = vec3(slope_len * 0.48, 0.0 - 0.028, along * 0.5 - bw * 0.4), grp = "wood")
+    barge_b = parts.piece(size = vec3(slope_len, 0.070, bw), pos = vec3(slope_len * 0.48, 0.0 - 0.028, 0.0 - along * 0.5 + bw * 0.4), grp = "wood")
+    out = merge(field, deck, barge_f, barge_b)
+}
+
+def make_roof(w: f32, d: f32, ridge_y: f32, pitch: f32, z_mid: f32, clip_r: f32, drop: f32, pivot_z: f32, rng: rng) -> (out: geo<mesh>) {
+    """Двускат: конёк вдоль Z, зад опускается в холм, подрез по внутреннему кольцу."""
+    pr = radians(pitch)
+    oh = 0.10
+    oh_z = 0.10
+    slope_len = (w * 0.5 + oh) / cos(pr)
+    along = d + 2.0 * oh_z
+    field = tile_slope(along = along, slope_len = slope_len, rng = split_rng(rng, key = "tiles"))
+    right = transform(field, rotate = vec3(0, 0, 0.0 - pitch), translate = vec3(0, ridge_y, z_mid))
+    left0 = transform(field, rotate = vec3(0, 180, 0))
+    left = transform(left0, rotate = vec3(0, 0, pitch), translate = vec3(0, ridge_y, z_mid))
+    cap = parts.piece(size = vec3(0.10, 0.07, along + 0.02), pos = vec3(0, ridge_y + 0.03, z_mid), grp = "roof")
+    raw = pitch_down(merge(right, left, cap), py = ridge_y, pz = pivot_z, deg = degrees(atan(drop / d)))
+    hx = w * 0.5 + 0.10
+    ez = 0.0 - sqrt(max(clip_r * clip_r - hx * hx, 0.05))
+    c1 = clip(raw, origin = vec3(hx, 0, ez), normal = vec3(0.0 - hx, 0, 0.0 - ez), cap_group = "roof")
+    c2 = clip(c1, origin = vec3(0.0 - hx, 0, ez), normal = vec3(hx, 0, 0.0 - ez), cap_group = "roof")
+    out = clip(c2, origin = vec3(0, 0, 0.0 - clip_r + 0.04), normal = vec3(0, 0, 1), cap_group = "roof")
+}
+
+def make_frame(w: f32, d: f32, wall_y: f32, beam_y: f32, ridge_y: f32, pitch: f32, front_z: f32, roof_d: f32, drop: f32) -> (out: geo<mesh>) {
+    """Столбы на холме, щипец у портала, конёк и задние стропила по спуску в холм."""
+    pw = 0.10
+    hx = w * 0.5 - 0.06
+    z_back = front_z - d + 0.10
+    z_mid_p = (front_z + z_back) * 0.5
+    t_m = (front_z - z_mid_p) / roof_d
+    t_b = (front_z - z_back) / roof_d
+    y_m = beam_y - drop * t_m
+    y_b = beam_y - drop * t_b
+    ry_b = ridge_y - drop * t_b
+    h_f = beam_y - wall_y + 0.04
+    h_m = y_m - wall_y
+    h_b = y_b - wall_y
+    p_l = common.post(w = pw, h = h_f, at = vec3(0.0 - hx, wall_y, front_z + 0.02), grp = "wood")
+    p_r = common.post(w = pw, h = h_f, at = vec3(hx, wall_y, front_z + 0.02), grp = "wood")
+    p_lm = common.post(w = pw, h = h_m, at = vec3(0.0 - hx, wall_y, z_mid_p), grp = "wood")
+    p_rm = common.post(w = pw, h = h_m, at = vec3(hx, wall_y, z_mid_p), grp = "wood")
+    p_lb = common.post(w = pw, h = h_b < 0.12 ? 0.12 : h_b, at = vec3(0.0 - hx, wall_y, z_back), grp = "wood")
+    p_rb = common.post(w = pw, h = h_b < 0.12 ? 0.12 : h_b, at = vec3(hx, wall_y, z_back), grp = "wood")
+    beam = parts.piece(size = vec3(w - 0.04, 0.09, 0.10), pos = vec3(0, beam_y, front_z + 0.01), grp = "wood")
+    beam_m = parts.piece(size = vec3(w - 0.08, 0.08, 0.09), pos = vec3(0, y_m, z_mid_p), grp = "wood")
+    beam_b = parts.piece(size = vec3(w - 0.08, 0.08, 0.09), pos = vec3(0, y_b, z_back), grp = "wood")
+    rlen = sqrt(roof_d * roof_d + drop * drop)
+    ridge0 = parts.piece(size = vec3(0.08, 0.08, rlen), pos = vec3(0, 0, 0.0 - rlen * 0.5), grp = "wood")
+    ridge = transform(ridge0, rotate = vec3(0.0 - degrees(atan(drop / roof_d)), 0, 0), translate = vec3(0, ridge_y - 0.01, front_z))
+    sl = (w * 0.5) / cos(radians(pitch))
+    raf_r0 = parts.piece(size = vec3(sl, 0.07, 0.07), pos = vec3(sl * 0.5, 0, 0), grp = "wood")
+    raf_l0 = parts.piece(size = vec3(sl, 0.07, 0.07), pos = vec3(0.0 - sl * 0.5, 0, 0), grp = "wood")
+    raf_r = transform(transform(raf_r0, rotate = vec3(0, 0, 0.0 - pitch)), translate = vec3(0, ridge_y, front_z))
+    raf_l = transform(transform(raf_l0, rotate = vec3(0, 0, pitch)), translate = vec3(0, ridge_y, front_z))
+    raf_rb = transform(transform(raf_r0, rotate = vec3(0, 0, 0.0 - pitch)), translate = vec3(0, ry_b, z_back))
+    raf_lb = transform(transform(raf_l0, rotate = vec3(0, 0, pitch)), translate = vec3(0, ry_b, z_back))
+    king = parts.piece(size = vec3(0.07, ridge_y - beam_y - 0.02, 0.07), pos = vec3(0, (ridge_y + beam_y) * 0.5, front_z), grp = "wood")
+    collar = parts.piece(size = vec3(w * 0.38, 0.055, 0.055), pos = vec3(0, beam_y + (ridge_y - beam_y) * 0.40, front_z), grp = "wood")
+    out = merge(p_l, p_r, p_lm, p_rm, p_lb, p_rb, beam, beam_m, beam_b, ridge, raf_r, raf_l, raf_rb, raf_lb, king, collar)
+}
+
+def door_leaf(w: f32, h: f32, rng: rng) -> (out: geo<mesh>) {
+    """Полотно: петля на x=0, доски в +X, низ на y=0, лицо +Z."""
+    t = 0.038
+    panel = transform(parts.plank_panel(w = w, h = h, t = t, n = 4, rng = rng), translate = vec3(w * 0.5, h * 0.5, 0))
+    b1 = parts.piece(size = vec3(w - 0.04, 0.055, 0.022), pos = vec3(w * 0.5, h * 0.18, t * 0.5 + 0.008), grp = "wood")
+    b2 = parts.piece(size = vec3(w - 0.04, 0.055, 0.022), pos = vec3(w * 0.5, h * 0.50, t * 0.5 + 0.008), grp = "wood")
+    b3 = parts.piece(size = vec3(w - 0.04, 0.055, 0.022), pos = vec3(w * 0.5, h * 0.82, t * 0.5 + 0.008), grp = "wood")
+    knocker = fixtures.ring(center = vec3(w * 0.62, h * 0.48, t * 0.5 + 0.028), radius = 0.038, r = 0.007, yaw_deg = 0)
+    plate = parts.piece(size = vec3(0.046, 0.046, 0.010), pos = vec3(w * 0.62, h * 0.48, t * 0.5 + 0.012), grp = "iron")
+    h0 = parts.piece(size = vec3(0.055, 0.070, 0.016), pos = vec3(0.012, h * 0.18, 0.0 - 0.002), grp = "iron")
+    h1 = parts.piece(size = vec3(0.055, 0.070, 0.016), pos = vec3(0.012, h * 0.50, 0.0 - 0.002), grp = "iron")
+    h2 = parts.piece(size = vec3(0.055, 0.070, 0.016), pos = vec3(0.012, h * 0.82, 0.0 - 0.002), grp = "iron")
+    out = merge(panel, b1, b2, b3, knocker, plate, h0, h1, h2)
+}
+
+def make_doors(w: f32, h: f32, y0: f32, z: f32, open_deg: f32, rng: rng) -> (out: geo<mesh>) {
+    """Две створки: петля левой на −X, правой на +X. Свободный край уходит в +Z."""
+    lw = w * 0.5 - 0.010
+    leaf_l = door_leaf(w = lw, h = h, rng = split_rng(rng, key = "l"))
+    leaf_r = door_leaf(w = lw, h = h, rng = split_rng(rng, key = "r"))
+    left = transform(leaf_l, rotate = vec3(0, 0.0 - open_deg, 0), translate = vec3(0.0 - w * 0.5, y0, z))
+    shifted = transform(leaf_r, translate = vec3(0.0 - lw, 0, 0))
+    right = transform(shifted, rotate = vec3(0, open_deg, 0), translate = vec3(w * 0.5, y0, z))
+    out = merge(left, right)
+}
+
+def stone_steps(n: int, tread: f32, rise: f32, w0: f32, dw: f32, y0: f32, z0: f32, dz: f32) -> (out: geo<mesh>) {
+    """n плит: первая у (0, y0, z0), дальше сдвиг (0, rise, dz), ширина w0+i·dw."""
+    expect n >= 1: "stone_steps: пусто"
+    s0 = parts.piece(size = vec3(w0, abs(rise) * 0.88, tread * 0.90), pos = vec3(0, y0 + rise * 0.5, z0 + dz * 0.5), grp = "stone")
+    out = repeat (s0, iterations = n - 1) |acc| {
+        k = f32(@iteration) + 1.0
+        wk = w0 + dw * k
+        y = y0 + rise * k
+        z = z0 + dz * k
+        acc = merge(acc, parts.piece(size = vec3(wk, abs(rise) * 0.88, tread * 0.90), pos = vec3(0, y + rise * 0.5, z + dz * 0.5), grp = "stone"))
+    }
+}
+
+def make_entrance(w: f32, d: f32, wall_y: f32, h: f32, door_w: f32, door_h: f32, front_z: f32, drop: f32, rng: rng) -> (out: geo<mesh>) {
+    """Портал и траншея-спуск: борта по уклону, ступени в колодец, тёмный зев."""
+    cz = front_z - d * 0.5
+    t = 0.20
+    pit_y = -0.24
+    front0 = ashlar_face(len = w, h = h, thick = t, rng = split_rng(rng, key = "f"))
+    front1 = masonry.clip_arch_hole(g = front0, cx = 0, y_bot = 0, win_w = door_w, win_h = door_h, bar = 0.05, gap = 0.012, segments = 10)
+    front = transform(front1, translate = vec3(0, wall_y, front_z - t * 0.5))
+    side_h = wall_y + h - pit_y
+    y_top_f = wall_y + 0.58
+    left0 = ashlar_face(len = d - t, h = side_h, thick = t, rng = split_rng(rng, key = "l"))
+    left1 = transform(transform(left0, rotate = vec3(0, 90.0, 0)), translate = vec3(0.0 - (w * 0.5 - t * 0.5), pit_y, cz - t * 0.15))
+    right0 = ashlar_face(len = d - t, h = side_h, thick = t, rng = split_rng(rng, key = "r"))
+    right1 = transform(transform(right0, rotate = vec3(0, 0.0 - 90.0, 0)), translate = vec3(w * 0.5 - t * 0.5, pit_y, cz - t * 0.15))
+    # Верх бортов ниже крыши и падает назад — из бокового вида виден колодец.
+    nclip = vec3(0, -1, drop / d)
+    left = clip(left1, origin = vec3(0, y_top_f, front_z), normal = nclip, cap_group = "stone")
+    right = clip(right1, origin = vec3(0, y_top_f, front_z), normal = nclip, cap_group = "stone")
+    back0 = ashlar_face(len = w - 2.0 * t, h = side_h * 0.55, thick = t, rng = split_rng(rng, key = "b"))
+    back = transform(transform(back0, rotate = vec3(0, 180, 0)), translate = vec3(0, pit_y, front_z - d + t * 0.5))
+    void = transform(architecture.arch_panel(w = door_w - 0.04, h = 0.70, t = 0.08, grp = "interior"), translate = vec3(0, pit_y + 0.32, front_z - d + t + 0.10))
+    floor = parts.piece(size = vec3(door_w - 0.10, 0.05, 0.40), pos = vec3(0, pit_y + 0.02, front_z - d + t + 0.30), grp = "interior")
+    r_arch = door_w * 0.5
+    straight = door_h - r_arch
+    torus = fixtures.ring(center = vec3(0, wall_y + straight, front_z + 0.03), radius = r_arch + 0.08, r = 0.085, yaw_deg = 0)
+    arch = mark(unmark(clip(torus, origin = vec3(0, wall_y + straight, 0), normal = vec3(0, 1, 0)), "iron"), "stone", where = true, domain = faces)
+    jl = parts.piece(size = vec3(0.12, straight, 0.16), pos = vec3(0.0 - r_arch - 0.04, wall_y + straight * 0.5, front_z + 0.01), grp = "stone")
+    jr = parts.piece(size = vec3(0.12, straight, 0.16), pos = vec3(r_arch + 0.04, wall_y + straight * 0.5, front_z + 0.01), grp = "stone")
+    sill = parts.piece(size = vec3(door_w + 0.16, 0.06, 0.28), pos = vec3(0, wall_y - 0.01, front_z + 0.04), grp = "stone")
+    down = stone_steps(n = 11, tread = 0.135, rise = 0.0 - 0.085, w0 = door_w - 0.08, dw = 0, y0 = wall_y - 0.06, z0 = front_z - t, dz = 0.0 - 0.145)
+    n_up = 4
+    tr = 0.16
+    rise_up = (wall_y - 0.04) / f32(n_up)
+    z_outer = front_z + 0.05 + f32(n_up - 1) * tr
+    up = stone_steps(n = n_up, tread = tr, rise = rise_up, w0 = 0.48, dw = 0.12, y0 = 0.02, z0 = z_outer, dz = 0.0 - tr)
+    step0 = parts.piece(size = vec3(0.34, 0.05, 0.18), pos = vec3(0.03, 0.028, z_outer + 0.14), grp = "stone")
+    out = merge(front, left, right, back, void, floor, arch, jl, jr, sill, down, up, step0)
+}
+
+def bush_ball(r: f32) -> (out: geo<mesh>) {
+    """Круглый куст: икосфера, низ около y=0."""
+    out = mark(transform(ico_sphere(subdiv = 1, radius = r), translate = vec3(0, r * 0.72, 0)), "grass", where = true, domain = faces)
+}
+
+def make_grass(r_out: f32, r_in: f32, h: f32, z_cut: f32, rng: rng) -> (out: geo<mesh>) {
+    """Холм и лужайка: нижний диск, дёрн сверху с вырезом под спуск, кочки по кромке."""
+    pad_lo = common.wood_disc(y = 0.0 - 0.02, r = r_out + 0.42, h = 0.05, grp = "grass")
+    disc_hi = common.wood_disc(y = h - 0.02, r = r_in + 0.02, h = 0.05, grp = "grass")
+    hw = 0.78
+    g_l = clip(disc_hi, origin = vec3(0.0 - hw, 0, 0), normal = vec3(-1, 0, 0))
+    g_r = clip(disc_hi, origin = vec3(hw, 0, 0), normal = vec3(1, 0, 0))
+    mid0 = clip(disc_hi, origin = vec3(0.0 - hw, 0, 0), normal = vec3(1, 0, 0))
+    mid = clip(mid0, origin = vec3(hw, 0, 0), normal = vec3(-1, 0, 0))
+    g_b = clip(mid, origin = vec3(0, 0, z_cut), normal = vec3(0, 0, -1))
+    pad_hi = merge(g_l, g_r, g_b)
+    n_lo = 12
+    pts_lo = plan.arc_mid_anchors(cx = 0, cz = 0, r = r_out + 0.18, y = 0.01, a0 = 125.0, a1 = 415.0, n = n_lo)
+    sc_lo = random(lo = 0.78, hi = 1.40, rng = split_rng(rng, key = "blo"))
+    lo = realize(instance_on_points(set(pts_lo, "scale", sc_lo), source = bush_ball(r = 0.14)))
+    n_lo2 = 8
+    pts_lo2 = plan.arc_mid_anchors(cx = 0, cz = 0, r = r_out + 0.34, y = 0.01, a0 = 140.0, a1 = 400.0, n = n_lo2)
+    sc_lo2 = random(lo = 0.65, hi = 1.15, rng = split_rng(rng, key = "bl2"))
+    lo2 = realize(instance_on_points(set(pts_lo2, "scale", sc_lo2), source = bush_ball(r = 0.11)))
+    n_hi = 12
+    pts_hi0 = plan.arc_mid_anchors(cx = 0, cz = 0, r = (r_in + 0.42) * 0.55, y = h, a0 = 155.0, a1 = 385.0, n = n_hi)
+    pts_hi = delete(pts_hi0, where = (abs(dot(@P, (1, 0, 0))) < 0.84) & (dot(@P, (0, 0, 1)) > z_cut - 0.15))
+    sc_hi = random(lo = 0.70, hi = 1.20, rng = split_rng(rng, key = "bhi"))
+    hi = realize(instance_on_points(set(pts_hi, "scale", sc_hi), source = bush_ball(r = 0.10)))
+    tu0 = transform(greenery.grass_clump(at = vec3(0, 0, 0), rng = split_rng(rng, key = "g0")), scale = vec3(0.50, 0.30, 0.50))
+    n_t = 9
+    pts_t = plan.arc_mid_anchors(cx = 0, cz = 0, r = r_out + 0.30, y = 0.0, a0 = 130.0, a1 = 410.0, n = n_t)
+    tufts = realize(instance_on_points(pts_t, source = tu0))
+    out = merge(pad_lo, pad_hi, lo, lo2, hi, tufts)
+}
+
+def paint(raw: geo<mesh>, rng: rng) -> (out: geo<mesh>) {
+    """Окрас погреба: камень, раствор, дерево, черепица, трава, колодец, железо."""
+    stone_col = vec3(0.86, 0.80, 0.70) * @tint
+    mortar_col = vec3(0.72, 0.73, 0.68)
+    wood_col = vec3(0.56, 0.32, 0.13) * @tint
+    iron_col = vec3(0.22, 0.23, 0.25)
+    roof_col = vec3(0.84, 0.38, 0.16) * @tint
+    grass_col = vec3(0.40, 0.62, 0.16) * @tint
+    interior_col = vec3(0.11, 0.10, 0.09)
+    c0 = ingroup("stone") ? stone_col : vec3(1.0, 0.0, 1.0)
+    c1 = ingroup("mortar") ? mortar_col : c0
+    c2 = ingroup("cut") ? stone_col : c1
+    c3 = ingroup("brick") ? stone_col : c2
+    c4 = ingroup("wood") ? wood_col : c3
+    c5 = ingroup("iron") ? iron_col : c4
+    c6 = ingroup("roof") ? roof_col : c5
+    c7 = ingroup("grass") ? grass_col : c6
+    c8 = ingroup("interior") ? interior_col : c7
+    edge_mul = ingroup("edge") ? vec3(1.14, 1.10, 1.05) : vec3(1.0)
+    out = bake_ao(set(raw, "Cd", c8 * edge_mul, domain = faces), rays = 8, distance = 0.40, rng = rng, domain = points)
+}
+
+def assemble(r: f32, h: f32, rng: rng) -> (out: geo<mesh>) {
+    """Погреб: кольцо, портал, каркас, крыша, двери, трава."""
+    door_w = 0.88
+    door_h = 0.84
+    cellar_w = 1.28
+    cellar_d = 1.82
+    cellar_h = 0.92
+    front_z = r - 0.18
+    pitch = 36.0
+    beam_y = h + cellar_h - 0.02
+    ridge_y = beam_y + (cellar_w * 0.5 + 0.06) * tan(radians(pitch))
+    roof_w = 1.42
+    roof_d = 2.28
+    drop = 0.78
+    z_mid = front_z - 1.16
+    z_cut = front_z - cellar_d + 0.04
+    ring = make_ring(r_out = r, h = h, rng = split_rng(rng, key = "ring"))
+    entrance = make_entrance(w = cellar_w, d = cellar_d, wall_y = h, h = cellar_h, door_w = door_w, door_h = door_h, front_z = front_z, drop = drop, rng = split_rng(rng, key = "ent"))
+    frame = make_frame(w = roof_w, d = cellar_d, wall_y = h, beam_y = beam_y, ridge_y = ridge_y, pitch = pitch, front_z = front_z, roof_d = roof_d, drop = drop)
+    roof = make_roof(w = roof_w, d = roof_d, ridge_y = ridge_y, pitch = pitch, z_mid = z_mid, clip_r = r - 0.24, drop = drop, pivot_z = front_z, rng = split_rng(rng, key = "roof"))
+    doors = make_doors(w = door_w, h = door_h - 0.06, y0 = h, z = front_z + 0.06, open_deg = 86.0, rng = split_rng(rng, key = "door"))
+    grass = make_grass(r_out = r, r_in = r - 0.26, h = h, z_cut = z_cut, rng = split_rng(rng, key = "gr"))
+    out = paint(merge(ring, entrance, frame, roof, doors, grass), rng = rng)
+}
+
+root_rng = rng_from_seed(seed)
+ring = make_ring(r_out = ring_r, h = wall_h, rng = split_rng(root_rng, key = "ring"))
+entrance = make_entrance(w = 1.28, d = 1.82, wall_y = wall_h, h = 0.92, door_w = 0.88, door_h = 0.84, front_z = ring_r - 0.18, drop = 0.78, rng = split_rng(root_rng, key = "ent"))
+frame = make_frame(w = 1.42, d = 1.82, wall_y = wall_h, beam_y = wall_h + 0.90, ridge_y = wall_h + 0.90 + 0.70 * tan(radians(36.0)), pitch = 36.0, front_z = ring_r - 0.18, roof_d = 2.28, drop = 0.78)
+roof = make_roof(w = 1.42, d = 2.28, ridge_y = wall_h + 0.90 + 0.70 * tan(radians(36.0)), pitch = 36.0, z_mid = ring_r - 0.18 - 1.16, clip_r = ring_r - 0.24, drop = 0.78, pivot_z = ring_r - 0.18, rng = split_rng(root_rng, key = "roof"))
+doors = make_doors(w = 0.88, h = 0.78, y0 = wall_h, z = ring_r - 0.12, open_deg = 86.0, rng = split_rng(root_rng, key = "door"))
+grass = make_grass(r_out = ring_r, r_in = ring_r - 0.26, h = wall_h, z_cut = ring_r - 0.18 - 1.82 + 0.04, rng = split_rng(root_rng, key = "gr"))
+scene = paint(merge(ring, entrance, frame, roof, doors, grass), rng = split_rng(root_rng, key = "ao"))
+output scene

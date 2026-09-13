@@ -1,0 +1,9 @@
+[
+  {"name": "iso", "node": "scene", "orbit": [32, 14], "zoom": 1.06, "chrome": "off", "wire": false},
+  {"name": "front", "node": "scene", "orbit": [0, 8], "zoom": 1.08, "ortho": "front", "chrome": "off"},
+  {"name": "side", "node": "scene", "orbit": [90, 8], "zoom": 1.08, "ortho": "side", "chrome": "off"},
+  {"name": "spray", "node": "spray", "orbit": [0, 8], "zoom": 1.08, "chrome": "off", "wire": false},
+  {"name": "spray_side", "node": "spray", "orbit": [90, 4], "zoom": 1.10, "chrome": "off", "wire": false},
+  {"name": "leaf", "node": "leaf", "orbit": [0, 8], "zoom": 1.18, "chrome": "off", "wire": false},
+  {"name": "trunk", "node": "trunk", "orbit": [32, 10], "zoom": 1.08, "chrome": "off", "wire": false}
+]

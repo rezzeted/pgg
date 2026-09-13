@@ -1,0 +1,40 @@
+param nave_w: f32 = 6.80
+param nave_len: f32 = 17.40
+param tower_w: f32 = 3.80
+param aisle_w: f32 = 3.15
+param plinth_h: f32 = 0.58
+param aisle_h: f32 = 4.40
+param nave_h: f32 = 8.55
+param aisle_rise: f32 = 1.35
+param nave_rise: f32 = 3.15
+param tower_low: f32 = 8.35
+param belfry_h: f32 = 4.20
+param cornice_h: f32 = 0.40
+param spire_h: f32 = 11.60
+param seed: int = 11
+
+# Католический храм AmberEstate по референсу church/reference.jpg:
+# двухбашенный западный фасад, неф с клеристорием, боковые приделы,
+# стрельчатые окна, роза, портал. Штукатурка + терракотовый кирпич.
+# Прозрачности нет — проёмы тёмные ниши.
+#
+# +Z запад (фасад к камере), +X юг. Ракурс референса: orbit ≈ [45, 28].
+# Узлы: body_all, towers_all, openings_all, roofs_all, church.
+# import lib.* резолвится в resources/pgg.
+
+import church.body as body
+import church.towers as towers
+import church.openings as openings
+import church.roof as roof
+import church.assemble as assemble
+
+root_rng = rng_from_seed(seed)
+
+body_all = body.body_all(nave_w = nave_w, nave_len = nave_len, tower_w = tower_w, aisle_w = aisle_w, nave_h = nave_h, aisle_h = aisle_h, nave_rise = nave_rise, aisle_rise = aisle_rise, plinth_h = plinth_h)
+towers_all = towers.pair(nave_w = nave_w, nave_len = nave_len, tower_w = tower_w, low_h = tower_low, belfry_h = belfry_h, cornice_h = cornice_h, spire_h = spire_h, rng = split_rng(root_rng, key = "tw"))
+openings_all = openings.all_openings(nave_w = nave_w, nave_len = nave_len, tower_w = tower_w, aisle_w = aisle_w, nave_h = nave_h, aisle_h = aisle_h, plinth_h = plinth_h, low_h = tower_low, belfry_h = belfry_h, rng = split_rng(root_rng, key = "open"))
+roofs_all = roof.roofs(nave_w = nave_w, nave_len = nave_len, tower_w = tower_w, aisle_w = aisle_w, nave_h = nave_h, aisle_h = aisle_h, nave_rise = nave_rise, aisle_rise = aisle_rise, rng = split_rng(root_rng, key = "rf"))
+
+church = assemble.assemble(body = body_all, towers = towers_all, openings = openings_all, roofs = roofs_all, rng = split_rng(root_rng, key = "asm"))
+
+output church

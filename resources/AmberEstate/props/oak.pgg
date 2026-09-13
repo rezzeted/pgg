@@ -1,0 +1,201 @@
+param seed: int = 4
+
+import lib.ironwork
+import common
+
+# Стилизованный дуб по референсу props/oak.jpg.
+# Крупные лопастные листья (не россыпь), ствол со спиральной корой, корни-пальцы.
+# Верх +Y. Именованные узлы: leaf, spray, trunk, canopy, scene.
+
+def bark_ring() -> (out: geo<points>) {
+    """Профиль коры: 28-угольник, шесть неглубоких борозд (глина, не ткань)."""
+    ang = atan2(dot(@P, (0, 1, 0)), dot(@P, (1, 0, 0)))
+    r = 1.0 + 0.11 * sin(6.0 * ang)
+    out = set_position(circle(sides = 28, radius = 1.0), pos = vec3(r * cos(ang), r * sin(ang), 0))
+}
+
+def oak_leaf(len: f32, w: f32, thick: f32, drop: f32) -> (out: geo<mesh>) {
+    """Дубовый лист-дуга: жилка в XY, +X вправо, спуск вниз. drop 0 — верхняя арка, 1 — свис."""
+    expect len > 0.15: "oak_leaf: короткий"
+    expect w > 0.08: "oak_leaf: узкий"
+    peak_y = len * mix(0.58, 0.22, drop)
+    tip_y = len * mix(0.22, -0.72, drop)
+    tip_x = len * mix(1.05, 0.48, drop)
+    path0 = bezier_points(p0 = vec3(0, 0, 0), p1 = vec3(len * mix(0.22, 0.08, drop), peak_y * 0.92, thick * 0.08), p2 = vec3(tip_x * 0.62, peak_y * mix(1.02, 0.35, drop), thick * 0.18), p3 = vec3(tip_x, tip_y, thick * 0.06), count = 18)
+    tz = mix(thick * 0.32, thick, sin(@t * 3.14159265))
+    b0 = 0.72 * pow(max(0.0, 1.0 - pow((@t - 0.28) / 0.18, 2.0)), 0.55)
+    b1 = 1.00 * pow(max(0.0, 1.0 - pow((@t - 0.54) / 0.17, 2.0)), 0.55)
+    b2 = 0.82 * pow(max(0.0, 1.0 - pow((@t - 0.80) / 0.16, 2.0)), 0.60)
+    lobe = max(max(b0, b1), b2)
+    base = 0.24 * pow(sin(@t * 3.14159265), 0.42)
+    hw = w * max(0.030, base + 0.70 * lobe)
+    path = set(path0, "profile_scale", vec2(tz, hw), domain = points)
+    body = sweep(path, profile = circle(sides = 10, radius = 1.0))
+    stem = ironwork.spool(p0 = vec3(-0.02, -0.01, 0), p1 = vec3(0.03, 0.02, 0), r0 = 0.009, r1 = 0.013, sides = 6)
+    petiole = mark(unmark(stem, "iron"), "leaf", where = true, domain = faces)
+    sheet = mark(compute_normals(body, mode = smooth), "leaf", where = true, domain = faces)
+    out = merge(sheet, petiole)
+}
+
+def spray_layer(u: f32, y: f32, col: vec3, rng: rng, open: f32) -> (out: geo<mesh>) {
+    """Ярус: левая и правая дуги (+ небольшой разворот для толщины)."""
+    drop = clamp(mix(0.78, 0.04, u) + 0.16 * open, 0.0, 1.0)
+    blade = oak_leaf(len = mix(0.62, 0.82, u), w = mix(0.16, 0.22, u), thick = 0.024, drop = drop)
+    j_yaw = random(lo = -6.0, hi = 6.0, rng = split_rng(rng, key = "yaw"))
+    yaw = (@index < 2) ? (f32(@index) * 180.0 + j_yaw) : (18.0 + f32(@index - 2) * 180.0 + j_yaw)
+    pts0 = mesh_line(count = 4, length = 0.0)
+    pts1 = set(pts0, "orient", orient_from_euler(vec3(0, yaw, 0)))
+    pts2 = set(pts1, "scale", random(lo = 0.92, hi = 1.08, rng = split_rng(rng, key = "scale")))
+    pts = set(pts2, "tint", col, domain = points)
+    out = transform(realize(instance_on_points(pts, source = blade)), translate = vec3(0, y, 0))
+}
+
+def leaf_spray(n: int, col: vec3, rng: rng, open: f32) -> (out: geo<mesh>) {
+    """Пучок слоями: ярусы друг над другом, дуги вниз как 2д-фонтан."""
+    expect n >= 4: "leaf_spray: мало слоёв"
+    row = mesh_line(count = n, length = 0.22, dir = vec3(0, 1, 0))
+    layers = foreach a in row {
+        u = f32(@piece_index) / f32(n - 1)
+        y = mix(0.0, 0.22, u)
+        a = spray_layer(u = u, y = y, col = col, rng = split_rng(rng, key = @piece_index), open = open)
+    }
+    out = layers
+}
+
+def make_trunk(h: f32, r0: f32, r1: f32) -> (out: geo<mesh>) {
+    """Ствол: лёгкая S-кривая, раструб у земли, спираль борозд ~245°."""
+    path0 = bezier_points(p0 = vec3(0, 0, 0), p1 = vec3(0.08, h * 0.30, 0.04), p2 = vec3(-0.05, h * 0.66, -0.03), p3 = vec3(0.03, h, 0.02), count = 16)
+    flare = 1.0 + 0.85 * pow(1.0 - @t, 5.0)
+    k = mix(r0, r1, @t) * flare
+    path1 = set(path0, "profile_scale", vec2(k, k), domain = points)
+    path = set(path1, "twist", @t * 245.0)
+    body = sweep(path, profile = bark_ring())
+    out = mark(compute_normals(body, mode = smooth), "bark", where = true, domain = faces)
+}
+
+def root_toe(len: f32, r0: f32, r1: f32) -> (out: geo<mesh>) {
+    """Корень-палец: крепится к поверхности ствола и уходит к земле."""
+    path0 = bezier_points(p0 = vec3(0, 0.26, 0.18), p1 = vec3(0, 0.14, len * 0.40), p2 = vec3(0, 0.045, len * 0.75), p3 = vec3(0, 0.016, len), count = 7)
+    k = mix(r0, r1, @t)
+    path = set(path0, "profile_scale", vec2(k, k * 0.36), domain = points)
+    body = sweep(path, profile = circle(sides = 10, radius = 1.0))
+    out = mark(compute_normals(body, mode = smooth), "bark", where = true, domain = faces)
+}
+
+def make_roots(rng: rng) -> (out: geo<mesh>) {
+    """Шесть пальцев вокруг ствола, слегка разной длины."""
+    ring = transform(circle(sides = 6, radius = 0.08), rotate = vec3(90, 8, 0), translate = vec3(0, 0.04, 0))
+    toes = foreach a in ring {
+        yaw = degrees(atan2(dot(value(@P, on = a), (1, 0, 0)), dot(value(@P, on = a), (0, 0, 1))))
+        r = split_rng(rng, key = @piece_index)
+        u = value(random(lo = 0.0, hi = 1.0, rng = r), on = a)
+        toe = root_toe(len = 0.58 + 0.12 * u, r0 = 0.20, r1 = 0.048)
+        a = transform(toe, rotate = vec3(0, yaw, 0))
+    }
+    out = clip(toes, origin = vec3(0, 0, 0), normal = vec3(0, 1, 0))
+}
+
+def make_branch(len: f32, r0: f32, r1: f32, at: vec3, euler: vec3) -> (out: geo<mesh>) {
+    """Сук в крону: тот же кольцевой профиль, слабая спираль."""
+    path0 = bezier_points(p0 = vec3(0, 0, 0), p1 = vec3(0.02, len * 0.38, 0.05), p2 = vec3(0.08, len * 0.72, 0.10), p3 = vec3(0.12, len, 0.06), count = 8)
+    k = mix(r0, r1, @t)
+    path1 = set(path0, "profile_scale", vec2(k, k), domain = points)
+    path = set(path1, "twist", @t * 80.0)
+    body = sweep(path, profile = bark_ring())
+    placed = transform(transform(body, rotate = euler), translate = at)
+    out = mark(compute_normals(placed, mode = smooth), "bark", where = true, domain = faces)
+}
+
+def moss_tuft(at: vec3, s: f32) -> (out: geo<mesh>) {
+    """Приплюснутый комок мха."""
+    out = mark(transform(ico_sphere(subdiv = 1, radius = s), scale = vec3(1.5, 0.42, 1.25), translate = at), "moss", where = true, domain = faces)
+}
+
+def make_acorn() -> (out: geo<mesh>) {
+    """Жёлудь: орех-эллипсоид и шапочка-spool, нос вниз."""
+    nut = mark(transform(ico_sphere(subdiv = 1, radius = 0.038), scale = vec3(0.70, 1.18, 0.70), translate = vec3(0, -0.042, 0)), "acorn", where = true, domain = faces)
+    cap0 = ironwork.spool(p0 = vec3(0, -0.012, 0), p1 = vec3(0, 0.022, 0), r0 = 0.034, r1 = 0.016, sides = 10)
+    cap = mark(unmark(cap0, "iron"), "cap", where = true, domain = faces)
+    stem = mark(unmark(ironwork.spool(p0 = vec3(0, 0.018, 0), p1 = vec3(0, 0.055, 0), r0 = 0.007, r1 = 0.006, sides = 6), "iron"), "cap", where = true, domain = faces)
+    out = merge(nut, cap, stem)
+}
+
+def bunch_sites(cy: f32, rx: f32, ry: f32, rz: f32) -> (out: geo<points>) {
+    """Якоря пучков: макушка, два пояса, нижнее кольцо. Не россыпь по сфере."""
+    top = transform(mesh_line(count = 1, length = 0.0), translate = vec3(0, cy + ry * 0.74, 0))
+    hi = transform(circle(sides = 5, radius = rx * 0.46), rotate = vec3(90, 16, 0), translate = vec3(0, cy + ry * 0.34, 0))
+    mid = transform(circle(sides = 6, radius = rx * 0.84), rotate = vec3(90, 38, 0), translate = vec3(0, cy + 0.02, 0))
+    lo = transform(circle(sides = 5, radius = rx * 0.72), rotate = vec3(90, 58, 0), translate = vec3(0, cy - ry * 0.42, 0))
+    inner = transform(circle(sides = 3, radius = rx * 0.22), rotate = vec3(90, 8, 0), translate = vec3(0, cy + ry * 0.08, 0))
+    out = merge(top, hi, mid, lo, inner)
+}
+
+def make_canopy(cy: f32, rx: f32, ry: f32, rz: f32, rng: rng) -> (out: geo<mesh>) {
+    """Крона: зонтики из дуг слоями, спуск вниз."""
+    sites = bunch_sites(cy = cy, rx = rx, ry = ry, rz = rz)
+    sprays = foreach a in sites {
+        r = split_rng(rng, key = @piece_index)
+        pick = value(random_int(n = 5, rng = split_rng(r, key = "col")), on = a)
+        col = pick == 0 ? vec3(0.16, 0.38, 0.14) : (pick == 1 ? vec3(0.34, 0.56, 0.18) : (pick == 2 ? vec3(0.48, 0.66, 0.26) : (pick == 3 ? vec3(0.96, 0.42, 0.08) : vec3(0.98, 0.58, 0.12))))
+        p = value(@P, on = a)
+        dx = dot(p, (1, 0, 0))
+        dy = dot(p, (0, 1, 0)) - cy
+        dz = dot(p, (0, 0, 1))
+        horiz = sqrt(dx * dx + dz * dz)
+        t = clamp(horiz / max(rx * 0.95, 0.05), 0.0, 1.0)
+        below = max(0.0, 0.0 - dy / max(ry, 0.05))
+        open = 0.18 + 0.28 * t + 0.40 * below
+        lean = 6.0 + 14.0 * t + 22.0 * below
+        yaw = degrees(atan2(dx, dz)) + value(random(lo = -8.0, hi = 8.0, rng = split_rng(r, key = "yaw")), on = a)
+        pull = max(sqrt(dx * dx + dy * dy + dz * dz), 0.05)
+        jx = value(random(lo = -0.06, hi = 0.06, rng = split_rng(r, key = "jx")), on = a)
+        jz = value(random(lo = -0.06, hi = 0.06, rng = split_rng(r, key = "jz")), on = a)
+        at = p - vec3(dx, dy, dz) * (0.08 / pull) + vec3(jx, 0, jz)
+        spray = leaf_spray(n = 5, col = col, rng = split_rng(r, key = "spray"), open = open)
+        a = transform(transform(spray, rotate = vec3(lean, yaw, 0)), translate = at)
+    }
+    out = sprays
+}
+
+def make_hang(cy: f32, rng: rng) -> (out: geo<mesh>) {
+    """Жёлуди на нижнем ободе; нависание даёт нижнее кольцо пучков."""
+    ar0 = transform(circle(sides = 3, radius = 0.92), rotate = vec3(90, 40, 0), translate = vec3(0, cy - 0.82, 0))
+    ap = set(ar0, "orient", orient_from_euler(random_vec(lo = vec3(8, 0, -12), hi = vec3(28, 360, 12), rng = split_rng(rng, key = "aori"))))
+    out = realize(instance_on_points(ap, source = make_acorn()))
+}
+
+def paint(raw: geo<mesh>, rng: rng) -> (out: geo<mesh>) {
+    """Окрас: кора глиняно-рыжая, лист из @tint, мох, жёлудь."""
+    bark_col = vec3(0.30, 0.14, 0.06)
+    moss_col = vec3(0.30, 0.46, 0.18)
+    acorn_col = vec3(0.58, 0.34, 0.12)
+    cap_col = vec3(0.38, 0.22, 0.10)
+    c0 = ingroup("bark") ? bark_col : vec3(1.0, 0.0, 1.0)
+    c1 = ingroup("leaf") ? @tint : c0
+    c2 = ingroup("moss") ? moss_col : c1
+    c3 = ingroup("acorn") ? acorn_col : c2
+    c4 = ingroup("cap") ? cap_col : c3
+    out = common.ao(set(raw, "Cd", c4, domain = faces), rng = rng)
+}
+
+def assemble(rng: rng) -> (out: geo<mesh>) {
+    """Дуб: ствол, корни, сучья, крона, мох."""
+    trunk = make_trunk(h = 1.92, r0 = 0.32, r1 = 0.11)
+    roots = make_roots(rng = split_rng(rng, key = "roots"))
+    b0 = make_branch(len = 1.35, r0 = 0.12, r1 = 0.045, at = vec3(0.05, 1.42, 0.02), euler = vec3(-32, 38, 6))
+    b1 = make_branch(len = 1.28, r0 = 0.11, r1 = 0.042, at = vec3(-0.04, 1.48, -0.03), euler = vec3(-28, 205, -8))
+    b2 = make_branch(len = 1.05, r0 = 0.09, r1 = 0.038, at = vec3(0.02, 1.58, 0.01), euler = vec3(-36, 300, 4))
+    b3 = make_branch(len = 0.85, r0 = 0.08, r1 = 0.032, at = vec3(0.01, 1.38, 0.04), euler = vec3(-18, 95, -6))
+    canopy = make_canopy(cy = 2.62, rx = 1.30, ry = 1.16, rz = 1.22, rng = split_rng(rng, key = "canopy"))
+    hang = make_hang(cy = 2.62, rng = split_rng(rng, key = "hang"))
+    moss = merge(moss_tuft(at = vec3(0.22, 0.07, 0.28), s = 0.072), moss_tuft(at = vec3(-0.26, 0.06, 0.14), s = 0.060), moss_tuft(at = vec3(0.10, 0.05, -0.24), s = 0.048), moss_tuft(at = vec3(-0.14, 0.08, 0.32), s = 0.055))
+    out = paint(merge(trunk, roots, b0, b1, b2, b3, canopy, hang, moss), rng = split_rng(rng, key = "ao"))
+}
+
+root_rng = rng_from_seed(seed)
+leaf = oak_leaf(len = 0.78, w = 0.16, thick = 0.026, drop = 0.35)
+spray = leaf_spray(n = 5, col = vec3(0.34, 0.56, 0.18), rng = split_rng(root_rng, key = "spray"), open = 0.22)
+trunk = merge(make_trunk(h = 1.92, r0 = 0.32, r1 = 0.11), make_roots(rng = split_rng(root_rng, key = "roots")))
+canopy = make_canopy(cy = 2.62, rx = 1.30, ry = 1.16, rz = 1.22, rng = split_rng(root_rng, key = "canopy"))
+scene = assemble(rng = root_rng)
+output scene
