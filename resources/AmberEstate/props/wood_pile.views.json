@@ -1,5 +1,9 @@
 [
   {"name": "iso", "node": "scene", "orbit": [40, 28], "zoom": 1.08, "chrome": "off", "wire": false},
   {"name": "front", "node": "scene", "orbit": [0, 8], "zoom": 1.1, "ortho": "front", "chrome": "off"},
-  {"name": "side", "node": "scene", "orbit": [90, 8], "zoom": 1.1, "ortho": "side", "chrome": "off"}
+  {"name": "side", "node": "scene", "orbit": [90, 8], "zoom": 1.1, "ortho": "side", "chrome": "off"},
+  {"name": "log", "node": "log", "orbit": [40, 24], "zoom": 1.15, "chrome": "off", "wire": false},
+  {"name": "log_end", "node": "log", "orbit": [90, 0], "zoom": 0.62, "chrome": "off", "wire": false},
+  {"name": "log_side", "node": "log", "orbit": [0, 8], "zoom": 1.2, "ortho": "front", "chrome": "off"},
+  {"name": "variants", "node": "variants", "orbit": [40, 22], "zoom": 1.05, "chrome": "off", "wire": false}
 ]
