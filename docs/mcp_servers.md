@@ -4,8 +4,8 @@
 
 | Сервер | Назначение | Подробности |
 |---|---|---|
-| `pgg` | агентский цикл отладки PGG-графов (`pgg_*` поверх TCP RPC :9878) | `docs/pgg/viewer_rpc.md` |
+| `pgg` | агентский цикл отладки PGG-графов (`pgg_*` поверх TCP RPC :9878) | `docs/pgg/serve_rpc.md` |
 
-Один сервер на все ОС: Cursor стартует `python3 -m tools.pgg_mcp.launch` (venv, затем stdio MCP). На Windows, если в PATH нет `python3`, в той же записи замените `command` на `python` — вторую запись заводить не нужно. Дальше `PggSession` сам поднимает `PggViewer --serve` или отвечает `need_build`.
+Один сервер на все ОС: Cursor стартует `python3 -m tools.pgg_mcp.launch` (venv, затем stdio MCP). На Windows, если в PATH нет `python3`, в той же записи замените `command` на `python` — вторую запись заводить не нужно. Дальше `PggSession` сам поднимает `PggServe` или отвечает `need_build`. После смены контракта (PggViewer `--serve` → `PggServe`) в уже открытом Cursor нажмите Reload у сервера `pgg`: stdio-процесс кэширует старый Python.
 
-Обёртки `tools/run_pgg_mcp_server.sh` / `.ps1` — только для запуска из терминала. Env: `PGG_REPO_ROOT`, `PGG_VIEWER`.
+Обёртки `tools/run_pgg_mcp_server.sh` / `.ps1` — только для запуска из терминала. Env: `PGG_REPO_ROOT`, `PGG_SERVE` (опционально путь к бинарю).

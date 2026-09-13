@@ -46,7 +46,7 @@ macOS-флоу — Xcode generator + CMake Presets, та же `_intermediate_64`
 - Конфигурация: `./build_mac.sh` (обёртка над `cmake --preset macos`). Первая конфигурация собирает vcpkg-зависимости.
 - Сборка из CLI: `cmake --build --preset macos-debug --target PggViewer`.
 - Бинарники: `_intermediate_64/src/apps/<App>/Debug/<App>`.
-- Smoke-проверки: `PggViewer --smoke`; юнит-тесты — `_intermediate_64/src/tests/Debug/pgg_tests`.
+- Smoke-проверки: `PggViewer --smoke`; `PggServe --smoke`; юнит-тесты — `_intermediate_64/src/tests/Debug/pgg_tests`.
 - Платформенные особенности порта — `docs/BUILD.md`.
 
 ### vcpkg и зависимости
@@ -64,10 +64,10 @@ macOS-флоу — Xcode generator + CMake Presets, та же `_intermediate_64`
 Linux-флоу — Ninja (single-config) + CMake Presets, триплет `x64-linux`, бинарная директория `_int_linux` (**не** `_intermediate_64` — та под win/mac-кэш).
 
 - Конфигурация: `./build_linux.sh` (обёртка над `cmake --preset linux`). Первая конфигурация собирает vcpkg-зависимости.
-- Сборка из CLI: `cmake --build --preset linux-debug --target PggViewer`.
+- Сборка из CLI: `cmake --build --preset linux-debug --target PggViewer` и `--target PggServe`.
 - Релизная сборка: пресет `linux-release` (`CMAKE_BUILD_TYPE=Release`, отдельная бинарная директория `_int_linux_release`, наследует `linux`): конфигурация `cmake --preset linux-release`, сборка `cmake --build --preset linux-release --target PggViewer`.
 - Бинарники: `_int_linux/src/apps/<App>/Debug/<App>` (app-макросы кладут exe в подпапку `$<CONFIG>`).
-- Smoke-проверки и юнит-тесты: `PggViewer --smoke`, `_int_linux/src/tests/pgg_tests` (ctest: `ctest --test-dir _int_linux --output-on-failure`).
+- Smoke-проверки и юнит-тесты: `PggViewer --smoke`, `PggServe --smoke`, `_int_linux/src/tests/pgg_tests` (ctest: `ctest --test-dir _int_linux --output-on-failure`).
 - Системные пакеты и особенности порта — `docs/BUILD.md`.
 
 ## Тестирование
@@ -79,14 +79,14 @@ Linux-флоу — Ninja (single-config) + CMake Presets, триплет `x64-li
 ## PGG
 
 - Спецификация — `docs/pgg/geometry_generation_language.md` (ТЗ: текст-first нодовый граф для LLM-агентов + нодовая проекция; этапы и критерии — §15, история — §19).
-- Заметки по реализации (этапы E0–E8 по файлам, грабли ANTLR/ядра, PggTool/PggViewer CLI, корпус и сьюты) — `docs/pgg/implementation.md`. **Правя `src/libs/pgg`, `src/apps/PggTool`, `src/apps/PggViewer` или корпус, обновляй его, а не этот файл.**
-- Коротко: `src/libs/pgg` (ANTLR4 4.13.2; сгенерированный парсер коммитится в `parser_gen/`, после правок `grammar/Pgg.g4` — `tools/pgg/regen_parser.sh`), ядро исполнения `src/libs/pgg/src/eval/`, тесты `src/tests/pgg/*_test.cpp` + корпус `src/tests/pgg/corpus/` (арт-примеры — `resources/pgg/`), CLI `PggTool` (`check`/`fmt`/`ast`/`run`/`docs`), вьювер `PggViewer` (нодовая проекция + превью, `--smoke`).
+- Заметки по реализации (этапы E0–E8 по файлам, грабли ANTLR/ядра, PggTool/PggViewer/PggServe CLI, корпус и сьюты) — `docs/pgg/implementation.md`. **Правя `src/libs/pgg`, `src/apps/PggTool`, `src/apps/PggViewer`, `src/apps/PggServe` или корпус, обновляй его, а не этот файл.**
+- Коротко: `src/libs/pgg` (ANTLR4 4.13.2; сгенерированный парсер коммитится в `parser_gen/`, после правок `grammar/Pgg.g4` — `tools/pgg/regen_parser.sh`), ядро исполнения `src/libs/pgg/src/eval/`, тесты `src/tests/pgg/*_test.cpp` + корпус `src/tests/pgg/corpus/` (арт-примеры — `resources/pgg/`), CLI `PggTool` (`check`/`fmt`/`ast`/`run`/`docs`), вьювер `PggViewer` (нодовая проекция + превью, `--smoke`, без TCP), демон `PggServe` (слоты по `.pgg`, RPC `:9878`).
 - Перед grep по спеке и ядру: `pgg_docs("<name>")` / `PggTool docs builtins` / `docs/pgg/cheatsheet.md`.
 - Арт-итерации: правка общего def → рендер **всех** потребителей (grep имени в `resources/pgg`); сравнение «как у дома» — один кадр, где обе детали рядом; числа (`pgg_measure` / `bbox`) до картинки; новые грабли — сразу в cheatsheet §«Грабли»; виды — в `<stem>.views.json`, не в чат; коммит-единица — один визуальный эффект. С нуля по референсу: масса (`pgg_reference`) раньше деталей; возможности рендерера — до проектирования (прозрачности нет); форма раньше палитры/эмиссии; «вижу не то» — сначала `render_state` / явные args, потом модель.
 
 ## MCP
 
-PggViewer поднимает TCP RPC на `127.0.0.1:9878` (`--serve`; `src/apps/PggViewer/ViewerRpcServer.cpp`). MCP — один сервер `pgg` (`python3 -m tools.pgg_mcp.launch`, код `tools/pgg_mcp/`): сам поднимает вьюер или отвечает `need_build` с командами сборки. Контракт — `docs/pgg/viewer_rpc.md`. Env: `PGG_REPO_ROOT`, `PGG_VIEWER`.
+PggServe поднимает TCP RPC на `127.0.0.1:9878` (`src/apps/PggServe`). PggViewer без сети. MCP — один сервер `pgg` (`python3 -m tools.pgg_mcp.launch`, код `tools/pgg_mcp/`): сам поднимает `PggServe` или отвечает `need_build` с командами сборки. Слот = канонический путь `.pgg`; на `render`/`probe` передавать `file=`, если в этом ходе не было `load`. Контракт — `docs/pgg/serve_rpc.md`. Env: `PGG_REPO_ROOT`, `PGG_SERVE`.
 
 ## Где что искать
 
@@ -96,5 +96,5 @@ PggViewer поднимает TCP RPC на `127.0.0.1:9878` (`--serve`; `src/apps
 - `docs/gallery/` — геройские кадры арт-примеров для корневого README; пересъёмка — `tools/pgg/regen_gallery.sh`.
 - `docs/pgg/geometry_generation_language.md` — спецификация.
 - `docs/pgg/implementation.md` — заметки по реализации.
-- `docs/pgg/viewer_rpc.md` — RPC вьюера и MCP.
+- `docs/pgg/serve_rpc.md` — RPC PggServe и MCP.
 - `docs/mcp_servers.md` — MCP-серверы репозитория.

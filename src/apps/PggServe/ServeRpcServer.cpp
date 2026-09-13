@@ -1,6 +1,6 @@
 #include "pch.h"
 
-#include "ViewerRpcServer.h"
+#include "ServeRpcServer.h"
 
 #include <cstring>
 
@@ -42,7 +42,6 @@ bool setNonBlocking(uintptr_t fd) {
 #endif
 }
 
-// A peer that went away must fail the next send/recv, not kill the process.
 void setNoSigpipe(uintptr_t fd) {
 #if defined(SO_NOSIGPIPE)
     const int one = 1;
@@ -78,25 +77,36 @@ ptrdiff_t sockRecv(uintptr_t fd, char* data, size_t size) {
 
 }  // namespace
 
-ViewerRpcServer::ViewerRpcServer() = default;
+RpcException::RpcException(std::string kind, std::string message)
+    : std::runtime_error(kind + ": " + message), kind(std::move(kind)), message(std::move(message)) {}
 
-ViewerRpcServer::~ViewerRpcServer() { stop(); }
+ServeRpcServer::ServeRpcServer() = default;
 
-bool ViewerRpcServer::running() const { return m_running; }
+ServeRpcServer::~ServeRpcServer() { stop(); }
 
-bool ViewerRpcServer::start(const std::string& host, uint16_t port) {
+bool ServeRpcServer::running() const {
+    std::lock_guard<std::recursive_mutex> lock(m_mu);
+    return m_running;
+}
+
+uint16_t ServeRpcServer::listenPort() const {
+    std::lock_guard<std::recursive_mutex> lock(m_mu);
+    return m_port;
+}
+
+bool ServeRpcServer::start(const std::string& host, uint16_t port) {
     stop();
 #if defined(_WIN32)
     WSADATA wsa = {};
     if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
-        spdlog::error("ViewerRpcServer: WSAStartup failed");
+        spdlog::error("ServeRpcServer: WSAStartup failed");
         return false;
     }
     m_wsaUp = true;
 #endif
     const int fd = static_cast<int>(socket(AF_INET, SOCK_STREAM, 0));
     if (fd < 0) {
-        spdlog::error("ViewerRpcServer: socket() failed: {}", sockError());
+        spdlog::error("ServeRpcServer: socket() failed: {}", sockError());
         return false;
     }
     m_listenFd = static_cast<uintptr_t>(fd);
@@ -108,32 +118,41 @@ bool ViewerRpcServer::start(const std::string& host, uint16_t port) {
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port);
     if (inet_pton(AF_INET, host.c_str(), &addr.sin_addr) != 1) {
-        spdlog::error("ViewerRpcServer: bad listen host '{}'", host);
+        spdlog::error("ServeRpcServer: bad listen host '{}'", host);
         stop();
         return false;
     }
-    if (bind(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0 || listen(fd, 8) != 0) {
-        spdlog::error("ViewerRpcServer: cannot listen on {}:{} ({})", host, port, sockError());
+    if (bind(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0 || listen(fd, 32) != 0) {
+        spdlog::error("ServeRpcServer: cannot listen on {}:{} ({})", host, port, sockError());
         stop();
         return false;
     }
     if (!setNonBlocking(m_listenFd)) {
-        spdlog::error("ViewerRpcServer: cannot make the listen socket non-blocking");
+        spdlog::error("ServeRpcServer: cannot make the listen socket non-blocking");
         stop();
         return false;
     }
+    sockaddr_in bound = {};
+    SockLen boundLen = sizeof(bound);
+    if (getsockname(fd, reinterpret_cast<sockaddr*>(&bound), &boundLen) == 0)
+        m_port = ntohs(bound.sin_port);
+    else
+        m_port = port;
+    m_host = host;
     m_running = true;
-    spdlog::info("ViewerRpcServer: listening on {}:{}", host, port);
+    spdlog::info("ServeRpcServer: listening on {}:{}", host, m_port);
     return true;
 }
 
-void ViewerRpcServer::stop() {
+void ServeRpcServer::stop() {
+    std::lock_guard<std::recursive_mutex> lock(m_mu);
     for (auto& [id, client] : m_clients) closeSocket(client.fd);
     m_clients.clear();
     if (m_running || m_listenFd != kInvalidFd) {
         if (m_listenFd != kInvalidFd) closeSocket(m_listenFd);
         m_listenFd = kInvalidFd;
         m_running = false;
+        m_port = 0;
     }
 #if defined(_WIN32)
     if (m_wsaUp) {
@@ -143,37 +162,39 @@ void ViewerRpcServer::stop() {
 #endif
 }
 
-void ViewerRpcServer::on(const std::string& op, Handler handler) { m_handlers[op] = std::move(handler); }
-
-void ViewerRpcServer::fail(const std::string& kind, const std::string& message) {
-    throw RpcError{kind, message};
+void ServeRpcServer::on(const std::string& op, Handler handler) {
+    std::lock_guard<std::recursive_mutex> lock(m_mu);
+    m_handlers[op] = std::move(handler);
 }
 
-void ViewerRpcServer::enqueue(Client& client, const nlohmann::json& response) {
+void ServeRpcServer::fail(const std::string& kind, const std::string& message) {
+    throw RpcException(kind, message);
+}
+
+void ServeRpcServer::enqueue(Client& client, const nlohmann::json& response) {
     client.outBuf += response.dump();
     client.outBuf += '\n';
-    // Best-effort immediate flush; the remainder is flushed by poll().
     while (!client.outBuf.empty()) {
         const ptrdiff_t n = sockSend(client.fd, client.outBuf.data(), client.outBuf.size());
         if (n > 0) {
             client.outBuf.erase(0, static_cast<size_t>(n));
         } else if (n < 0 && !sockWouldBlock(sockError())) {
-            dropClient(client.id);
+            dropClientLocked(client.id);
             return;
         } else {
-            break;  // would block
+            break;
         }
     }
 }
 
-void ViewerRpcServer::dropClient(uint64_t id) {
+void ServeRpcServer::dropClientLocked(uint64_t id) {
     auto it = m_clients.find(id);
     if (it == m_clients.end()) return;
     closeSocket(it->second.fd);
     m_clients.erase(it);
 }
 
-void ViewerRpcServer::dispatch(Client& client, const std::string& line) {
+void ServeRpcServer::dispatch(Client& client, const std::string& line) {
     nlohmann::json req = nlohmann::json::parse(line, nullptr, false);
     if (req.is_discarded() || !req.is_object()) {
         enqueue(client, {{"ok", false},
@@ -191,30 +212,45 @@ void ViewerRpcServer::dispatch(Client& client, const std::string& line) {
     try {
         std::optional<nlohmann::json> data = it->second(client.id, args);
         if (data) enqueue(client, {{"ok", true}, {"data", *data}});
-        // nullopt = deferred reply (render phase 2 answers via reply()).
-    } catch (const RpcError& e) {
+    } catch (const RpcException& e) {
         enqueue(client, {{"ok", false}, {"error", {{"kind", e.kind}, {"message", e.message}}}});
     } catch (const std::exception& e) {
         enqueue(client, {{"ok", false}, {"error", {{"kind", "internal"}, {"message", e.what()}}}});
     }
 }
 
-void ViewerRpcServer::reply(uint64_t clientId, const nlohmann::json& data) {
+void ServeRpcServer::reply(uint64_t clientId, const nlohmann::json& data) {
+    std::lock_guard<std::recursive_mutex> lock(m_mu);
     auto it = m_clients.find(clientId);
     if (it == m_clients.end()) return;
     enqueue(it->second, {{"ok", true}, {"data", data}});
 }
 
-void ViewerRpcServer::replyError(uint64_t clientId, const std::string& kind, const std::string& message) {
+void ServeRpcServer::replyError(uint64_t clientId, const std::string& kind, const std::string& message) {
+    std::lock_guard<std::recursive_mutex> lock(m_mu);
     auto it = m_clients.find(clientId);
     if (it == m_clients.end()) return;
     enqueue(it->second, {{"ok", false}, {"error", {{"kind", kind}, {"message", message}}}});
 }
 
-void ViewerRpcServer::poll() {
+void ServeRpcServer::setClientFile(uint64_t clientId, std::string file) {
+    std::lock_guard<std::recursive_mutex> lock(m_mu);
+    auto it = m_clients.find(clientId);
+    if (it == m_clients.end()) return;
+    it->second.currentFile = std::move(file);
+}
+
+std::string ServeRpcServer::clientFile(uint64_t clientId) const {
+    std::lock_guard<std::recursive_mutex> lock(m_mu);
+    auto it = m_clients.find(clientId);
+    if (it == m_clients.end()) return {};
+    return it->second.currentFile;
+}
+
+void ServeRpcServer::poll() {
+    std::lock_guard<std::recursive_mutex> lock(m_mu);
     if (!m_running) return;
 
-    // Accept every pending connection.
     for (;;) {
         sockaddr_in addr = {};
         SockLen addrLen = sizeof(addr);
@@ -239,11 +275,8 @@ void ViewerRpcServer::poll() {
         m_clients.emplace(client.id, std::move(client));
     }
 
-    // Read and dispatch per client; drop the dead ones.
     std::vector<uint64_t> dead;
     for (auto& [id, client] : m_clients) {
-        // Drain available bytes (bounded per poll so one chatty client cannot
-        // starve the frame loop).
         size_t received = 0;
         for (;;) {
             char buf[16384];
@@ -253,14 +286,13 @@ void ViewerRpcServer::poll() {
                 received += static_cast<size_t>(n);
                 if (received >= (1u << 20)) break;
             } else if (n == 0) {
-                dead.push_back(id);  // orderly close
+                dead.push_back(id);
                 break;
             } else {
                 if (!sockWouldBlock(sockError())) dead.push_back(id);
                 break;
             }
         }
-        // Dispatch complete lines.
         for (;;) {
             const size_t nl = client.inBuf.find('\n');
             if (nl == std::string::npos) break;
@@ -269,9 +301,8 @@ void ViewerRpcServer::poll() {
             if (!line.empty() && line.back() == '\r') line.pop_back();
             if (line.empty()) continue;
             dispatch(client, line);
-            if (m_clients.find(id) == m_clients.end()) break;  // dropped mid-dispatch
+            if (m_clients.find(id) == m_clients.end()) break;
         }
-        // Flush pending writes (a big deferred reply may not have fit earlier).
         while (m_clients.find(id) != m_clients.end() && !client.outBuf.empty()) {
             const ptrdiff_t n = sockSend(client.fd, client.outBuf.data(), client.outBuf.size());
             if (n > 0) {
@@ -284,5 +315,5 @@ void ViewerRpcServer::poll() {
             }
         }
     }
-    for (const uint64_t id : dead) dropClient(id);
+    for (const uint64_t id : dead) dropClientLocked(id);
 }

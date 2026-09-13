@@ -7,6 +7,8 @@
 // hashes must be strictly equal at threads = 1/2/8.
 #include <gtest/gtest.h>
 
+#include <thread>
+
 #include "pgg/eval.h"
 #include "pgg/src/eval/parallel.h"
 #include "test_utils.h"
@@ -119,6 +121,28 @@ TEST(Parallel, NestedParallelForRunsInlineWithoutDeadlock) {
         }
     });
     for (size_t i = 0; i < outer; ++i) EXPECT_EQ(sums[i], inner * (inner - 1) / 2) << i;
+}
+
+TEST(Parallel, ConcurrentHostDispatchesMatchSequential) {
+    // Two host threads dispatching at once must not corrupt either Job, and
+    // each buffer must match a sequential (threads=1) fill with the same salt.
+    constexpr size_t n = 100000;
+    auto fill = [](std::vector<uint64_t>& out, uint64_t salt, unsigned threads) {
+        pgg::parallelFor(out.size(), threads, [&](size_t s, size_t e) {
+            for (size_t i = s; i < e; ++i) out[i] = i * 2654435761u + salt;
+        });
+    };
+    std::vector<uint64_t> seqA(n), seqB(n);
+    fill(seqA, 1, 1);
+    fill(seqB, 2, 1);
+
+    std::vector<uint64_t> parA(n), parB(n);
+    std::thread t1([&] { fill(parA, 1, 8); });
+    std::thread t2([&] { fill(parB, 2, 8); });
+    t1.join();
+    t2.join();
+    EXPECT_EQ(seqA, parA);
+    EXPECT_EQ(seqB, parB);
 }
 
 }  // namespace

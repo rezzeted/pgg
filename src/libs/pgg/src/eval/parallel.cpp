@@ -4,6 +4,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <memory>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -13,14 +14,14 @@ namespace {
 
 // True while this thread executes parallelFor chunk code — pool workers
 // permanently, the calling thread for the duration of its dispatch. A nested
-// parallelFor on such a thread must run inline: the pool has a single
-// outstanding job, re-entering it would corrupt the running dispatch.
+// parallelFor on such a thread must run inline: re-entering the pool from a
+// chunk would deadlock the parent job (the caller is already draining it).
 thread_local bool tInParallelChunk = false;
 
-// Lazily created global pool, sized once from hardware_concurrency. The
-// engine calls parallelFor from a single thread at a time, so there is at
-// most one outstanding job; workers pick chunks off an atomic cursor and the
-// caller participates, then waits for the chunk countdown to drain.
+// Lazily created global pool, sized once from hardware_concurrency. Several
+// host threads may dispatch at once (PggServe document slots); each dispatch
+// is a Job whose chunks are stolen independently. Workers + the submitting
+// caller drain that job; chunk bodies still write disjoint ranges.
 class ThreadPool {
 public:
     static ThreadPool& instance() {
@@ -31,21 +32,40 @@ public:
     unsigned laneCount() const { return lanes_; }  // workers + the calling thread
 
     void run(size_t chunkCount, const std::function<void(size_t)>& fn) {
+        auto job = std::make_shared<Job>();
+        job->fn = fn;
+        job->chunkCount = chunkCount;
+        job->next.store(0, std::memory_order_relaxed);
+        job->remaining.store(chunkCount, std::memory_order_relaxed);
         {
             std::lock_guard<std::mutex> lk(m_);
-            jobFn_ = &fn;
-            jobChunks_ = chunkCount;
-            next_.store(0, std::memory_order_relaxed);
-            remaining_.store(chunkCount, std::memory_order_relaxed);
-            ++generation_;
+            jobs_.push_back(job);
         }
         cv_.notify_all();
-        drain();
-        std::unique_lock<std::mutex> lk(doneM_);
-        doneCv_.wait(lk, [&] { return remaining_.load(std::memory_order_acquire) == 0; });
+        drain(*job);
+        std::unique_lock<std::mutex> lk(job->doneM);
+        job->doneCv.wait(lk, [&] { return job->remaining.load(std::memory_order_acquire) == 0; });
+        {
+            std::lock_guard<std::mutex> lkJobs(m_);
+            for (auto it = jobs_.begin(); it != jobs_.end(); ++it) {
+                if (it->get() == job.get()) {
+                    jobs_.erase(it);
+                    break;
+                }
+            }
+        }
     }
 
 private:
+    struct Job {
+        std::function<void(size_t)> fn;
+        size_t chunkCount = 0;
+        std::atomic<size_t> next{0};
+        std::atomic<size_t> remaining{0};
+        std::mutex doneM;
+        std::condition_variable doneCv;
+    };
+
     ThreadPool() {
         unsigned hw = std::thread::hardware_concurrency();
         if (hw == 0) hw = 1;
@@ -57,38 +77,53 @@ private:
         {
             std::lock_guard<std::mutex> lk(m_);
             stop_ = true;
-            ++generation_;
         }
         cv_.notify_all();
         for (std::thread& t : workers_) t.join();
     }
 
+    std::shared_ptr<Job> claimableLocked() const {
+        for (const auto& j : jobs_) {
+            if (j->next.load(std::memory_order_relaxed) < j->chunkCount) return j;
+        }
+        return nullptr;
+    }
+
     void workerLoop() {
         tInParallelChunk = true;
-        uint64_t seen = 0;
         for (;;) {
+            std::shared_ptr<Job> job;
             {
                 std::unique_lock<std::mutex> lk(m_);
-                cv_.wait(lk, [&] { return stop_ || generation_ != seen; });
+                cv_.wait(lk, [&] { return stop_ || claimableLocked() != nullptr; });
                 if (stop_) return;
-                seen = generation_;
+                job = claimableLocked();
             }
-            drain();
+            if (!job) continue;
+            stealOne(*job);
         }
     }
 
-    void drain() {
+    void drain(Job& job) {
         for (;;) {
-            const size_t c = next_.fetch_add(1, std::memory_order_relaxed);
-            if (c >= jobChunks_) break;
-            // The caller of run() cannot publish the next job while any chunk
-            // of this one is unfinished (it waits on remaining_), so reading
-            // jobFn_ here is race-free.
-            (*jobFn_)(c);
-            if (remaining_.fetch_sub(1, std::memory_order_acq_rel) == 1) {
-                std::lock_guard<std::mutex> lk(doneM_);
-                doneCv_.notify_all();
-            }
+            const size_t c = job.next.fetch_add(1, std::memory_order_relaxed);
+            if (c >= job.chunkCount) break;
+            job.fn(c);
+            finishChunk(job);
+        }
+    }
+
+    void stealOne(Job& job) {
+        const size_t c = job.next.fetch_add(1, std::memory_order_relaxed);
+        if (c >= job.chunkCount) return;
+        job.fn(c);
+        finishChunk(job);
+    }
+
+    void finishChunk(Job& job) {
+        if (job.remaining.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+            std::lock_guard<std::mutex> lk(job.doneM);
+            job.doneCv.notify_all();
         }
     }
 
@@ -96,13 +131,7 @@ private:
     unsigned lanes_ = 1;
     std::mutex m_;
     std::condition_variable cv_;
-    std::mutex doneM_;
-    std::condition_variable doneCv_;
-    const std::function<void(size_t)>* jobFn_ = nullptr;
-    size_t jobChunks_ = 0;
-    std::atomic<size_t> next_{0};
-    std::atomic<size_t> remaining_{0};
-    uint64_t generation_ = 0;
+    std::vector<std::shared_ptr<Job>> jobs_;
     bool stop_ = false;
 };
 

@@ -11,8 +11,11 @@
 //
 // Anti-nesting: a parallelFor invoked while this thread is already executing
 // parallelFor chunk code (pool worker or the dispatching caller) runs inline
-// — the pool keeps a single outstanding job, and the engine's parallel loops
-// never nest, so the inline path is the semantics we want anyway.
+// — the parent job is already in-flight on this thread, and re-dispatch would
+// deadlock it. The engine's parallel loops never nest, so the inline path is
+// the semantics we want anyway.
+// Several host threads may dispatch at once (PggServe slots): the pool
+// queues one Job per dispatch and workers steal chunks across jobs.
 // Loops below kParallelThreshold elements also run inline (not worth the
 // dispatch); tests that exercise the pool path use >= 40k elements.
 

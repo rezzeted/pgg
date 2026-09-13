@@ -1,11 +1,10 @@
-# PggViewer: read-only node-graph projection of .pgg files (spec §10, stage E8).
-# Sibling tool of PggTool — a permanent viewer, not a one-off prototype.
+# PggServe: headless GPU daemon for agent RPC (slots by .pgg path).
 if(EMSCRIPTEN)
     return()
 endif()
 
-find_package(imgui CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
+find_package(spdlog CONFIG REQUIRED)
 
 nw_add_console_app(
     GROUP apps/tools
@@ -13,7 +12,6 @@ nw_add_console_app(
         pgg
         pgg_preview
         spdlog::spdlog_header_only
-        imgui::imgui
         nlohmann_json::nlohmann_json
 )
 
@@ -22,11 +20,5 @@ if(NOT SOKOL_INCLUDE_DIRS)
     message(FATAL_ERROR "Sokol headers not found (sokol_app.h). Make sure vcpkg dependency 'sokol' is installed.")
 endif()
 target_include_directories(${AppName} PRIVATE ${SOKOL_INCLUDE_DIRS})
-
-find_path(STB_INCLUDE_DIRS "stb_image_write.h")
-if(NOT STB_INCLUDE_DIRS)
-    message(FATAL_ERROR "stb headers not found (stb_image_write.h). Make sure vcpkg dependency 'stb' is installed.")
-endif()
-target_include_directories(${AppName} PRIVATE ${STB_INCLUDE_DIRS})
 
 nw_configure_sokol_app(${AppName})

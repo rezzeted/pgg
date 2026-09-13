@@ -45,8 +45,8 @@ tube = sweep(mesh_line(count = 2, length = h, dir = (0, 1, 0)), profile = ring)
 
 ## MCP (одна строка)
 
-`pgg_docs("clip")` · `pgg_render(node="house", view="front", wire=False, chrome="off")` · `pgg_render(..., compare="prev"|"baseline", png=False)` · `pgg_contact_sheet(views="*")` · `pgg_measure(node="house", a="group:stone", b="group:brick", axis="x")` · `pgg_probe("house:bbox[group=stone]")` · `pgg_reference(image=..., node="hotel")` · `pgg_status()` → `kind=need_build` → собрать PggViewer из `configure`/`build` и retry
+`pgg_docs("clip")` · `pgg_render(node="house", view="front", wire=False, chrome="off", file=…)` · `pgg_render(..., compare="prev"|"baseline", png=False)` · `pgg_contact_sheet(views="*")` · `pgg_measure(node="house", a="group:stone", b="group:brick", axis="x")` · `pgg_probe("house:bbox[group=stone]")` · `pgg_reference(image=..., node="hotel")` · `pgg_status()` → `kind=need_build` → собрать PggServe из `configure`/`build` и retry
 
 ## Обвязка
 
-`PggTool check` — корневой `.pgg` (нет `--lib`; подмодуль без локального `lib/` раньше был E501). `resources/pgg` подмешивается как запасной import root, поэтому `import lib.*` работает и из `resources/AmberEstate/`. Аргументы: `pgg_docs(symbol=…)`, `pgg_reference(image=…)`. `render`/`probe` — по **загруженному** файлу. `fmt --check` на закоммиченных примерах может расходиться — канон не enforced.
+`PggTool check` — корневой `.pgg` (нет `--lib`; подмодуль без локального `lib/` раньше был E501). `resources/pgg` подмешивается как запасной import root, поэтому `import lib.*` работает и из `resources/AmberEstate/`. Аргументы: `pgg_docs(symbol=…)`, `pgg_reference(image=…)`. Слот = файл: на `render`/`probe` передавайте `file=`, если в этом ходе не было `pgg_load`. `fmt --check` на закоммиченных примерах может расходиться — канон не enforced.

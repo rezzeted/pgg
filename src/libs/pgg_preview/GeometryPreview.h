@@ -6,10 +6,8 @@
 // The value comes from a RunParams::pulls run (any binding, not only declared
 // outputs). Optional highlight of one group.
 //
-// Frame contract: buildFrom() at load/selection time (CPU); drawWindow()
-// inside the ImGui frame (handles input, may recreate the render target on
-// resize); render() OUTSIDE any sokol pass, before the swapchain pass that
-// draws ImGui (an offscreen pass cannot be nested in the swapchain pass).
+    // Frame contract: CPU buildPreviewGeometry; render() OUTSIDE any sokol
+    // swapchain pass. The ImGui pane lives in PggViewer (PreviewPane).
 #pragma once
 
 #include <cstdint>
@@ -21,6 +19,7 @@
 #include <vector>
 
 #include <glm/glm.hpp>
+#include <glm/gtc/constants.hpp>
 #include <sokol_gfx.h>
 
 #include <pgg/src/eval/value.h>
@@ -138,25 +137,33 @@ public:
     float yawDeg() const { return glm::degrees(m_yaw); }
     float pitchDeg() const { return glm::degrees(m_pitch); }
 
-    // Framebuffer-pixel rect (top-down origin) of the image drawn by the last
-    // drawWindowContents — the F1 screenshot crop region. w/h are 0 until the
-    // pane is first drawn.
-    struct ImageRectPx { int x = 0, y = 0, w = 0, h = 0; };
-    ImageRectPx lastImageRectPx() const { return m_lastImageRectPx; }
-
     // Offscreen pass clear color (linear 0..1) — the known exact background of
     // preview captures; the F3 silhouette metrics take it as the model bg.
     static constexpr float kClearColor[4] = {0.14f, 0.15f, 0.18f, 1.0f};
+    static constexpr int kMaxTarget = 4096;
 
-    // ImGui window body (call between simgui_new_frame and the swapchain pass).
-    // Draws the image, orbit/pan/zoom on hover, and a status line.
-    void drawWindowContents();
-    // Offscreen pass. No-op without a target (window never shown).
+    // Size the offscreen color target (clamped to kMaxTarget). Returns the
+    // actual size; sizeClamped is true when the request was reduced.
+    void ensureTarget(int w, int h);
+    int targetWidth() const { return m_targetW; }
+    int targetHeight() const { return m_targetH; }
+    bool targetSizeClamped() const { return m_sizeClamped; }
+    // 1-sample color image used for sampling and FBO readback (resolve when
+    // MSAA is on, otherwise the color attachment itself).
+    sg_image resolvedColorImage() const { return m_sampleCount > 1 ? m_resolve : m_color; }
+    sg_view texView() const { return m_texView; }
+
+    // Viewer orbit/pan (ImGui pane); Serve does not call these.
+    void nudgeOrbit(float dyaw, float dpitch);
+    void nudgePan(float dx, float dy);
+    void nudgeDistanceWheel(float wheel);
+
+    // Offscreen pass. No-op without a target.
     void render();
 
     const std::string& summary() const { return m_summary; }
     void setSummary(const std::string& s) { m_summary = s; }
-    // Run error shown wrapped in red over the canvas (empty = none).
+    const std::string& error() const { return m_error; }
     void setError(const std::string& s) { m_error = s; }
 
     // view * proj of the current camera state; public for headless checks
@@ -175,7 +182,6 @@ private:
         float color[4];  // flat line color of the wire overlay
     };
 
-    void ensureTarget(int w, int h);
     void destroyTarget();
     bool makePipelines(int samples);
     glm::mat4 viewMatrix() const;
@@ -205,7 +211,7 @@ private:
     sg_view m_texView{};
     int m_sampleCount = 1;
     int m_targetW = 0, m_targetH = 0;
-    int m_wantW = 0, m_wantH = 0;
+    bool m_sizeClamped = false;
 
     // Orbit camera. m_center/m_distance/m_radius are the CURRENT state;
     // m_scene*/m_target* are the two remembered fits switched by m_fitMode.
@@ -228,5 +234,4 @@ private:
     std::string m_summary;
     std::string m_error;
     bool m_ok = false;
-    ImageRectPx m_lastImageRectPx;  // written by drawWindowContents every frame
 };

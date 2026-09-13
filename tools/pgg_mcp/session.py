@@ -1,9 +1,14 @@
-"""Cross-platform PggViewer lifecycle + RPC proxy for the MCP server.
+"""Cross-platform PggServe lifecycle + RPC proxy for the MCP server.
 
 The MCP process is Python and is the same on every OS. This module finds or
-starts ``PggViewer --serve`` and forwards JSON ops. If the binary is missing
-it returns a structured ``need_build`` error with configure/build argv for
-the current platform — the MCP never runs cmake itself.
+starts ``PggServe`` and forwards JSON ops. If the binary is missing it
+returns a structured ``need_build`` error with configure/build argv for the
+current platform — the MCP never runs cmake itself.
+
+Each in-flight tool call uses its own TCP connection so two FastMCP
+invocations cannot mix JSON on one socket. Slot identity is the canonical
+``.pgg`` path (optional ``file=`` on ops; the last successful load is
+attached as a fallback).
 """
 
 from __future__ import annotations
@@ -20,8 +25,12 @@ from tools.pgg_mcp.rpc_client import PggRpcClient, PggRpcError, port_open, wait_
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 9878
-_VIEWER_REL = "src/apps/PggViewer"
-_VIEWER_NAME = "PggViewer"
+_SERVE_REL = "src/apps/PggServe"
+_SERVE_NAME = "PggServe"
+
+_SLOT_OPS = frozenset(
+    {"params", "views", "render", "reference", "probe", "export", "diff", "docs"}
+)
 
 
 def detect_platform(sys_platform: Optional[str] = None) -> str:
@@ -37,12 +46,12 @@ def detect_platform(sys_platform: Optional[str] = None) -> str:
 
 
 def _bin(build_dir: str, config: str) -> str:
-    return f"{build_dir}/{_VIEWER_REL}/{config}/{_VIEWER_NAME}"
+    return f"{build_dir}/{_SERVE_REL}/{config}/{_SERVE_NAME}"
 
 
 @dataclass(frozen=True)
-class ViewerRecipe:
-    """Where PggViewer lives and how an agent should build it on this OS."""
+class ServeRecipe:
+    """Where PggServe lives and how an agent should build it on this OS."""
 
     platform: str
     candidates: tuple[str, ...]
@@ -53,10 +62,10 @@ class ViewerRecipe:
     hint: str
 
 
-def viewer_recipe(platform: str) -> ViewerRecipe:
+def serve_recipe(platform: str) -> ServeRecipe:
     """Canonical search paths + build argv for ``linux`` / ``macos`` / ``windows``."""
     if platform == "windows":
-        return ViewerRecipe(
+        return ServeRecipe(
             platform="windows",
             candidates=(
                 _bin("_intermediate_64", "Release"),
@@ -64,16 +73,16 @@ def viewer_recipe(platform: str) -> ViewerRecipe:
             ),
             expected=_bin("_intermediate_64", "Release") + ".exe",
             configure=("generate_vs.bat",),
-            build=("cmake", "--build", "--preset", "release", "--target", "PggViewer"),
-            debug_build=("cmake", "--build", "--preset", "debug", "--target", "PggViewer"),
+            build=("cmake", "--build", "--preset", "release", "--target", "PggServe"),
+            debug_build=("cmake", "--build", "--preset", "debug", "--target", "PggServe"),
             hint=(
                 "Run configure and build from the repo root. "
-                "Retry the MCP tool afterwards; it starts PggViewer itself. "
-                "Override the binary with env PGG_VIEWER."
+                "Retry the MCP tool afterwards; it starts PggServe itself. "
+                "Override the binary with env PGG_SERVE."
             ),
         )
     if platform == "macos":
-        return ViewerRecipe(
+        return ServeRecipe(
             platform="macos",
             candidates=(
                 _bin("_int_clion_release", "Release"),
@@ -85,17 +94,17 @@ def viewer_recipe(platform: str) -> ViewerRecipe:
             ),
             expected=_bin("_intermediate_64", "Release"),
             configure=("./build_mac.sh",),
-            build=("cmake", "--build", "--preset", "macos-release", "--target", "PggViewer"),
-            debug_build=("cmake", "--build", "--preset", "macos-debug", "--target", "PggViewer"),
+            build=("cmake", "--build", "--preset", "macos-release", "--target", "PggServe"),
+            debug_build=("cmake", "--build", "--preset", "macos-debug", "--target", "PggServe"),
             hint=(
                 "build_mac.sh configures the Xcode preset (Debug). "
                 "macos-release is preferred (much faster). "
                 "CLion: presets macos-clion / macos-clion-release. "
-                "Retry the MCP tool afterwards; it starts PggViewer itself. "
-                "Override the binary with env PGG_VIEWER."
+                "Retry the MCP tool afterwards; it starts PggServe itself. "
+                "Override the binary with env PGG_SERVE."
             ),
         )
-    return ViewerRecipe(
+    return ServeRecipe(
         platform="linux",
         candidates=(
             _bin("_int_linux_release", "Release"),
@@ -105,15 +114,19 @@ def viewer_recipe(platform: str) -> ViewerRecipe:
         ),
         expected=_bin("_int_linux_release", "Release"),
         configure=("./build_linux.sh",),
-        build=("cmake", "--build", "--preset", "linux-release", "--target", "PggViewer"),
-        debug_build=("cmake", "--build", "--preset", "linux-debug", "--target", "PggViewer"),
+        build=("cmake", "--build", "--preset", "linux-release", "--target", "PggServe"),
+        debug_build=("cmake", "--build", "--preset", "linux-debug", "--target", "PggServe"),
         hint=(
             "build_linux.sh configures the Debug preset (linux). "
             "linux-release is preferred (much faster). First configure fetches vcpkg. "
-            "Retry the MCP tool afterwards; it starts PggViewer itself. "
-            "Override the binary with env PGG_VIEWER."
+            "Retry the MCP tool afterwards; it starts PggServe itself. "
+            "Override the binary with env PGG_SERVE."
         ),
     )
+
+
+# Back-compat aliases used by older tests / imports.
+viewer_recipe = serve_recipe
 
 
 def _existing_file(path: str) -> Optional[str]:
@@ -123,26 +136,25 @@ def _existing_file(path: str) -> Optional[str]:
     return None
 
 
-def find_viewer_binary(
+def find_serve_binary(
     repo_root: str,
     platform: Optional[str] = None,
     environ: Optional[Mapping[str, str]] = None,
 ) -> Optional[str]:
-    """First existing PggViewer wins. ``PGG_VIEWER`` first, then Release, then Debug."""
+    """First existing PggServe wins. ``PGG_SERVE`` first, then Release, then Debug."""
     env = environ if environ is not None else os.environ
     plat = platform or detect_platform()
-    env_path = env.get("PGG_VIEWER")
+    env_path = env.get("PGG_SERVE") or env.get("PGG_VIEWER")
     if env_path:
         found = _existing_file(env_path)
         if found:
             return found
-        # Fall through and search presets: a stale env should not hide a real binary.
 
-    recipe = viewer_recipe(plat)
+    recipe = serve_recipe(plat)
     others = [p for p in ("linux", "macos", "windows") if p != plat]
     seen: list[str] = []
     for rel in list(recipe.candidates) + [
-        c for p in others for c in viewer_recipe(p).candidates
+        c for p in others for c in serve_recipe(p).candidates
     ]:
         if rel in seen:
             continue
@@ -152,6 +164,9 @@ def find_viewer_binary(
         if found:
             return found
     return None
+
+
+find_viewer_binary = find_serve_binary
 
 
 def need_build_error(
@@ -164,11 +179,12 @@ def need_build_error(
     """Structured ``ok=false`` envelope: agent should build, then retry."""
     env = environ if environ is not None else os.environ
     plat = platform or detect_platform()
-    recipe = viewer_recipe(plat)
-    env_path = env.get("PGG_VIEWER")
+    recipe = serve_recipe(plat)
+    env_path = env.get("PGG_SERVE") or env.get("PGG_VIEWER")
     extra = ""
     if env_path and not _existing_file(env_path):
-        extra = f" PGG_VIEWER is set but not a file: {env_path}."
+        which = "PGG_SERVE" if env.get("PGG_SERVE") else "PGG_VIEWER"
+        extra = f" {which} is set but not a file: {env_path}."
     return {
         "ok": False,
         "error": {
@@ -176,12 +192,12 @@ def need_build_error(
             "message": (
                 message
                 or (
-                    "PggViewer binary not found."
+                    "PggServe binary not found."
                     + extra
                     + " Build it from the repo root, then retry this tool."
                 )
             ),
-            "target": "PggViewer",
+            "target": "PggServe",
             "platform": plat,
             "cwd": repo_root,
             "configure": list(recipe.configure),
@@ -191,6 +207,7 @@ def need_build_error(
             "candidates": list(recipe.candidates),
             "hint": recipe.hint,
             "viewer": "missing",
+            "serve": "missing",
         },
     }
 
@@ -228,7 +245,7 @@ def with_product_lib_roots(repo_root: str, extra: Optional[list[str]] = None) ->
 
 @dataclass
 class PggSession:
-    """Long-lived proxy: auto-start PggViewer, then TCP JSON-RPC."""
+    """Long-lived proxy: auto-start PggServe, then TCP JSON-RPC."""
 
     repo_root: str = field(default_factory=default_repo_root)
     host: str = DEFAULT_HOST
@@ -241,10 +258,10 @@ class PggSession:
     which_fn: Callable[[str], Optional[str]] = shutil.which
     client_factory: Optional[Callable[[], PggRpcClient]] = None
 
-    _client: Optional[PggRpcClient] = field(default=None, init=False, repr=False)
     _proc: Any = field(default=None, init=False, repr=False)
     _log_file: Any = field(default=None, init=False, repr=False)
     binary_path: Optional[str] = field(default=None, init=False)
+    last_file: Optional[str] = field(default=None, init=False)
 
     def __post_init__(self) -> None:
         if self.platform is None:
@@ -256,10 +273,10 @@ class PggSession:
         return self.environ if self.environ is not None else os.environ
 
     def find_binary(self) -> Optional[str]:
-        return find_viewer_binary(self.repo_root, self.platform, self._env())
+        return find_serve_binary(self.repo_root, self.platform, self._env())
 
     def ensure(self) -> Optional[dict[str, Any]]:
-        """Start PggViewer if needed. None = RPC port is accepting."""
+        """Start PggServe if needed. None = RPC port is accepting."""
         if self.port_open_fn(self.host, self.port):
             if self.binary_path is None:
                 self.binary_path = self.find_binary()
@@ -270,16 +287,16 @@ class PggSession:
                 return None
             return error_envelope(
                 "unreachable",
-                "PggViewer did not open the RPC port within 30 s; see tmp/pgg_viewer_serve.log",
-                log="tmp/pgg_viewer_serve.log",
+                "PggServe did not open the RPC port within 30 s; see tmp/pgg_serve.log",
+                log="tmp/pgg_serve.log",
             )
 
-        viewer = self.find_binary()
-        if viewer is None:
+        serve = self.find_binary()
+        if serve is None:
             return need_build_error(self.repo_root, self.platform, self._env())
 
         env = self._env()
-        cmd: list[str] = [viewer, "--serve"]
+        cmd: list[str] = [serve, f"--port={self.port}", f"--host={self.host}"]
         if self.platform == "linux" and not env.get("DISPLAY"):
             xvfb = self.which_fn("xvfb-run")
             if xvfb:
@@ -287,37 +304,36 @@ class PggSession:
             else:
                 return error_envelope(
                     "unreachable",
-                    "PggViewer needs a display: DISPLAY is unset and xvfb-run is not on PATH",
+                    "PggServe needs a display: DISPLAY is unset and xvfb-run is not on PATH",
                     hint="Install xvfb (Debian/Ubuntu: xvfb) or run under a graphical session, then retry.",
-                    log="tmp/pgg_viewer_serve.log",
+                    log="tmp/pgg_serve.log",
                 )
 
         log_dir = Path(self.repo_root) / "tmp"
         log_dir.mkdir(parents=True, exist_ok=True)
-        # Keep the handle on the session: Popen does not own the Python file object.
-        self._log_file = open(log_dir / "pgg_viewer_serve.log", "ab", buffering=0)
+        self._log_file = open(log_dir / "pgg_serve.log", "ab", buffering=0)
         popen_kw: dict[str, Any] = {
             "cwd": self.repo_root,
             "stdout": self._log_file,
             "stderr": self._log_file,
         }
         self._proc = self.popen_fn(cmd, **popen_kw)
-        self.binary_path = viewer
+        self.binary_path = serve
         if self.wait_for_port_fn(self.host, self.port, timeout_s=30.0, step_s=0.5):
             return None
         poll = getattr(self._proc, "poll", lambda: None)()
         if poll is not None:
             return error_envelope(
                 "unreachable",
-                f"PggViewer exited early (code {poll}); see tmp/pgg_viewer_serve.log",
-                log="tmp/pgg_viewer_serve.log",
-                binary=viewer,
+                f"PggServe exited early (code {poll}); see tmp/pgg_serve.log",
+                log="tmp/pgg_serve.log",
+                binary=serve,
             )
         return error_envelope(
             "unreachable",
-            "PggViewer did not open the RPC port within 30 s; see tmp/pgg_viewer_serve.log",
-            log="tmp/pgg_viewer_serve.log",
-            binary=viewer,
+            "PggServe did not open the RPC port within 30 s; see tmp/pgg_serve.log",
+            log="tmp/pgg_serve.log",
+            binary=serve,
         )
 
     def _make_client(self) -> PggRpcClient:
@@ -325,24 +341,41 @@ class PggSession:
             return self.client_factory()
         return PggRpcClient(host=self.host, port=self.port)
 
+    def _with_file(self, op: str, args: dict[str, Any]) -> dict[str, Any]:
+        if op not in _SLOT_OPS:
+            return args
+        if args.get("file"):
+            return args
+        if self.last_file:
+            out = dict(args)
+            out["file"] = self.last_file
+            return out
+        return args
+
     def call(self, op: str, args: Optional[dict[str, Any]] = None) -> dict[str, Any]:
-        """Send one RPC op. Auto-starts the viewer. Server-side ok=false is not retried."""
+        """Send one RPC op on a fresh TCP connection. Auto-starts PggServe."""
         start_error = self.ensure()
         if start_error:
             return start_error
 
+        payload_args = {k: v for k, v in (args or {}).items() if v is not None}
+        payload_args = self._with_file(op, payload_args)
         payload: dict[str, Any] = {"op": op}
-        if args:
-            payload["args"] = {k: v for k, v in args.items() if v is not None}
+        if payload_args:
+            payload["args"] = payload_args
 
         last_error: Any = None
         for _ in range(2):
+            client: Optional[PggRpcClient] = None
             try:
-                if self._client is None:
-                    self._client = self._make_client()
-                resp = self._client.call(**payload)
+                client = self._make_client()
+                resp = client.call(**payload)
+                if op == "load" and resp.get("ok") and isinstance(resp.get("data"), dict):
+                    session = resp["data"].get("session") or {}
+                    self.last_file = session.get("file") or resp["data"].get("path")
                 if op == "status" and resp.get("ok") and isinstance(resp.get("data"), dict):
                     data = resp["data"]
+                    data["serve"] = "running"
                     data["viewer"] = "running"
                     if self.binary_path:
                         data["binary"] = self.binary_path
@@ -352,15 +385,15 @@ class PggSession:
                 return error_envelope(e.kind, e.message)
             except (ConnectionError, OSError) as e:
                 last_error = e
-                if self._client is not None:
-                    self._client.close()
-                self._client = None
                 start_error = self.ensure()
                 if start_error:
                     return start_error
+            finally:
+                if client is not None:
+                    client.close()
         return error_envelope(
             "unreachable",
-            f"PggViewer RPC unreachable: {last_error}",
+            f"PggServe RPC unreachable: {last_error}",
         )
 
     def status(self) -> dict[str, Any]:
