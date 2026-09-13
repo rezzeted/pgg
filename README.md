@@ -2,10 +2,10 @@
 
 PGG is a procedural geometry language: a text-first node graph for LLM agents, with a node projection for humans. This repository is the language, library, CLI, viewer, tests, and art examples.
 
-| [Spire House](resources/pgg/spire_house.pgg) | [Cottage](resources/pgg/cottage.pgg) |
+| [Spire House](resources/AmberEstate/spire_house.pgg) | [Cottage](resources/AmberEstate/cottage.pgg) |
 |---|---|
 | ![Victorian house with a clock tower and tiled spire](docs/gallery/spire_house.png) | ![Timber-framed cottage with a stone ground floor](docs/gallery/cottage.png) |
-| [Inn Hotel](resources/pgg/inn_hotel.pgg) | [Stone Arch](resources/pgg/stone_arch.pgg) |
+| [Inn Hotel](resources/pgg/inn_hotel.pgg) | [Stone Arch](resources/AmberEstate/stone_arch.pgg) |
 | ![Streamline-moderne corner hotel](docs/gallery/inn_hotel.png) | ![Ashlar arch with voussoirs](docs/gallery/stone_arch.png) |
 
 How the shots were framed and how to regenerate them: [`docs/gallery/README.md`](docs/gallery/README.md).
@@ -17,7 +17,8 @@ How the shots were framed and how to regenerate them: [`docs/gallery/README.md`]
 | `src/apps/PggViewer` | Node projection + geometry preview (no TCP) |
 | `src/apps/PggServe` | Agent RPC daemon: slots by `.pgg` path, `:9878` |
 | `src/tests/pgg` | gtest + `corpus/` fixtures and `goldens/` fingerprints |
-| `resources/pgg` | Product / art examples (cottage, spire_house, inn_hotel, lib, …) |
+| `resources/pgg` | Shared `lib/` and remaining art examples (inn_hotel, clocktower, …) |
+| `resources/AmberEstate` | Estate mini-project: cottages, spire house, church, stone arch, props |
 | `docs/pgg` | Language spec, implementation notes, cheatsheet, RPC contract |
 | `docs/gallery` | README hero shots of the art examples |
 
@@ -47,9 +48,9 @@ After changing `src/libs/pgg/grammar/Pgg.g4`, run `tools/pgg/regen_parser.sh` (t
 ## Tools
 
 ```sh
-PggTool check resources/pgg/cottage.pgg
+PggTool check resources/AmberEstate/cottage.pgg
 PggTool docs builtins
-PggViewer resources/pgg/spire_house.pgg
+PggViewer resources/AmberEstate/spire_house.pgg
 PggServe                                  # RPC 127.0.0.1:9878
 ```
 

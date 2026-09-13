@@ -4,8 +4,12 @@ import environment.umbrella_table as umb
 
 # AmberEstate — минипроект. Окружение: столик с зонтом
 # (environment/umbrella_table.pgg, референс environment/reference.jpg).
-# Пропы (бочка, стул, дрова, улей, ящик, пугало, колодец, дровник) —
+# Пропы (бочка, стул, дрова, улей, ящик, пугало, колодец, дровник, дуб, погреб) —
 # resources/AmberEstate/props/*.pgg, референсы рядом (.jpg).
+# Храм: church.pgg + church/*.pgg, референс church/reference.jpg.
+# Дома: cottage.pgg / cottage_mansard.pgg + cottage/*.pgg;
+# spire_house.pgg / spire_house_wide.pgg + spire_house/*.pgg;
+# арка: stone_arch.pgg.
 # import lib.* резолвится в resources/pgg (вьюер и PggTool подмешивают этот root).
 
 estate = umb.assemble(width = 1.02, height = 0.70, thick = 0.045, n = 5, r = 1.12, shaft_h = 0.92, dome_h = 0.32, hang = 0.18, sides = 12, rng = rng_from_seed(seed))

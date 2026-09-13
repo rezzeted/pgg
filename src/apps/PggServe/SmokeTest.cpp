@@ -191,7 +191,7 @@ bool runPggServeSmokeTest() {
               "rpc render fails headless with no_gpu");
 
         const nlohmann::json spire =
-            call({{"op", "load"}, {"args", {{"path", findRepoRoot() + "/resources/pgg/spire_house.pgg"}}}});
+            call({{"op", "load"}, {"args", {{"path", findRepoRoot() + "/resources/AmberEstate/spire_house.pgg"}}}});
         check(spire.value("ok", false) && !spire["data"].value("has_errors", true),
               "rpc load of spire_house.pgg");
         const nlohmann::json views = call({{"op", "views"}, {"args", nlohmann::json::object()}});
