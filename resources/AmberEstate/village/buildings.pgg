@@ -1,0 +1,80 @@
+import cottage.roof as cot_roof
+import cottage.chimney as cot_chimney
+import cottage.assemble as cot_asm
+import spire_house.ground_floor as hall_ground
+import spire_house.upper_floor as hall_upper
+import spire_house.bay as hall_bay
+import spire_house.windows as hall_windows
+import spire_house.porch as hall_porch
+import spire_house.door as hall_door
+import spire_house.roof as hall_roof
+import spire_house.tower as hall_tower
+import spire_house.assemble as hall_asm
+import church.body as kirk_body
+import church.towers as kirk_towers
+import church.openings as kirk_open
+import church.roof as kirk_roof
+import church.assemble as kirk_asm
+import lib.shapes as shapes
+
+# Фабрики зданий деревни. Ратуша — викторианский дом со шпилем (spire_house).
+
+def cottage_gable(w: f32, d: f32, stone_h: f32, upper_h: f32, jetty: f32, overhang: f32, quoin_bricks: f32, rng: rng) -> (out: geo<mesh>) {
+    """Фахверковый коттедж с двускатной крышей. Фасад +Z. rng задаёт плитку и траву."""
+    uw = w + 2.0 * jetty
+    eave_y = stone_h + upper_h - 0.1
+    ridge_y = eave_y + uw * 0.5 + overhang
+    roof_all = cot_roof.gable(width = w, depth = d, stone_h = stone_h, upper_h = upper_h, jetty = jetty, overhang = overhang, rng = split_rng(rng, key = "tiles"))
+    chimney_all = cot_chimney.chimney(x = 1.35, z = 0.0 - 0.9, ridge_y = ridge_y, rng = split_rng(rng, key = "chimney"))
+    out = cot_asm.assemble(width = w, depth = d, stone_h = stone_h, upper_h = upper_h, jetty = jetty, quoin_bricks = quoin_bricks, ridge_y = ridge_y, root_rng = rng, roof_all = roof_all, chimney_all = chimney_all)
+}
+
+def cottage_mansard(w: f32, d: f32, stone_h: f32, upper_h: f32, jetty: f32, overhang: f32, quoin_bricks: f32, rng: rng) -> (out: geo<mesh>) {
+    """Тот же коттедж, многощипцовая мансарда. Труба сдвинута к тылу, чтобы не задеть ендову."""
+    uw = w + 2.0 * jetty
+    eave_y = stone_h + upper_h - 0.1
+    ridge_y = eave_y + uw * 0.5 + overhang
+    roof_all = cot_roof.multi_gable(width = w, depth = d, stone_h = stone_h, upper_h = upper_h, jetty = jetty, overhang = overhang, rng = split_rng(rng, key = "tiles"))
+    chimney_all = cot_chimney.chimney(x = 1.35, z = 0.0 - 1.8, ridge_y = ridge_y, rng = split_rng(rng, key = "chimney"))
+    out = cot_asm.assemble(width = w, depth = d, stone_h = stone_h, upper_h = upper_h, jetty = jetty, quoin_bricks = quoin_bricks, ridge_y = ridge_y, root_rng = rng, roof_all = roof_all, chimney_all = chimney_all)
+}
+
+def town_hall(rng: rng, w: f32 = 7.8, d: f32 = 5.2, plinth_h: f32 = 0.90, floor1_h: f32 = 3.25, belt_h: f32 = 0.40, floor2_h: f32 = 3.10, crown_h: f32 = 0.55, roof_h: f32 = 2.30, tower_w: f32 = 2.50, spire_h: f32 = 6.80) -> (out: geo<mesh>) {
+    """Ратуша: викторианский кирпичный зал с часовой башней и шпилем. Фасад +Z, крыльцо на +Z."""
+    plinth_top = plinth_h
+    f1_top = plinth_top + floor1_h
+    b1_top = f1_top + belt_h
+    f2_top = b1_top + floor2_h
+    crown_top = f2_top + crown_h
+    tower_base = f2_top
+    tower_top = tower_base + floor2_h
+    spire_base = tower_top + 0.3
+    facade_z = d * 0.5
+    tower_z = facade_z
+    deck_hw = w * 0.5 - 0.8
+    deck_hd = d * 0.5 - 0.8
+    f1_y = plinth_top + 0.35
+    f2_y = b1_top + 0.35
+    quoin_in = 0.74
+    tower_half = shapes.ngon_circumradius(tower_w * 0.5, 6) + 0.065
+    wing_x = (tower_half + w * 0.5 - quoin_in) * 0.5
+    door_x = wing_x
+    ground = hall_ground.ground_floor(width = w, depth = d, plinth_h = plinth_h, floor1_h = floor1_h, belt_h = belt_h, wing_x = wing_x, door_x = door_x, rng = split_rng(rng, key = "ground"))
+    upper = hall_upper.upper_floor(width = w, depth = d, b1_top = b1_top, floor2_h = floor2_h, crown_h = crown_h, wing_x = wing_x, rng = split_rng(rng, key = "upper"))
+    bay_unit = hall_bay.bay_window(facade_z = facade_z, f1_top = f1_top, b1_top = b1_top, f2_top = f2_top, f2_y = f2_y, crown_h = crown_h, rng = split_rng(rng, key = "bay"), tower_w = tower_w, tower_z = tower_z)
+    porch_unit = hall_porch.entrance_porch(door_x = door_x, facade_z = facade_z, plinth_h = plinth_h, rng = split_rng(rng, key = "porch"))
+    door_unit = hall_door.entrance_door(door_x = door_x, facade_z = facade_z, plinth_h = plinth_h, rng = split_rng(rng, key = "door"))
+    windows_all = hall_windows.wall_windows(width = w, depth = d, facade_z = facade_z, f1_y = f1_y, f2_y = f2_y, wing_x = wing_x)
+    roof_all = hall_roof.mansard_roof(width = w, depth = d, crown_top = crown_top, roof_h = roof_h, deck_hw = deck_hw, deck_hd = deck_hd, rng = split_rng(rng, key = "roof"))
+    tower_all = hall_tower.clock_tower(tower_w = tower_w, tower_h = floor2_h, spire_h = spire_h, tower_base = tower_base, spire_base = spire_base, tower_z = tower_z, crown_h = crown_h, rng = split_rng(rng, key = "tower"))
+    out = hall_asm.assemble(ground = ground, upper = upper, bay_unit = bay_unit, porch_unit = porch_unit, door_unit = door_unit, windows_all = windows_all, roof_all = roof_all, tower_all = tower_all, root_rng = rng)
+}
+
+def parish(rng: rng, nave_w: f32 = 6.80, nave_len: f32 = 17.40, tower_w: f32 = 3.80, aisle_w: f32 = 3.15, plinth_h: f32 = 0.58, aisle_h: f32 = 4.40, nave_h: f32 = 8.55, aisle_rise: f32 = 1.35, nave_rise: f32 = 3.15, tower_low: f32 = 8.35, belfry_h: f32 = 4.20, cornice_h: f32 = 0.40, spire_h: f32 = 11.60) -> (out: geo<mesh>) {
+    """Приходской храм: западный фасад в +Z, неф вдоль Z. rng красит кирпич и кровлю."""
+    body_all = kirk_body.body_all(nave_w = nave_w, nave_len = nave_len, tower_w = tower_w, aisle_w = aisle_w, nave_h = nave_h, aisle_h = aisle_h, nave_rise = nave_rise, aisle_rise = aisle_rise, plinth_h = plinth_h)
+    towers_all = kirk_towers.pair(nave_w = nave_w, nave_len = nave_len, tower_w = tower_w, low_h = tower_low, belfry_h = belfry_h, cornice_h = cornice_h, spire_h = spire_h, rng = split_rng(rng, key = "tw"))
+    openings_all = kirk_open.all_openings(nave_w = nave_w, nave_len = nave_len, tower_w = tower_w, aisle_w = aisle_w, nave_h = nave_h, aisle_h = aisle_h, plinth_h = plinth_h, low_h = tower_low, belfry_h = belfry_h, rng = split_rng(rng, key = "open"))
+    roofs_all = kirk_roof.roofs(nave_w = nave_w, nave_len = nave_len, tower_w = tower_w, aisle_w = aisle_w, nave_h = nave_h, aisle_h = aisle_h, nave_rise = nave_rise, aisle_rise = aisle_rise, rng = split_rng(rng, key = "rf"))
+    out = kirk_asm.assemble(body = body_all, towers = towers_all, openings = openings_all, roofs = roofs_all, rng = split_rng(rng, key = "asm"))
+}

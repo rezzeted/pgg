@@ -1,0 +1,8 @@
+param seed: int = 42
+
+# Ратуша AmberEstate — викторианский зал с часовой башней.
+# Модули те же, что у spire_house.pgg (spire_house/*.pgg).
+import village.buildings as bld
+
+town_hall = bld.town_hall(rng = rng_from_seed(seed))
+output town_hall

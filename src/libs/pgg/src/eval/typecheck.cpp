@@ -279,8 +279,13 @@ private:
                         }
                     }
                 }
-                // Schema/closure tracking flows through both shapes.
-                ExprClosure cl = gather(b->value);
+                // Schema/closure tracking flows through both shapes. A geometry
+                // binding is a value: the reads that built it were checked at
+                // their own consuming nodes, so it carries no closure — otherwise
+                // a field that merely references the geometry (distance_to
+                // target, aggregator `on`) would re-check those reads against
+                // the consumer's schema (false E302).
+                ExprClosure cl = t.base == ScalarType::Geo ? ExprClosure{} : gather(b->value);
                 const GeoSchema& schema = schemaOfExpr(b->value);
                 for (const std::string& n : b->targets.names) {
                     closures_[n] = cl;

@@ -22,7 +22,10 @@ public:
         : roots_(roots), diags_(diags) {}
 
     // Binds the import directives of `file` into `out` (namespace -> module).
-    void bindImports(const File& file, std::unordered_map<std::string, const ModuleInfo*>& out) {
+    // `preferRoot` is the importing file's directory: sibling imports
+    // (`import common` from props/well.pgg) resolve there first.
+    void bindImports(const File& file, std::unordered_map<std::string, const ModuleInfo*>& out,
+                     const std::string& preferRoot = {}) {
         for (const Node* item : file.items) {
             if (item->kind != NodeKind::Import) continue;
             const auto* im = static_cast<const Import*>(item);
@@ -38,7 +41,7 @@ public:
                       "rename the import with `as` (spec §7.6)");
                 continue;
             }
-            if (const ModuleInfo* m = resolve(*im)) out[ns] = m;
+            if (const ModuleInfo* m = resolve(*im, preferRoot)) out[ns] = m;
         }
     }
 
@@ -58,27 +61,34 @@ private:
         diags_.push_back(Diagnostic{code, span, std::move(msg), std::move(hint), false});
     }
 
-    const ModuleInfo* resolve(const Import& im) {
+    bool existsIn(const std::string& root, const std::string& rel, std::string& found) const {
+        if (root.empty()) return false;
+        std::error_code ec;
+        const std::string candidate = (std::filesystem::path(root) / rel).string();
+        if (!std::filesystem::exists(candidate, ec)) return false;
+        found = candidate;
+        return true;
+    }
+
+    const ModuleInfo* resolve(const Import& im, const std::string& preferRoot) {
         std::string rel;
         for (const std::string& part : im.path) rel += (rel.empty() ? "" : "/") + part;
         rel += ".pgg";
 
         std::string found;
-        for (const std::string& root : roots_) {
-            std::error_code ec;
-            const std::string candidate = (std::filesystem::path(root) / rel).string();
-            if (std::filesystem::exists(candidate, ec)) {
-                found = candidate;
-                break;
+        if (!existsIn(preferRoot, rel, found)) {
+            for (const std::string& root : roots_) {
+                if (existsIn(root, rel, found)) break;
             }
         }
         if (found.empty()) {
             std::string hint;
-            if (roots_.empty()) {
+            if (roots_.empty() && preferRoot.empty()) {
                 hint = "no import roots configured — pass RunParams::importRoots (or run a file: its "
                        "directory is an implicit root)";
             } else {
                 hint = "searched:";
+                if (!preferRoot.empty()) hint += " " + preferRoot;
                 for (const std::string& root : roots_) hint += " " + root;
             }
             std::string name;
@@ -125,8 +135,10 @@ private:
                           "document the contract: first line what it does, then Requires/Writes (§7.5)");
                 }
             }
-            // Nested imports resolve in the module's own context.
-            bindImports(*info->doc->file, info->namespaces);
+            // Nested imports search the module's directory first (sibling
+            // `import common` from props/*.pgg) then the global roots.
+            bindImports(*info->doc->file, info->namespaces,
+                        std::filesystem::path(found).parent_path().string());
         }
         loading_.pop_back();
         const ModuleInfo* result = info.get();

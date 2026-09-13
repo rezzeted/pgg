@@ -178,4 +178,22 @@ TEST(Typecheck, UnknownAttributeIsE302) {
     EXPECT_EQ(countCode(r, "E302"), 1);
 }
 
+// A geometry binding carries no field closure: the @t read that shaped the
+// road was checked on its own path geometry, so a field that merely
+// references the road (distance_to target) must not re-check @t against
+// the consumer (regression: false E302 on the scatter ground).
+TEST(Typecheck, GeometryArgumentDoesNotLeakItsFieldReads) {
+    pgg::RunResult r = runSrc(
+        "root = rng_from_seed(1)\n"
+        "path0 = bezier_points(p0 = vec3(0, 0, 0), p1 = vec3(2, 0, 1), p2 = vec3(4, 0, -1), p3 = vec3(6, 0, 0), count = 8)\n"
+        "path = set(path0, \"profile_scale\", vec2(mix(1.0, 0.5, @t), mix(1.0, 0.5, @t)), domain = points)\n"
+        "road = sweep(path, profile = circle(sides = 4, radius = 0.3))\n"
+        "g = grid(size = vec2(10, 10), res = vec2(10, 10))\n"
+        "far = distance_to(target = road) > 1.0\n"
+        "marked = mark(g, \"far\", where = far, domain = points)\n"
+        "output marked\n");
+    EXPECT_EQ(countCode(r, "E302"), 0);
+    EXPECT_FALSE(r.hasErrors());
+}
+
 }  // namespace

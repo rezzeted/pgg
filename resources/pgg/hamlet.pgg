@@ -1,0 +1,136 @@
+param seed: int = 11
+param spokes: int = 6
+param plaza_r: f32 = 15.0
+param r_out: f32 = 62.0
+param road_w: f32 = 3.6
+
+import lib.settlement as st
+import lib.shapes as shapes
+import lib.parts as parts
+
+# Hamlet — массинг-модель «органической радиалки» на lib.settlement.
+# Площадь-многоугольник с беседкой, кривые спицы из её вершин, тропки между
+# соседними спицами, дома-коробки по граням площади и вдоль спиц, поля-ячейки
+# Вороного с живыми изгородями, рощи. Другая деревня: seed / spokes / радиусы,
+# либо те же якоря — но фабрики из AmberEstate вместо коробок.
+# Именованные узлы: layout (только земля и дороги), houses, hamlet.
+
+root_rng = rng_from_seed(seed)
+sides = spokes * 2
+house_d = 5.0
+
+# --- топология ------------------------------------------------------------
+outline = st.plaza_outline(r = plaza_r, sides = sides, jitter = 0.22, rough = 0.10, rng = split_rng(root_rng, key = "plaza"))
+plaza = st.plaza_slab(outline = outline, y0 = 0.05, y1 = 0.16, grp = "cobble")
+model = st.spoke_model(n = spokes, sides = sides, r_out = r_out, rng = split_rng(root_rng, key = "plaza"), jitter = 0.22, rough = 0.10, r_plaza = plaza_r, bend = 5.5, drift = 9.0, r_var = 0.15)
+spoke_roads = st.spoke_roads(model = model, w = road_w, taper = 0.55, th = 0.12, y = 0.13, count = 24, grp = "dirt")
+# Два пояса тропок между соседними спицами: ближний плотный, дальний реже.
+lanes_in = st.cross_paths(model = model, w = road_w * 0.55, th = 0.10, y = 0.11, t_lo = 0.22, t_hi = 0.48, bulge = 0.10, prob = 0.85, count = 16, rng = split_rng(root_rng, key = "lanes_in"), grp = "dirt")
+lanes_out = st.cross_paths(model = model, w = road_w * 0.45, th = 0.10, y = 0.11, t_lo = 0.55, t_hi = 0.88, bulge = 0.14, prob = 0.5, count = 16, rng = split_rng(root_rng, key = "lanes_out"), grp = "dirt")
+# Карта уже, чем спицы: дороги уходят за край кадра, как на референсе.
+map_half = r_out * 0.9
+roads = st.clip_square(g = merge(spoke_roads, lanes_in, lanes_out), half = map_half)
+
+ring_pins = st.plaza_anchors(outline = outline, sides = sides, n_spokes = spokes, r = plaza_r, jitter = 0.22, rough = 0.10, setback = 1.2, depth = house_d, road_w = road_w, gap_prob = 0.12, n_variants = 3, rng = split_rng(root_rng, key = "ring"))
+spoke_pins = st.inside_square(pins = st.spoke_anchors(model = model, road_w = road_w, setback = 2.2, depth = house_d, t0 = 0.16, t1 = 0.85, per_spoke = 7, keep0 = 0.85, keep1 = 0.35, n_variants = 3, rng = split_rng(root_rng, key = "along")), half = map_half - 6.0)
+pins = merge(ring_pins, spoke_pins)
+
+# --- земля: ячейки по домам + дальние поля ----------------------------------
+far_sites = st.ring_sites(n = 34, r_lo = r_out * 0.50, r_hi = r_out * 1.25, rng = split_rng(root_rng, key = "farms"))
+sites = merge(st.bare_sites(anchors = spoke_pins), far_sites)
+ground_raw = st.voronoi_ground(size = map_half * 2.0, cell = 0.9, sites = sites, r_core = plaza_r + 8.0, field_frac = 0.62, rng = split_rng(root_rng, key = "cells"))
+
+# --- массинг: дом = коробка + двускатная крыша, фасад +Z --------------------
+def block_house(w: f32, d: f32, h: f32, rise: f32, roof_grp: string) -> (out: geo<mesh>) {
+    """Коробка w×h×d на y=0 и двускатная крыша (конёк вдоль X) со свесом 0.35."""
+    body = mark(transform(box(size = vec3(w, h, d)), translate = vec3(0, h * 0.5, 0)), "wall", where = true, domain = faces)
+    ov = 0.35
+    hd = d * 0.5 + ov
+    prof = set_position(mesh_line(count = 3, length = 0.0), pos = @index == 0 ? vec3(0.0 - hd, -0.15, 0) : (@index == 1 ? vec3(hd, -0.15, 0) : vec3(0, rise, 0)))
+    path = transform(mesh_line(count = 2, length = w + 2.0 * ov, dir = (1, 0, 0)), translate = vec3(0.0 - (w * 0.5 + ov), h, 0))
+    roof = mark(compute_normals(sweep(path, profile = prof), mode = flat), roof_grp, where = true, domain = faces)
+    out = merge(body, roof)
+}
+
+def pavilion(r: f32, h: f32, roof_h: f32) -> (out: geo<mesh>) {
+    """Беседка площади: восьмигранный подиум, восемь столбов, шатровая крыша."""
+    base = shapes.ngon_frustum(y0 = 0.16, y1 = 0.55, r0 = r + 0.6, r1 = r + 0.5, sides = 8, grp = "stone")
+    post = parts.piece(size = vec3(0.35, h, 0.35), pos = vec3(0, 0.55 + h * 0.5, r), grp = "wall")
+    posts = shapes.polar_array(post, n = 8)
+    roof = shapes.ngon_frustum(y0 = 0.55 + h - 0.1, y1 = 0.55 + h + roof_h, r0 = r + 0.9, r1 = 0.25, sides = 8, grp = "roof_red")
+    out = merge(base, posts, roof)
+}
+
+def fountain(r: f32) -> (out: geo<mesh>) {
+    """Чаша фонтана: низкий восьмигранник и столбик."""
+    bowl = shapes.ngon_frustum(y0 = 0.16, y1 = 0.7, r0 = r, r1 = r * 0.9, sides = 8, grp = "stone")
+    post = shapes.ngon_frustum(y0 = 0.7, y1 = 1.9, r0 = 0.25, r1 = 0.18, sides = 6, grp = "stone")
+    out = merge(bowl, post)
+}
+
+def tree(h: f32, crown_r: f32) -> (out: geo<mesh>) {
+    """Дерево-массинг: ствол и две крон-сферы."""
+    trunk = shapes.ngon_frustum(y0 = 0.0, y1 = h * 0.45, r0 = 0.22, r1 = 0.15, sides = 6, grp = "bark")
+    c0 = transform(ico_sphere(subdiv = 1, radius = crown_r), scale = vec3(1.0, 0.85, 1.0), translate = vec3(0, h * 0.45 + crown_r * 0.6, 0))
+    c1 = transform(ico_sphere(subdiv = 1, radius = crown_r * 0.7), translate = vec3(crown_r * 0.4, h * 0.45 + crown_r * 1.2, crown_r * 0.2))
+    crown = mark(compute_normals(merge(c0, c1), mode = flat), "leaf", where = true, domain = faces)
+    out = merge(trunk, crown)
+}
+
+h_a = block_house(w = 5.4, d = house_d, h = 3.2, rise = 2.4, roof_grp = "roof_red")
+h_b = block_house(w = 7.0, d = house_d, h = 3.6, rise = 2.6, roof_grp = "roof_brown")
+h_c = block_house(w = 8.6, d = house_d + 0.4, h = 3.4, rise = 2.5, roof_grp = "roof_dark")
+houses = realize(instance_on_points(pins, source = h_a, variants = [h_a, h_b, h_c]))
+
+# Изгороди по границам ячеек — после домов: не пересекают дороги, дома и площадь.
+hedge = st.hedges(ground = ground_raw, clear = merge(roads, drop_stamp(houses)), gap = 2.0, r_clear = plaza_r + 6.0, h = 0.7)
+ground = st.paint_ground(ground = merge(ground_raw, hedge), rng = split_rng(root_rng, key = "gpaint"))
+
+t_a = tree(h = 5.5, crown_r = 2.2)
+t_b = tree(h = 4.2, crown_r = 1.7)
+tree_pins = st.tree_sites(ground = ground_raw, roads = roads, houses = houses, r_plaza = plaza_r, density = 0.04, min_dist = 2.8, road_gap = 2.6, house_gap = 4.5, grove = 0.22, hedge_mul = 3.0, rng = split_rng(root_rng, key = "trees"))
+tp = set(tree_pins, "variant", random_int(n = 2, rng = split_rng(root_rng, key = "tvar")), domain = points)
+trees = realize(instance_on_points(tp, source = t_a, variants = [t_a, t_b]))
+
+centre = merge(pavilion(r = 3.2, h = 3.4, roof_h = 3.0), transform(fountain(r = 1.1), translate = vec3(0.0 - 0.6, 0, 0.0 - 5.2)))
+
+# --- окраска ---------------------------------------------------------------
+def paint(g: geo<mesh>, rng: rng) -> (out: geo<mesh>) {
+    """Массинг-палитра: штукатурка, три крыши, грунт, булыжник, камень, зелень."""
+    pr = split_rng(rng, key = "p")
+    dirt = mix(vec3(0.50, 0.36, 0.20), vec3(0.64, 0.48, 0.28), 0.5 + 0.5 * fbm(scale = 0.25, octaves = 2, rng = split_rng(pr, key = "d")))
+    cobble = mix(vec3(0.66, 0.60, 0.50), vec3(0.80, 0.74, 0.64), 0.5 + 0.5 * fbm(scale = 0.5, octaves = 3, rng = split_rng(pr, key = "c")))
+    c0 = ingroup("wall") ? vec3(0.90, 0.86, 0.74) : vec3(1.0, 0.0, 1.0)
+    c1 = ingroup("roof_red") ? vec3(0.62, 0.24, 0.14) : c0
+    c2 = ingroup("roof_brown") ? vec3(0.48, 0.30, 0.16) : c1
+    c3 = ingroup("roof_dark") ? vec3(0.32, 0.26, 0.24) : c2
+    c4 = ingroup("dirt") ? dirt : c3
+    c5 = ingroup("cobble") ? cobble : c4
+    c6 = ingroup("stone") ? vec3(0.58, 0.56, 0.52) : c5
+    c7 = ingroup("bark") ? vec3(0.30, 0.18, 0.08) : c6
+    c8 = ingroup("leaf") ? mix(vec3(0.16, 0.36, 0.12), vec3(0.34, 0.54, 0.16), 0.5 + 0.5 * fbm(scale = 0.3, octaves = 2, rng = split_rng(pr, key = "l"))) : c7
+    out = set(g, "Cd", c8, domain = faces)
+}
+
+def drop_stamp(g: geo<mesh>) -> (out: geo<mesh>) {
+    """Снимает стамп-атрибуты после realize, чтобы merge не ловил E609."""
+    a = remove_attr(g, "orient")
+    b = remove_attr(a, "scale")
+    c = remove_attr(b, "variant")
+    d = remove_attr(c, "ring")
+    out = remove_attr(d, "t")
+}
+
+def paint_roads(g: geo<mesh>, rng: rng) -> (out: geo<mesh>) {
+    """Только грунт и булыжник — для схемы layout без зданий."""
+    pr = split_rng(rng, key = "p")
+    dirt = mix(vec3(0.50, 0.36, 0.20), vec3(0.64, 0.48, 0.28), 0.5 + 0.5 * fbm(scale = 0.25, octaves = 2, rng = split_rng(pr, key = "d")))
+    cobble = mix(vec3(0.66, 0.60, 0.50), vec3(0.80, 0.74, 0.64), 0.5 + 0.5 * fbm(scale = 0.5, octaves = 3, rng = split_rng(pr, key = "c")))
+    out = set(g, "Cd", ingroup("cobble") ? cobble : dirt, domain = faces)
+}
+
+built = paint(merge(plaza, roads, centre, drop_stamp(houses), drop_stamp(trees)), rng = split_rng(root_rng, key = "paint"))
+layout = merge(ground, paint_roads(merge(plaza, roads), rng = split_rng(root_rng, key = "paint")))
+hamlet = merge(ground, built)
+output layout
+output hamlet

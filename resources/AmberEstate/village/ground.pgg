@@ -1,0 +1,45 @@
+import lib.parts
+import lib.plan
+import lib.shapes
+import village.common as vc
+
+# Земля деревни: поле, круглая площадь, три кольцевые дороги, шесть радиальных.
+
+def spoke(r0: f32, r1: f32, w: f32, y0: f32, y1: f32, grp: string) -> (out: geo<mesh>) {
+    """Прямой участок дороги вдоль +X от r0 до r1, ширина w. polar_array даёт спицы."""
+    expect r1 > r0: "spoke: длина"
+    len = r1 - r0
+    out = parts.piece(size = vec3(len, y1 - y0, w), pos = vec3((r0 + r1) * 0.5, (y0 + y1) * 0.5, 0), grp = grp)
+}
+
+def ring_road(r_in: f32, r_out: f32, y0: f32, y1: f32, grp: string) -> (out: geo<mesh>) {
+    """Кольцо из шести дуг по 60° — полный оборот без самопересечения профиля 0–360."""
+    expect r_out > r_in: "ring_road: толщина"
+    seg = plan.arc_shell(cx = 0, cz = 0, r_in = r_in, r_out = r_out, a0 = 0, a1 = 60, y0 = y0, y1 = y1, grp = grp, n = 8)
+    out = shapes.polar_array(seg, n = 6)
+}
+
+def assemble(plaza_r: f32, road_w: f32, r_mid: f32, r_out: f32, field_r: f32, n_spoke: int, n_curb: int, rng: rng) -> (out: geo<mesh>) {
+    """Поле, площадь, три кольца дорог, спицы, бордюр площади. Кольца: plaza_r, r_mid, r_out — внутренние радиусы."""
+    expect plaza_r > 4.0: "ground: площадь"
+    expect field_r > r_out + road_w: "ground: поле"
+    expect n_spoke >= 4: "ground: спицы"
+    y_g0 = 0.0 - 0.08
+    y_g1 = 0.0
+    y_d0 = 0.02
+    y_d1 = 0.12
+    y_p0 = 0.04
+    y_p1 = 0.14
+    field = vc.disk(r = field_r, y0 = y_g0, y1 = y_g1, n = 56, grp = "grass")
+    plaza = vc.disk(r = plaza_r, y0 = y_p0, y1 = y_p1, n = 40, grp = "cobble")
+    pad = vc.disk(r = 2.6, y0 = 0.10, y1 = 0.18, n = 20, grp = "cobble")
+    ring1 = ring_road(r_in = plaza_r, r_out = plaza_r + road_w, y0 = y_d0, y1 = y_d1, grp = "dirt")
+    ring2 = ring_road(r_in = r_mid, r_out = r_mid + road_w, y0 = y_d0, y1 = y_d1, grp = "dirt")
+    ring3 = ring_road(r_in = r_out, r_out = r_out + road_w, y0 = y_d0, y1 = y_d1, grp = "dirt")
+    one = spoke(r0 = 2.8, r1 = r_out + road_w, w = road_w * 0.78, y0 = y_d0, y1 = y_d1, grp = "dirt")
+    spokes = shapes.polar_array(one, n = n_spoke)
+    curb_one = parts.piece(size = vec3(0.46, 0.28, 0.30), pos = vec3(0, 0.20, plaza_r - 0.06), grp = "curb")
+    curb = shapes.polar_array(curb_one, n = n_curb)
+    raw = merge(field, plaza, pad, ring1, ring2, ring3, spokes, curb)
+    out = vc.paint_ground(raw = raw, rng = rng)
+}

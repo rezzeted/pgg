@@ -1,0 +1,56 @@
+import lib.parts
+
+# Якоря и земля для кольцевой деревни AmberEstate.
+# Угол a_deg — как у plan.arc_anchors: 0° = +X (восток), 90° = +Z (север).
+
+def polar_at(r: f32, a_deg: f32) -> (out: vec3) {
+    """Точка в XZ: r по углу a_deg (0 = +X, 90 = +Z)."""
+    ar = radians(a_deg)
+    out = vec3(r * cos(ar), 0, r * sin(ar))
+}
+
+def yaw_in(a_deg: f32) -> (out: f32) {
+    """Yaw, при котором локальный +Z (фасад) смотрит в origin с позиции polar(r, a)."""
+    out = 270.0 - a_deg
+}
+
+def disk(r: f32, y0: f32, y1: f32, n: int, grp: string) -> (out: geo<mesh>) {
+    """Цилиндр-диск радиуса r от y0 до y1, n сторон. Профиль circle → вертикальный sweep."""
+    expect r > 0.2: "disk: маленький"
+    expect y1 > y0: "disk: высота"
+    expect n >= 8: "disk: мало сторон"
+    path = transform(mesh_line(count = 2, length = y1 - y0, dir = (0, 1, 0)), translate = vec3(0, y0, 0))
+    body = sweep(path, profile = circle(sides = n, radius = r))
+    out = mark(compute_normals(body, mode = auto, angle = 40), grp, where = true, domain = faces)
+}
+
+def pin(r: f32, a_deg: f32, variant: int, sc: f32, yaw_extra: f32) -> (out: geo<points>) {
+    """Один якорь дома: фасад к площади, вариант @variant, масштаб sc, доворот yaw_extra."""
+    at = polar_at(r = r, a_deg = a_deg)
+    yaw = yaw_in(a_deg = a_deg) + yaw_extra
+    p0 = transform(mesh_line(count = 1, length = 0.0), translate = at)
+    p1 = set(p0, "orient", orient_from_euler(vec3(0, yaw, 0)), domain = points)
+    p2 = set(p1, "variant", variant, domain = points)
+    out = set(p2, "scale", sc, domain = points)
+}
+
+def drop_stamp(g: geo<mesh>) -> (out: geo<mesh>) {
+    """Снимает @tint/@orient, чтобы merge домов и пропов не ловил E609 по доменам."""
+    a = remove_attr(g, "tint")
+    out = remove_attr(a, "orient")
+}
+
+def paint_ground(raw: geo<mesh>, rng: rng) -> (out: geo<mesh>) {
+    """Трава / булыжник площади / грунт дорог / бордюр. Без AO — сцена большая."""
+    pr = split_rng(rng, key = "ground")
+    grass_col = mix(vec3(0.22, 0.42, 0.12), vec3(0.38, 0.54, 0.16), fbm(scale = 0.08, octaves = 3, rng = split_rng(pr, key = "g")))
+    cobble_col = mix(vec3(0.62, 0.58, 0.52), vec3(0.78, 0.74, 0.66), fbm(scale = 0.45, octaves = 3, rng = split_rng(pr, key = "c")))
+    dirt_col = mix(vec3(0.48, 0.34, 0.18), vec3(0.62, 0.44, 0.24), fbm(scale = 0.22, octaves = 2, rng = split_rng(pr, key = "d")))
+    curb_col = mix(vec3(0.58, 0.56, 0.52), vec3(0.40, 0.38, 0.36), fbm(scale = 1.4, octaves = 2, rng = split_rng(pr, key = "k")))
+    c0 = ingroup("grass") ? grass_col : vec3(1.0, 0.0, 1.0)
+    c1 = ingroup("cobble") ? cobble_col : c0
+    c2 = ingroup("dirt") ? dirt_col : c1
+    c3 = ingroup("curb") ? curb_col : c2
+    edge_mul = ingroup("edge") ? vec3(1.12, 1.10, 1.06) : vec3(1.0)
+    out = set(raw, "Cd", c3 * edge_mul, domain = faces)
+}

@@ -6,6 +6,7 @@
 #include <gtest/gtest.h>
 
 #include <filesystem>
+#include <fstream>
 
 #include "pgg/eval.h"
 #include "pgg/pgg.h"
@@ -226,6 +227,31 @@ TEST(Module, ProductLibRootLetsLibImportFromElsewhere) {
         "output g\n",
         p);
     pggtest::expectNoErrors(r);
+}
+
+TEST(Module, NestedImportSearchesModuleDirectory) {
+    const auto root = std::filesystem::temp_directory_path() / "pgg_mod_sibling";
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);
+    std::filesystem::create_directories(root / "pkg", ec);
+    {
+        std::ofstream f(root / "pkg" / "common.pgg");
+        f << "def n() -> (out: f32) {\n    \"\"\"Sibling helper.\"\"\"\n    out = 4.0\n}\n";
+    }
+    {
+        std::ofstream f(root / "pkg" / "item.pgg");
+        f << "import common\n"
+             "def n() -> (out: f32) {\n    \"\"\"Calls sibling common.\"\"\"\n    out = common.n()\n}\n";
+    }
+    {
+        std::ofstream f(root / "main.pgg");
+        f << "import pkg.item as it\nv = it.n()\noutput v\n";
+    }
+    pgg::RunResult r = pgg::runFile((root / "main.pgg").string());
+    pggtest::expectNoErrors(r);
+    ASSERT_TRUE(pggtest::outputOf(r, "v"));
+    pggtest::expectF32Near(pgg::asF32(*pggtest::outputOf(r, "v")), 4.0f);
+    std::filesystem::remove_all(root, ec);
 }
 
 }  // namespace
