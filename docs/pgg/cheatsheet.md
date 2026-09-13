@@ -19,6 +19,8 @@ tube = sweep(mesh_line(count = 2, length = h, dir = (0, 1, 0)), profile = ring)
 
 Массив вокруг Y: `shapes.polar_array(g, n = 6)`. Четыре стены ящика: `shapes.around_box(facade, w, d)`. Многоугольник: `shapes.ngon_frustum` — радиусы **апофемы**. Кладка: сердцевина `blockwork.core_prism` + `brick_veneer*` + `masonry.clip_*_hole`. Скруглённый план: `plan.plan_prism` / `plan.arc_shell`.
 
+Топология поселения — `lib.settlement` (пример `resources/pgg/hamlet.pgg`): `plaza_outline` → `spoke_model` → `spoke_roads`/`cross_paths` (ленты), `plaza_anchors`/`spoke_anchors` (якоря с `@orient/@scale/@variant/@ring/@t` — здания инстансит сцена), `voronoi_ground` (ячейки по сайтам через `repeat`, группы meadow/field/hedge), `hedges`, `tree_sites`. Другая деревня = seed / `n` / радиусы. Согласование «вершина площади ↔ спица ↔ сосед» — через одинаковые `(rng, key, counter)` в поле и в `value(random(...), on = row)`; соседний элемент — `counter = (@index + 1) % n` (+ `alias_rng`).
+
 ## Грабли
 
 - Тернарник **не** выбирает `geo` — `select(cond, a, b)` или отдельные def.
@@ -42,6 +44,13 @@ tube = sweep(mesh_line(count = 2, length = h, dir = (0, 1, 0)), profile = ring)
 - `bake_ao` гасит эмиссию — `separate` светящихся **до** бейка, `merge` после. Эмиссия ≤ 1.0.
 - Def, пишущий атрибут по `@P` (ramp формы по высоте), — **после** `transform` на место, иначе читает координаты до переноса (`scarecrow.pgg`: spine сначала translate, потом `coat_shape`).
 - `set("profile_scale", vec2(r, r))` без поля/`domain = points` уходит в detail — `sweep` не масштабирует профиль (цилиндр радиуса `circle`, не `r`). Нужен `@index` или явный `domain = points`.
+- Чтение `@attr` резолвит имя в порядке **points → corners → faces** и интерполирует (среднее). `promote` **не** удаляет исходную колонку, поэтому после `promote(..., to = faces, mode = first)` чтение `@cell` на гранях всё равно берёт points-версию средним — «first» невидим. Нужна faces-версия — другое имя (`set(..., domain = faces)`) или `remove_attr` источника. Граница ячеек по углам — дисперсия: `mean(id²) − mean(id)² > 0`.
+- `fbm` **знаковый** (≈ −0.7…0.8, медиана 0): в `mix(a, b, fbm)` подавать `0.5 + 0.5 * fbm`; порог «треть площади» — `fbm > 0.15`, не `> 0.5`.
+- `distance_to` считается только на **points**: в плотность `distribute_points` (грани) — сначала `set(g, "d", distance_to(...), domain = points)` → `promote(to = faces)` → `@d`.
+- Кортеж `(a, b)` из идентификаторов не парсится (только литералы) — `vec2(a, b)`; `grid(res = vec2(f32(n), f32(n)))`.
+- Вложенный `foreach`: целевое имя внутреннего цикла **не** должно совпадать с портом внешнего (`row = foreach s in ...` → E204 «never bound»); `pins = foreach ...` и затем `row = pins`.
+- `select(cond, a, b)` в теле `foreach` принимает value-bool из `value(random(...), on = row) < p` — так делаются пропуски (`b = empty_points()` / `empty_mesh()`).
+- `expect` — только в начале тела def, до первого binding'а.
 
 ## MCP (одна строка)
 

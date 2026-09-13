@@ -1,16 +1,93 @@
 param seed: int = 7
+param plaza_r: f32 = 12.0
+param road_w: f32 = 3.4
 
-import environment.umbrella_table as umb
+import village.common as vc
+import village.ground as ground
+import village.buildings as bld
+import lib.parts
+import lib.greenery
+import lib.plan
+import props.well as well
+import props.oak as oak
+import props.barrel as barrel
+import props.mailbox as mailbox
+import props.woodshed as woodshed
+import props.wood_pile as wood_pile
+import props.cellar as cellar
+import props.scarecrow as scarecrow
+import props.beehive as beehive
+import props.chair as chair
 
-# AmberEstate — минипроект. Окружение: столик с зонтом
-# (environment/umbrella_table.pgg, референс environment/reference.jpg).
-# Пропы (бочка, стул, дрова, улей, ящик, пугало, колодец, дровник, дуб, погреб) —
-# resources/AmberEstate/props/*.pgg, референсы рядом (.jpg).
-# Храм: church.pgg + church/*.pgg, референс church/reference.jpg.
-# Дома: cottage.pgg / cottage_mansard.pgg + cottage/*.pgg;
-# spire_house.pgg / spire_house_wide.pgg + spire_house/*.pgg;
-# арка: stone_arch.pgg.
-# import lib.* резолвится в resources/pgg (вьюер и PggTool подмешивают этот root).
+# AmberEstate — кольцевая деревня: круглая площадь с колодцем, ратуша на севере,
+# три кольца дорог и шесть радиальных спиц, коттеджи с разным шагом, храм
+# в стороне на востоке. Ратуша — spire_house (town_hall.pgg).
+# import lib.* резолвится в resources/pgg.
 
-estate = umb.assemble(width = 1.02, height = 0.70, thick = 0.045, n = 5, r = 1.12, shaft_h = 0.92, dome_h = 0.32, hang = 0.18, sides = 12, rng = rng_from_seed(seed))
+root_rng = rng_from_seed(seed)
+
+# Кольца: площадь 12, дорога 12–15.4, дома 1, дорога ~27–30.4, дома 2, внешнее кольцо ~42–45.4.
+r_mid = 27.2
+r_out = 41.8
+field_r = 68.0
+front1 = plaza_r + road_w + 3.8
+front2 = r_mid + road_w + 3.4
+cot_front = 3.15
+hall_front = 5.01
+r_cot1 = front1 + cot_front
+r_hall = plaza_r + road_w + 1.2 + hall_front
+r_cot2 = front2 + cot_front
+
+ground_all = ground.assemble(plaza_r = plaza_r, road_w = road_w, r_mid = r_mid, r_out = r_out, field_r = field_r, n_spoke = 6, n_curb = 40, rng = split_rng(root_rng, key = "ground"))
+
+# --- колодец на площади -------------------------------------------------------
+well_unit = well.assemble(r = 0.72, h = 0.62, rng = split_rng(root_rng, key = "well"))
+
+# --- ратуша: север площади, фасад к колодцу ----------------------------------
+town_hall = parts.place(bld.town_hall(rng = split_rng(root_rng, key = "hall")), yaw_deg = vc.yaw_in(a_deg = 90), at = vc.polar_at(r = r_hall, a_deg = 90))
+
+# --- храм к востоку, фасад к деревне, вне колец --------------------------------
+church_bldg = parts.place(bld.parish(rng = split_rng(root_rng, key = "kirk")), yaw_deg = vc.yaw_in(a_deg = 0), at = vec3(58.0, 0, 4.0))
+
+# --- коттеджи: два варианта, разный шаг и радиус ------------------------------
+gable = bld.cottage_gable(w = 5.6, d = 4.6, stone_h = 2.5, upper_h = 2.4, jetty = 0.18, overhang = 0.45, quoin_bricks = 1.5, rng = split_rng(root_rng, key = "gable"))
+mansard = bld.cottage_mansard(w = 5.6, d = 4.6, stone_h = 2.5, upper_h = 2.4, jetty = 0.18, overhang = 0.45, quoin_bricks = 1.5, rng = split_rng(root_rng, key = "mansard"))
+p1 = merge(vc.pin(r = r_cot1 + 0.2, a_deg = 24, variant = 0, sc = 1.00, yaw_extra = 6), vc.pin(r = r_cot1 + 0.9, a_deg = 42, variant = 1, sc = 0.96, yaw_extra = 0.0 - 8), vc.pin(r = r_cot1 + 0.4, a_deg = 152, variant = 0, sc = 1.04, yaw_extra = 4), vc.pin(r = r_cot1 + 0.6, a_deg = 168, variant = 1, sc = 1.00, yaw_extra = 0.0 - 5))
+p2 = merge(vc.pin(r = r_cot1 + 0.3, a_deg = 214, variant = 0, sc = 0.94, yaw_extra = 10), vc.pin(r = r_cot1 + 0.5, a_deg = 328, variant = 1, sc = 1.02, yaw_extra = 7), vc.pin(r = r_cot2 + 0.2, a_deg = 18, variant = 1, sc = 1.00, yaw_extra = 5), vc.pin(r = r_cot2 + 1.4, a_deg = 48, variant = 0, sc = 0.97, yaw_extra = 0.0 - 6))
+p3 = merge(vc.pin(r = r_cot2 + 0.3, a_deg = 78, variant = 1, sc = 1.05, yaw_extra = 3), vc.pin(r = r_cot2 + 1.0, a_deg = 108, variant = 0, sc = 1.00, yaw_extra = 0.0 - 4), vc.pin(r = r_cot2 + 0.5, a_deg = 158, variant = 1, sc = 0.95, yaw_extra = 8), vc.pin(r = r_cot2 + 1.1, a_deg = 208, variant = 0, sc = 1.03, yaw_extra = 0.0 - 7))
+p4 = merge(vc.pin(r = r_cot2 + 0.4, a_deg = 262, variant = 1, sc = 1.00, yaw_extra = 2), vc.pin(r = r_cot2 + 0.8, a_deg = 338, variant = 0, sc = 0.98, yaw_extra = 0.0 - 9))
+cot_pts = merge(p1, p2, p3, p4)
+cottages = realize(instance_on_points(cot_pts, source = gable, variants = [gable, mansard]))
+
+# --- пропы --------------------------------------------------------------------
+oak0 = oak.assemble(rng = split_rng(root_rng, key = "oak"))
+oak_pts = merge(vc.pin(r = 9.2, a_deg = 52, variant = 0, sc = 1.15, yaw_extra = 20), vc.pin(r = 8.6, a_deg = 128, variant = 0, sc = 1.00, yaw_extra = 80), vc.pin(r = 10.4, a_deg = 238, variant = 0, sc = 0.88, yaw_extra = 140), vc.pin(r = 46.5, a_deg = 12, variant = 0, sc = 1.22, yaw_extra = 40), vc.pin(r = 39.0, a_deg = 195, variant = 0, sc = 1.08, yaw_extra = 200))
+oaks = realize(instance_on_points(oak_pts, source = oak0))
+
+barrel0 = barrel.assemble(h = 0.78, re = 0.28, rm = 0.34, rng = split_rng(root_rng, key = "barrel"))
+bpts = plan.arc_anchors(cx = 0, cz = 0, r = 2.35, y = 0, a0 = 20, a1 = 280, n = 5)
+barrels = realize(instance_on_points(bpts, source = barrel0))
+
+mail0 = mailbox.assemble(w = 0.29, d = 0.48, h = 0.32, ph = 0.56, rng = split_rng(root_rng, key = "mail"))
+mail_a = parts.place(mail0, yaw_deg = vc.yaw_in(a_deg = 24), at = vc.polar_at(r = front1 + 0.4, a_deg = 24))
+mail_b = parts.place(mail0, yaw_deg = vc.yaw_in(a_deg = 168), at = vc.polar_at(r = front1 + 0.5, a_deg = 168))
+
+shed = parts.place(woodshed.assemble(w = 1.55, d = 1.20, h = 1.05, rng = split_rng(root_rng, key = "shed")), yaw_deg = vc.yaw_in(a_deg = 210), at = vc.polar_at(r = 25.4, a_deg = 210))
+pile = parts.place(wood_pile.assemble(len = 0.62, rows = 4, rng = split_rng(root_rng, key = "pile")), yaw_deg = 40, at = vc.polar_at(r = 24.2, a_deg = 204))
+cellar_u = parts.place(cellar.assemble(r = 1.42, h = 0.52, rng = split_rng(root_rng, key = "cellar")), yaw_deg = vc.yaw_in(a_deg = 228), at = vc.polar_at(r = 25.8, a_deg = 228))
+scare = parts.place(scarecrow.assemble(h = 1.55, rng = split_rng(root_rng, key = "scare")), yaw_deg = vc.yaw_in(a_deg = 300) + 25, at = vc.polar_at(r = 26.5, a_deg = 300))
+hive = parts.place(beehive.assemble(w = 0.52, d = 0.52, h = 0.16, rng = split_rng(root_rng, key = "hive")), yaw_deg = vc.yaw_in(a_deg = 42), at = vc.polar_at(r = r_cot1 + 3.4, a_deg = 38))
+chair0 = chair.assemble(w = 0.42, d = 0.40, y = 0.44, h = 0.46, rng = split_rng(root_rng, key = "chair"))
+ch_a = parts.place(chair0, yaw_deg = 40, at = vec3(1.6, 0, 1.1))
+ch_b = parts.place(chair0, yaw_deg = 210, at = vec3(0.0 - 1.4, 0, 1.6))
+
+tuft_rng = split_rng(root_rng, key = "tuft")
+grass_raw = merge(greenery.grass_clump(at = vec3(6.2, 0, 3.4), rng = split_rng(tuft_rng, key = 1)), greenery.grass_clump(at = vec3(0.0 - 5.8, 0, 4.1), rng = split_rng(tuft_rng, key = 2)), greenery.grass_clump(at = vec3(4.4, 0, 0.0 - 7.2), rng = split_rng(tuft_rng, key = 3)), greenery.grass_clump(at = vec3(16.4, 0, 8.2), rng = split_rng(tuft_rng, key = 4)), greenery.grass_clump(at = vec3(0.0 - 8.8, 0, 18.5), rng = split_rng(tuft_rng, key = 5)), greenery.grass_clump(at = vec3(22.0, 0, 0.0 - 14.0), rng = split_rng(tuft_rng, key = 6)))
+grass = set(grass_raw, "Cd", vec3(0.20, 0.38, 0.11), domain = faces)
+
+props = merge(vc.drop_stamp(oaks), vc.drop_stamp(barrels), vc.drop_stamp(mail_a), vc.drop_stamp(mail_b), vc.drop_stamp(shed), vc.drop_stamp(pile), vc.drop_stamp(cellar_u), vc.drop_stamp(scare), vc.drop_stamp(hive), vc.drop_stamp(ch_a), vc.drop_stamp(ch_b), grass)
+
+village = merge(ground_all, vc.drop_stamp(well_unit), vc.drop_stamp(town_hall), vc.drop_stamp(church_bldg), vc.drop_stamp(cottages), props)
+estate = village
+output village
 output estate

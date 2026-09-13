@@ -1,0 +1,4 @@
+[
+  {"name": "iso", "node": "town_hall", "orbit": [38, 18], "zoom": 1.12, "chrome": "off"},
+  {"name": "front", "node": "town_hall", "orbit": [0, 12], "zoom": 1.15, "ortho": "front", "chrome": "off"}
+]

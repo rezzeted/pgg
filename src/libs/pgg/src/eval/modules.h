@@ -44,9 +44,11 @@ struct ModuleClosure {
 bool hasImports(const File& file);
 
 // Loads the transitive import closure of mainFile. `import lib.noise` resolves
-// to `<root>/lib/noise.pgg`, roots searched in order. A module's own parse /
-// lint findings are copied into diags with the module path prefixed to the
-// message (spans are left pointing into the module source).
+// to `<root>/lib/noise.pgg`, roots searched in order. Nested imports also search
+// the importing module's directory first (sibling `import common` from
+// `props/well.pgg` when the main file lives in the parent folder). A module's
+// own parse / lint findings are copied into diags with the module path prefixed
+// to the message (spans are left pointing into the module source).
 ModuleClosure loadModuleClosure(const File& mainFile, const std::vector<std::string>& roots,
                                 std::vector<Diagnostic>& diags);
 

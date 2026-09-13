@@ -1,0 +1,5 @@
+[
+  {"name": "aerial", "node": "hamlet", "orbit": [40, 55], "zoom": 1.0, "chrome": "off"},
+  {"name": "plan", "node": "layout", "orbit": [0, 89], "zoom": 1.0, "ortho": "top", "chrome": "off"},
+  {"name": "street", "node": "hamlet", "orbit": [25, 14], "zoom": 0.55, "chrome": "off"}
+]

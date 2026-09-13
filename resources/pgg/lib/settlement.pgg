@@ -1,0 +1,423 @@
+# Топология поселения: «органическая радиалка» по образцу деревень-Rundling.
+#
+# Идея: топология — это ЯКОРЯ и ЛЕНТЫ, а не здания. Библиотека выдаёт
+#   * контур площади (неправильный многоугольник) и плиту по нему,
+#   * кривые спицы-дороги (Безье), выходящие из вершин площади,
+#   * поперечные тропки между соседними спицами (не кольца!),
+#   * якоря домов: по граням площади и вдоль спиц с пропусками,
+#   * землю, нарезанную на ячейки Вороного (поля/луга/живые изгороди),
+#   * посадочные точки деревьев.
+# Здания, деревья и пропы — забота сцены: она инстансит свои фабрики на якоря
+# (@orient / @scale / @variant / @ring / @t). Другая деревня = другой seed,
+# другие n / радиусы / доли, или другая сборка тех же кирпичей.
+#
+# Углы: 0° = +X, 90° = +Z (как lib.plan). Фасад инстанса — локальный +Z.
+# Случайность адресуется (rng, counter): один и тот же (rng, key, counter)
+# даёт одно и то же число в поле и в value() — на этом держится согласование
+# «вершина площади ↔ выход спицы ↔ соседняя спица» без графовых операций.
+
+# ---------------------------------------------------------------------------
+# Скалярная геометрия
+# ---------------------------------------------------------------------------
+
+def polar(r: f32, a_deg: f32) -> (out: vec3) {
+    """Точка в XZ на радиусе r под углом a_deg (0 = +X, 90 = +Z)."""
+    ar = radians(a_deg)
+    out = vec3(r * cos(ar), 0, r * sin(ar))
+}
+
+def yaw_of(dir: vec3) -> (out: f32) {
+    """Yaw (градусы), при котором локальный +Z смотрит вдоль dir (XZ)."""
+    out = degrees(atan2(dot(dir, (1, 0, 0)), dot(dir, (0, 0, 1))))
+}
+
+def perp_xz(dir: vec3) -> (out: vec3) {
+    """Единичный перпендикуляр к dir в XZ (правая сторона по ходу)."""
+    n = vec3(dot(dir, (0, 0, 1)), 0, 0.0 - dot(dir, (1, 0, 0)))
+    out = normalize(n)
+}
+
+def bezier_at(p0: vec3, p1: vec3, p2: vec3, p3: vec3, t: f32) -> (out: vec3) {
+    """Точка кубической Безье при параметре t."""
+    u = 1.0 - t
+    out = p0 * (u * u * u) + p1 * (3.0 * u * u * t) + p2 * (3.0 * u * t * t) + p3 * (t * t * t)
+}
+
+def bezier_tan(p0: vec3, p1: vec3, p2: vec3, p3: vec3, t: f32) -> (out: vec3) {
+    """Единичная касательная кубической Безье при t."""
+    u = 1.0 - t
+    d = (p1 - p0) * (3.0 * u * u) + (p2 - p1) * (6.0 * u * t) + (p3 - p2) * (3.0 * t * t)
+    out = normalize(d)
+}
+
+# ---------------------------------------------------------------------------
+# Площадь: неправильный многоугольник. Вершина i: угол и радиус с джиттером.
+# Одинаковые ключи rng в полевой (outline) и value-версиях (vtx_*) — одна вершина.
+# ---------------------------------------------------------------------------
+
+def vtx_ang(i: int, sides: int, jitter: f32, rng: rng, on: geo<points>) -> (out: f32) {
+    """Угол вершины i контура площади (значение). i >= sides — тот же угол + оборот."""
+    base = 360.0 * f32(i) / f32(sides)
+    j = value(random(lo = -1.0, hi = 1.0, rng = split_rng(rng, key = "vang"), counter = i % sides), on = on)
+    out = base + j * jitter * 360.0 / f32(sides)
+}
+
+def vtx_r(i: int, sides: int, r: f32, rough: f32, rng: rng, on: geo<points>) -> (out: f32) {
+    """Радиус вершины i контура площади (значение)."""
+    j = value(random(lo = -1.0, hi = 1.0, rng = split_rng(rng, key = "vrad"), counter = i % sides), on = on)
+    out = r * (1.0 + rough * j)
+}
+
+def plaza_outline(r: f32, sides: int, jitter: f32, rough: f32, rng: rng) -> (out: geo<points>) {
+    """Контур площади в мировом XZ: sides вершин, угол ±jitter доли шага, радиус ±rough.
+    Пишет @ang (градусы). Спицы выходят из вершин с индексом, кратным sides / n_spokes."""
+    expect sides >= 6: "plaza_outline: мало вершин"
+    expect jitter >= 0.0 & jitter < 0.5: "plaza_outline: jitter в [0, 0.5)"
+    ja = random(lo = -1.0, hi = 1.0, rng = split_rng(rng, key = "vang"))
+    jr = random(lo = -1.0, hi = 1.0, rng = split_rng(rng, key = "vrad"))
+    ang = 360.0 * f32(@index) / f32(sides) + ja * jitter * 360.0 / f32(sides)
+    rr = r * (1.0 + rough * jr)
+    p0 = set_position(mesh_line(count = sides, length = 0.0), pos = vec3(rr * cos(radians(ang)), 0, rr * sin(radians(ang))))
+    out = set(p0, "ang", ang, domain = points)
+}
+
+def plaza_slab(outline: geo<points>, y0: f32, y1: f32, grp: string) -> (out: geo<mesh>) {
+    """Плита площади по контуру: вертикальный sweep. Профиль X → мировой Z, Y → мировой X."""
+    expect y1 > y0: "plaza_slab: высота"
+    prof = set_position(outline, pos = vec3(dot(@P, (0, 0, 1)), dot(@P, (1, 0, 0)), 0))
+    path = transform(mesh_line(count = 2, length = y1 - y0, dir = (0, 1, 0)), translate = vec3(0, y0, 0))
+    body = sweep(path, profile = remove_attr(prof, "ang"))
+    out = mark(compute_normals(body, mode = flat), grp, where = true, domain = faces)
+}
+
+# ---------------------------------------------------------------------------
+# Спицы: модель строк. Точка i несёт параметры своей Безье и Безье соседа i+1,
+# чтобы поперечные тропки считались без графа.
+# ---------------------------------------------------------------------------
+
+def spoke_model(n: int, sides: int, r_out: f32, rng: rng, jitter: f32, rough: f32, r_plaza: f32, bend: f32, drift: f32, r_var: f32) -> (out: geo<points>) {
+    """n спиц: @ang/@r0 — вершина площади с индексом i·(sides/n); @b1/@b2 — угловой
+    увод контрольных точек (±bend°), @dr — увод конца (±drift°), @r1 — внешний радиус
+    (r_out ± r_var). Те же с суффиксом _n — для соседа i+1 (последняя ссылается на 0-ю,
+    угол +360)."""
+    expect n >= 3: "spoke_model: минимум три спицы"
+    expect sides % n == 0: "spoke_model: sides должно делиться на n"
+    k = sides / n
+    step = 360.0 / f32(sides)
+    ja = split_rng(rng, key = "vang")
+    jr = split_rng(rng, key = "vrad")
+    i0 = @index
+    i1 = (@index + 1) % n
+    wrap = (@index + 1) / n
+    ang0 = 360.0 * f32(i0) / f32(n) + random(lo = -1.0, hi = 1.0, rng = ja, counter = i0 * k) * jitter * step
+    ang1 = 360.0 * f32(i0 + 1) / f32(n) + random(lo = -1.0, hi = 1.0, rng = ja, counter = i1 * k) * jitter * step
+    r00 = r_plaza * (1.0 + rough * random(lo = -1.0, hi = 1.0, rng = jr, counter = i0 * k))
+    r01 = r_plaza * (1.0 + rough * random(lo = -1.0, hi = 1.0, rng = jr, counter = i1 * k))
+    rb1 = split_rng(rng, key = "b1")
+    rb2 = split_rng(rng, key = "b2")
+    rdr = split_rng(rng, key = "dr")
+    rr1 = split_rng(rng, key = "r1")
+    m0 = mesh_line(count = n, length = 0.0)
+    m1 = set(set(m0, "ang", ang0, domain = points), "ang_n", ang1, domain = points)
+    m2 = set(set(m1, "r0", r00, domain = points), "r0_n", r01, domain = points)
+    # Сосед i+1 читает те же генераторы с другим counter — намеренный повтор (alias_rng).
+    m3 = set(set(m2, "b1", random(lo = 0.0 - bend, hi = bend, rng = rb1, counter = i0), domain = points), "b1_n", random(lo = 0.0 - bend, hi = bend, rng = alias_rng(rb1), counter = i1), domain = points)
+    m4 = set(set(m3, "b2", random(lo = 0.0 - bend, hi = bend, rng = rb2, counter = i0), domain = points), "b2_n", random(lo = 0.0 - bend, hi = bend, rng = alias_rng(rb2), counter = i1), domain = points)
+    m5 = set(set(m4, "dr", random(lo = 0.0 - drift, hi = drift, rng = rdr, counter = i0), domain = points), "dr_n", random(lo = 0.0 - drift, hi = drift, rng = alias_rng(rdr), counter = i1), domain = points)
+    m6 = set(set(m5, "r1", r_out * (1.0 + random(lo = 0.0 - r_var, hi = r_var, rng = rr1, counter = i0)), domain = points), "r1_n", r_out * (1.0 + random(lo = 0.0 - r_var, hi = r_var, rng = alias_rng(rr1), counter = i1)), domain = points)
+    out = set(m6, "wrap", wrap, domain = points)
+}
+
+def spoke_p0(a: f32, b1: f32, b2: f32, dr: f32, r0: f32, r1: f32) -> (out: vec3) {
+    """Контрольная точка P0 спицы (чуть внутри площади, чтобы не было щели)."""
+    out = polar(r = r0 - 0.8, a_deg = a)
+}
+
+def spoke_p1(a: f32, b1: f32, b2: f32, dr: f32, r0: f32, r1: f32) -> (out: vec3) {
+    """Контрольная точка P1 спицы."""
+    out = polar(r = mix(r0, r1, 0.35), a_deg = a + b1)
+}
+
+def spoke_p2(a: f32, b1: f32, b2: f32, dr: f32, r0: f32, r1: f32) -> (out: vec3) {
+    """Контрольная точка P2 спицы."""
+    out = polar(r = mix(r0, r1, 0.70), a_deg = a + b2)
+}
+
+def spoke_p3(a: f32, b1: f32, b2: f32, dr: f32, r0: f32, r1: f32) -> (out: vec3) {
+    """Контрольная точка P3 спицы (конец)."""
+    out = polar(r = r1, a_deg = a + dr)
+}
+
+def spoke_pos(row: geo<points>, t: f32, nxt: bool) -> (out: vec3) {
+    """Точка спицы строки row (nxt = соседняя спица) при параметре t."""
+    a = nxt ? value(@ang_n, on = row) : value(@ang, on = row)
+    b1 = nxt ? value(@b1_n, on = row) : value(@b1, on = row)
+    b2 = nxt ? value(@b2_n, on = row) : value(@b2, on = row)
+    dr = nxt ? value(@dr_n, on = row) : value(@dr, on = row)
+    r0 = nxt ? value(@r0_n, on = row) : value(@r0, on = row)
+    r1 = nxt ? value(@r1_n, on = row) : value(@r1, on = row)
+    out = bezier_at(p0 = spoke_p0(a = a, b1 = b1, b2 = b2, dr = dr, r0 = r0, r1 = r1), p1 = spoke_p1(a = a, b1 = b1, b2 = b2, dr = dr, r0 = r0, r1 = r1), p2 = spoke_p2(a = a, b1 = b1, b2 = b2, dr = dr, r0 = r0, r1 = r1), p3 = spoke_p3(a = a, b1 = b1, b2 = b2, dr = dr, r0 = r0, r1 = r1), t = t)
+}
+
+def spoke_tan(row: geo<points>, t: f32, nxt: bool) -> (out: vec3) {
+    """Касательная спицы строки row при t (единичная, XZ)."""
+    a = nxt ? value(@ang_n, on = row) : value(@ang, on = row)
+    b1 = nxt ? value(@b1_n, on = row) : value(@b1, on = row)
+    b2 = nxt ? value(@b2_n, on = row) : value(@b2, on = row)
+    dr = nxt ? value(@dr_n, on = row) : value(@dr, on = row)
+    r0 = nxt ? value(@r0_n, on = row) : value(@r0, on = row)
+    r1 = nxt ? value(@r1_n, on = row) : value(@r1, on = row)
+    out = bezier_tan(p0 = spoke_p0(a = a, b1 = b1, b2 = b2, dr = dr, r0 = r0, r1 = r1), p1 = spoke_p1(a = a, b1 = b1, b2 = b2, dr = dr, r0 = r0, r1 = r1), p2 = spoke_p2(a = a, b1 = b1, b2 = b2, dr = dr, r0 = r0, r1 = r1), p3 = spoke_p3(a = a, b1 = b1, b2 = b2, dr = dr, r0 = r0, r1 = r1), t = t)
+}
+
+def spoke_path(row: geo<points>, count: int) -> (out: geo<points>) {
+    """Точки Безье спицы строки row (пишет @t)."""
+    a = value(@ang, on = row)
+    b1 = value(@b1, on = row)
+    b2 = value(@b2, on = row)
+    dr = value(@dr, on = row)
+    r0 = value(@r0, on = row)
+    r1 = value(@r1, on = row)
+    out = bezier_points(p0 = spoke_p0(a = a, b1 = b1, b2 = b2, dr = dr, r0 = r0, r1 = r1), p1 = spoke_p1(a = a, b1 = b1, b2 = b2, dr = dr, r0 = r0, r1 = r1), p2 = spoke_p2(a = a, b1 = b1, b2 = b2, dr = dr, r0 = r0, r1 = r1), p3 = spoke_p3(a = a, b1 = b1, b2 = b2, dr = dr, r0 = r0, r1 = r1), count = count)
+}
+
+# ---------------------------------------------------------------------------
+# Ленты дорог
+# ---------------------------------------------------------------------------
+
+def ribbon(path: geo<points>, w: f32, th: f32, y: f32, grp: string) -> (out: geo<mesh>) {
+    """Плоская лента шириной w и толщиной th вдоль path, верх на y. @profile_scale
+    пути (если задан) сужает ленту."""
+    expect w > 0.2 & th > 0.005: "ribbon: размеры"
+    hw = w * 0.5
+    prof = set_position(mesh_line(count = 4, length = 0.0), pos = @index == 0 ? vec3(0.0 - hw, 0.0 - th, 0) : (@index == 1 ? vec3(hw, 0.0 - th, 0) : (@index == 2 ? vec3(hw, 0, 0) : vec3(0.0 - hw, 0, 0))))
+    body = sweep(path, profile = prof)
+    clean = remove_attr(remove_attr(remove_attr(body, "t"), "profile_scale"), "uv")
+    out = mark(compute_normals(transform(clean, translate = vec3(0, y, 0)), mode = flat), grp, where = true, domain = faces)
+}
+
+def spoke_roads(model: geo<points>, w: f32, taper: f32, th: f32, y: f32, count: int, grp: string) -> (out: geo<mesh>) {
+    """Спицы лентами: ширина w у площади, w·taper на конце."""
+    expect taper > 0.1 & taper <= 1.0: "spoke_roads: taper в (0.1, 1]"
+    out = foreach row in model {
+        p0 = spoke_path(row = row, count = count)
+        p1 = set(p0, "profile_scale", vec2(mix(1.0, taper, @t), mix(1.0, taper, @t)), domain = points)
+        row = ribbon(path = p1, w = w, th = th, y = y, grp = grp)
+    }
+}
+
+def cross_paths(model: geo<points>, w: f32, th: f32, y: f32, t_lo: f32, t_hi: f32, bulge: f32, prob: f32, count: int, rng: rng, grp: string) -> (out: geo<mesh>) {
+    """Тропки между спицей i и i+1: с вероятностью prob, на параметре t∈[t_lo, t_hi]
+    (у соседа — с небольшим сдвигом), выгнутые наружу на bulge·длина."""
+    out = foreach row in model {
+        r = split_rng(rng, key = @piece_index)
+        u = value(random(lo = 0.0, hi = 1.0, rng = split_rng(r, key = "keep"), counter = 0), on = row)
+        t0 = value(random(lo = t_lo, hi = t_hi, rng = split_rng(r, key = "t"), counter = 0), on = row)
+        dt = value(random(lo = -0.2, hi = 0.2, rng = split_rng(r, key = "dt"), counter = 0), on = row)
+        t1 = clamp(t0 + dt, 0.15, 0.95)
+        a = spoke_pos(row = row, t = t0, nxt = false)
+        b = spoke_pos(row = row, t = t1, nxt = true)
+        mid = (a + b) * 0.5
+        away = normalize(mid) * (length(b - a) * bulge)
+        path = bezier_points(p0 = a, p1 = mix(a, b, 0.33) + away, p2 = mix(a, b, 0.67) + away, p3 = b, count = count)
+        lane = ribbon(path = path, w = w, th = th, y = y, grp = grp)
+        row = select(u < prob, a = lane, b = empty_mesh())
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Якоря домов
+# ---------------------------------------------------------------------------
+
+def stamp(at: vec3, yaw: f32, sc: f32, variant: int, ring: int, t: f32) -> (out: geo<points>) {
+    """Один якорь: @orient (фасад +Z по yaw), @scale, @variant, @ring (0 площадь / 1 спица), @t."""
+    p0 = transform(mesh_line(count = 1, length = 0.0), translate = at)
+    p1 = set(p0, "orient", orient_from_euler(vec3(0, yaw, 0)), domain = points)
+    p2 = set(p1, "scale", sc, domain = points)
+    p3 = set(p2, "variant", variant, domain = points)
+    p4 = set(p3, "ring", ring, domain = points)
+    out = set(p4, "t", t, domain = points)
+}
+
+def plaza_anchors(outline: geo<points>, sides: int, n_spokes: int, r: f32, jitter: f32, rough: f32, setback: f32, depth: f32, road_w: f32, gap_prob: f32, n_variants: int, rng: rng) -> (out: geo<points>) {
+    """Дом на каждой грани площади: посередине грани, отодвинут наружу на setback + depth/2,
+    фасад к площади. Грани у выхода спицы сдвигают дом от вершины на road_w/2.
+    С вероятностью gap_prob грань пустая (проход, сад)."""
+    expect sides % n_spokes == 0: "plaza_anchors: sides должно делиться на n_spokes"
+    k = sides / n_spokes
+    out = foreach v in outline {
+        i = @piece_index
+        r_i = split_rng(rng, key = i)
+        a0 = vtx_ang(i = i, sides = sides, jitter = jitter, rng = rng, on = v)
+        a1 = vtx_ang(i = i + 1, sides = sides, jitter = jitter, rng = rng, on = v)
+        q0 = polar(r = vtx_r(i = i, sides = sides, r = r, rough = rough, rng = rng, on = v), a_deg = a0)
+        q1 = polar(r = vtx_r(i = i + 1, sides = sides, r = r, rough = rough, rng = rng, on = v), a_deg = a1)
+        e = normalize(q1 - q0)
+        nrm0 = perp_xz(dir = e)
+        mid = (q0 + q1) * 0.5
+        nrm = dot(nrm0, mid) > 0.0 ? nrm0 : nrm0 * (0.0 - 1.0)
+        shift0 = i % k == 0 ? road_w * 0.5 + 0.6 : 0.0
+        shift1 = (i + 1) % k == 0 ? road_w * 0.5 + 0.6 : 0.0
+        slide = value(random(lo = -0.6, hi = 0.6, rng = split_rng(r_i, key = "slide"), counter = 0), on = v)
+        at = mid + e * (shift0 - shift1 + slide) + nrm * (setback + depth * 0.5)
+        yaw = yaw_of(dir = nrm * (0.0 - 1.0)) + value(random(lo = -5.0, hi = 5.0, rng = split_rng(r_i, key = "yaw"), counter = 0), on = v)
+        sc = value(random(lo = 0.88, hi = 1.06, rng = split_rng(r_i, key = "sc"), counter = 0), on = v)
+        var = value(random_int(n = n_variants, rng = split_rng(r_i, key = "var"), counter = 0), on = v)
+        keep = value(random(lo = 0.0, hi = 1.0, rng = split_rng(r_i, key = "keep"), counter = 0), on = v)
+        pin = stamp(at = at, yaw = yaw, sc = sc, variant = var, ring = 0, t = 0.0)
+        v = select(keep >= gap_prob, a = pin, b = empty_points())
+    }
+}
+
+def spoke_anchors(model: geo<points>, road_w: f32, setback: f32, depth: f32, t0: f32, t1: f32, per_spoke: int, keep0: f32, keep1: f32, n_variants: int, rng: rng) -> (out: geo<points>) {
+    """Дома вдоль спиц: per_spoke слотов на t∈[t0, t1] с джиттером, случайная сторона,
+    вероятность занять слот падает от keep0 (у площади) до keep1 (на краю).
+    Фасад к дороге, yaw ±8°. @t — параметр вдоль спицы (0 центр, 1 край)."""
+    expect per_spoke >= 1: "spoke_anchors: слотов"
+    out = foreach row in model {
+        sp = @piece_index
+        rs = split_rng(rng, key = sp)
+        slots = mesh_line(count = per_spoke, length = 0.0)
+        pins = foreach s in slots {
+            j = @piece_index
+            rj = split_rng(rs, key = j)
+            tj = value(random(lo = -0.35, hi = 0.35, rng = split_rng(rj, key = "t"), counter = 0), on = s)
+            t = clamp(mix(t0, t1, (f32(j) + 0.5 + tj) / f32(per_spoke)), 0.03, 0.98)
+            side = value(random(lo = 0.0, hi = 1.0, rng = split_rng(rj, key = "side"), counter = 0), on = s) < 0.5 ? -1.0 : 1.0
+            keep = value(random(lo = 0.0, hi = 1.0, rng = split_rng(rj, key = "keep"), counter = 0), on = s)
+            p = spoke_pos(row = row, t = t, nxt = false)
+            d = spoke_tan(row = row, t = t, nxt = false)
+            nrm = perp_xz(dir = d) * side
+            at = p + nrm * (road_w * 0.5 + setback + depth * 0.5)
+            yaw = yaw_of(dir = nrm * (0.0 - 1.0)) + value(random(lo = -8.0, hi = 8.0, rng = split_rng(rj, key = "yaw"), counter = 0), on = s)
+            sc = value(random(lo = 0.85, hi = 1.05, rng = split_rng(rj, key = "sc"), counter = 0), on = s)
+            var = value(random_int(n = n_variants, rng = split_rng(rj, key = "var"), counter = 0), on = s)
+            pin = stamp(at = at, yaw = yaw, sc = sc, variant = var, ring = 1, t = t)
+            s = select(keep < mix(keep0, keep1, t), a = pin, b = empty_points())
+        }
+        row = pins
+    }
+}
+
+def bare_sites(anchors: geo<points>) -> (out: geo<points>) {
+    """Снимает стамп-атрибуты с якорей — голые сайты для Вороного / merge с другими точками."""
+    a0 = remove_attr(anchors, "orient")
+    a1 = remove_attr(a0, "scale")
+    a2 = remove_attr(a1, "variant")
+    a3 = remove_attr(a2, "ring")
+    out = remove_attr(a3, "t")
+}
+
+def ring_sites(n: int, r_lo: f32, r_hi: f32, rng: rng) -> (out: geo<points>) {
+    """n случайных сайтов в кольце r_lo..r_hi — дополнительные поля вокруг деревни."""
+    a = random(lo = 0.0, hi = 360.0, rng = split_rng(rng, key = "a"))
+    rr = sqrt(random(lo = r_lo * r_lo, hi = r_hi * r_hi, rng = split_rng(rng, key = "r")))
+    out = set_position(mesh_line(count = n, length = 0.0), pos = vec3(rr * cos(radians(a)), 0, rr * sin(radians(a))))
+}
+
+# ---------------------------------------------------------------------------
+# Земля: ячейки Вороного по сайтам. Каждая ячейка — луг или поле; грани на
+# границе ячеек — «живая изгородь» (группа hedge, можно extrude).
+# ---------------------------------------------------------------------------
+
+def voronoi_ground(size: f32, cell: f32, sites: geo<points>, r_core: f32, field_frac: f32, rng: rng) -> (out: geo<mesh>) {
+    """Квадрат size×size сеткой с шагом cell; @cell (faces, f32) — номер ближайшего сайта,
+    группы meadow / field / hedge. Сайты внутри r_core — всегда луг (ядро деревни).
+    Стоимость: count(sites) проходов по сетке — держи сетку ≤ ~200×200."""
+    expect cell > 0.2: "voronoi_ground: шаг сетки"
+    n = count(sites)
+    nres = f32(int(size / cell))
+    g0 = grid(size = vec2(size, size), res = vec2(nres, nres))
+    g1 = set(set(g0, "best", 1.0e9, domain = points), "cell_p", 0.0, domain = points)
+    lab = repeat (g1, iterations = n) |acc| {
+        sp = value(@P, on = sites, where = @index == @iteration)
+        d = length(@P - sp)
+        closer = d < @best
+        a1 = set(acc, "cell_p", closer ? f32(@iteration) : @cell_p, domain = points)
+        acc = set(a1, "best", closer ? d : @best, domain = points)
+    }
+    # Чтение points-атрибута на гранях — среднее по углам. Грань на стыке ячеек —
+    # та, где дисперсия id по углам > 0: mean(id²) − mean(id)² (promote/first не
+    # годится: чтение имени резолвится в points-колонку раньше faces-колонки).
+    lab2 = set(lab, "cell_sq", @cell_p * @cell_p, domain = points)
+    edge = (@cell_sq - @cell_p * @cell_p) > 0.01
+    f0 = set(lab2, "cell", round(@cell_p), domain = faces)
+    kind = random(lo = 0.0, hi = 1.0, rng = split_rng(rng, key = "kind"), counter = int(@cell))
+    is_field = (kind < field_frac) & (length(@P) > r_core) & (!edge)
+    m0 = mark(f0, "hedge", where = edge, domain = faces)
+    m1 = mark(m0, "field", where = is_field, domain = faces)
+    m2 = mark(m1, "meadow", where = (!edge) & (!is_field), domain = faces)
+    out = remove_attr(remove_attr(remove_attr(m2, "cell_sq"), "cell_p"), "best")
+}
+
+def hedges(ground: geo<mesh>, clear: geo<mesh>, gap: f32, r_clear: f32, h: f32) -> (out: geo<mesh>) {
+    """Поднимает грани hedge в кустарник высотой h (extrude individual), кроме граней
+    ближе gap к геометрии clear (дороги, дома) и внутри радиуса r_clear (площадь)."""
+    strips0 = delete(ground, where = !ingroup("hedge"), domain = faces)
+    s1 = set(strips0, "d_clear", distance_to(target = clear), domain = points)
+    s2 = promote(s1, "d_clear", from = points, to = faces, mode = average)
+    strips = delete(s2, where = (@d_clear < gap) | (length(@P) < r_clear), domain = faces)
+    out = remove_attr(extrude(strips, distance = h, mode = individual, side_group = "hedge", top_group = "hedge"), "d_clear")
+}
+
+def clip_square(g: geo<mesh>, half: f32) -> (out: geo<mesh>) {
+    """Обрезает меш четырьмя вертикальными плоскостями по квадрату ±half (край карты)."""
+    c0 = clip(g, origin = vec3(half, 0, 0), normal = vec3(-1, 0, 0))
+    c1 = clip(c0, origin = vec3(0.0 - half, 0, 0), normal = vec3(1, 0, 0))
+    c2 = clip(c1, origin = vec3(0, 0, half), normal = vec3(0, 0, -1))
+    out = clip(c2, origin = vec3(0, 0, 0.0 - half), normal = vec3(0, 0, 1))
+}
+
+def inside_square(pins: geo<points>, half: f32) -> (out: geo<points>) {
+    """Оставляет якоря внутри квадрата ±half."""
+    out = delete(pins, where = max(abs(dot(@P, (1, 0, 0))), abs(dot(@P, (0, 0, 1)))) > half, domain = points)
+}
+
+def paint_ground(ground: geo<mesh>, rng: rng) -> (out: geo<mesh>) {
+    """Луг — зелёный fbm; поле — охра/жёлто-зелёный с полосами пашни (направление по ячейке);
+    изгородь — тёмная зелень."""
+    pr = split_rng(rng, key = "paint")
+    # fbm знаковый (≈ −0.7…0.8) — в mix подаём 0.5 + 0.5·fbm.
+    meadow = mix(vec3(0.26, 0.48, 0.14), vec3(0.42, 0.60, 0.18), 0.5 + 0.5 * fbm(scale = 0.06, octaves = 3, rng = split_rng(pr, key = "m")))
+    ang = random(lo = 0.0, hi = 3.14159, rng = split_rng(pr, key = "dir"), counter = int(@cell))
+    hue = random(lo = 0.0, hi = 1.0, rng = split_rng(pr, key = "hue"), counter = int(@cell))
+    stripe = sin((dot(@P, (1, 0, 0)) * cos(ang) + dot(@P, (0, 0, 1)) * sin(ang)) * 2.4) > 0.0 ? 0.86 : 1.0
+    crop_a = vec3(0.62, 0.66, 0.24)
+    crop_b = vec3(0.78, 0.62, 0.22)
+    crop_c = vec3(0.46, 0.62, 0.20)
+    crop = hue < 0.33 ? crop_a : (hue < 0.66 ? crop_b : crop_c)
+    field = crop * stripe
+    hedge = mix(vec3(0.10, 0.26, 0.08), vec3(0.18, 0.36, 0.12), 0.5 + 0.5 * fbm(scale = 0.8, octaves = 2, rng = split_rng(pr, key = "h")))
+    c0 = ingroup("meadow") ? meadow : vec3(1.0, 0.0, 1.0)
+    c1 = ingroup("field") ? field : c0
+    c2 = ingroup("hedge") ? hedge : c1
+    out = set(ground, "Cd", c2, domain = faces)
+}
+
+# ---------------------------------------------------------------------------
+# Деревья: пуассон по земле, подальше от дорог и домов, гуще в рощах (fbm).
+# ---------------------------------------------------------------------------
+
+def tree_sites(ground: geo<mesh>, roads: geo<mesh>, houses: geo<mesh>, r_plaza: f32, density: f32, min_dist: f32, road_gap: f32, house_gap: f32, grove: f32, hedge_mul: f32, rng: rng) -> (out: geo<points>) {
+    """Точки деревьев: плотность density там, где до дорог > road_gap, до домов > house_gap,
+    вне площади и fbm > grove (рощи; fbm знаковый, grove ≈ 0.15 даёт треть площади);
+    на гранях hedge — density·hedge_mul без условия рощи
+    (деревья линиями по границам участков). @scale 0.8–1.3, @orient — случайный yaw."""
+    # distance_to живёт только на точках, плотность distribute_points — на гранях:
+    # считаем расстояния атрибутами точек и промоучим на грани.
+    g1 = set(ground, "d_road", distance_to(target = roads), domain = points)
+    g2 = set(g1, "d_house", distance_to(target = houses), domain = points)
+    g3 = promote(promote(g2, "d_road", from = points, to = faces, mode = average), "d_house", from = points, to = faces, mode = average)
+    # ingroup() прямо в поле плотности — на порядки медленнее (группа граней читается
+    # на точках); материализуем группу атрибутом.
+    g4 = set(g3, "hedge_w", ingroup("hedge") ? 1.0 : 0.0, domain = faces)
+    far = (@d_road > road_gap) & (@d_house > house_gap)
+    outside = length(@P) > r_plaza + 2.0
+    clump = fbm(scale = 0.05, octaves = 3, rng = split_rng(rng, key = "grove")) > grove
+    on_hedge = @hedge_w > 0.5
+    dens = far & outside & (clump | on_hedge) ? (on_hedge ? density * hedge_mul : density) : 0.0
+    p0 = distribute_points(g4, density = dens, mode = poisson, min_dist = min_dist, rng = split_rng(rng, key = "scatter"))
+    p1 = remove_attr(remove_attr(remove_attr(remove_attr(remove_attr(remove_attr(p0, "cell"), "uv"), "N"), "d_road"), "d_house"), "hedge_w")
+    p2 = set(p1, "scale", random(lo = 0.8, hi = 1.3, rng = split_rng(rng, key = "sc")), domain = points)
+    out = set(p2, "orient", orient_from_euler(vec3(0, random(lo = 0.0, hi = 360.0, rng = split_rng(rng, key = "yaw")), 0)), domain = points)
+}

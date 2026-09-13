@@ -343,11 +343,30 @@ std::vector<glm::dvec4> interpolateDColumn(const Geo& geo, Domain from,
     }
 
     const bool hasTopo = geo.cornerVerts && geo.faceOffsets;
+    // point -> incident corners as a CSR index built once by counting sort:
+    // a per-point scan of every corner is O(points * corners) and turned a
+    // faces->points read on a 15k-point grid into seconds.
+    std::vector<int32_t> pcOffsets, pcCorners;
+    if (hasTopo && (to == Domain::Points)) {
+        const size_t nPts = geo.pointCount();
+        pcOffsets.assign(nPts + 1, 0);
+        for (int32_t v : *geo.cornerVerts)
+            if (v >= 0 && static_cast<size_t>(v) < nPts) ++pcOffsets[static_cast<size_t>(v) + 1];
+        for (size_t p = 0; p < nPts; ++p) pcOffsets[p + 1] += pcOffsets[p];
+        pcCorners.resize(static_cast<size_t>(pcOffsets[nPts]));
+        std::vector<int32_t> fill(pcOffsets.begin(), pcOffsets.end() - 1);
+        for (size_t c = 0; c < geo.cornerVerts->size(); ++c) {
+            const int32_t v = (*geo.cornerVerts)[c];
+            if (v < 0 || static_cast<size_t>(v) >= nPts) continue;
+            pcCorners[static_cast<size_t>(fill[static_cast<size_t>(v)]++)] = static_cast<int32_t>(c);
+        }
+    }
     auto incidentCorners = [&](int32_t point) {
         std::vector<int32_t> sel;
-        if (hasTopo)
-            for (size_t c = 0; c < geo.cornerVerts->size(); ++c)
-                if ((*geo.cornerVerts)[c] == point) sel.push_back(static_cast<int32_t>(c));
+        if (!pcOffsets.empty()) {
+            const size_t p = static_cast<size_t>(point);
+            sel.assign(pcCorners.begin() + pcOffsets[p], pcCorners.begin() + pcOffsets[p + 1]);
+        }
         return sel;
     };
 

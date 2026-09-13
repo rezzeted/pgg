@@ -1,3 +1,7 @@
 [
-  {"name": "iso", "node": "estate", "orbit": [38, 22], "zoom": 1.12, "chrome": "off"}
+  {"name": "aerial", "node": "village", "orbit": [42, 55], "zoom": 0.52, "chrome": "off"},
+  {"name": "iso", "node": "village", "orbit": [48, 28], "zoom": 0.48, "chrome": "off"},
+  {"name": "plaza", "node": "village", "orbit": [40, 22], "zoom": 0.28, "chrome": "off"},
+  {"name": "town_hall", "node": "town_hall", "orbit": [200, 16], "zoom": 1.12, "chrome": "off"},
+  {"name": "church", "node": "church_bldg", "orbit": [40, 18], "zoom": 1.10, "chrome": "off"}
 ]
