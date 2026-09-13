@@ -13,4 +13,4 @@
 | `serve_rpc.md` | **Контракт `PggServe` + MCP `pgg`** — порт 9878, слоты по каноническому пути `.pgg`, операции (load/params/render/views/probe/export/docs), FBO-кадр, stateless render + `render_state`, именованные виды, автоподнятие демона |
 | [`../gallery/`](../gallery/) | **Геройские кадры** арт-примеров для корневого README; как снять и переснять — там же `README.md` |
 
-Код: `src/libs/pgg` (библиотека), `src/libs/pgg_preview` (превью без ImGui), `src/apps/PggTool` (CLI), `src/apps/PggViewer` (нодовая проекция + превью, без TCP), `src/apps/PggServe` (агентский RPC), `src/tests/pgg` (тесты + корпус эталонов `.pgg`), `resources/pgg` (продуктовые/арт-примеры `.pgg` с модулями `lib/` и `cottage/`).
+Код: `src/libs/pgg` (библиотека), `src/libs/pgg_preview` (превью без ImGui), `src/apps/PggTool` (CLI), `src/apps/PggViewer` (нодовая проекция + превью, без TCP), `src/apps/PggServe` (агентский RPC), `src/tests/pgg` (тесты + корпус эталонов `.pgg`), `resources/pgg` (общая `lib/` и оставшиеся арт-примеры), `resources/AmberEstate` (усадьба: коттеджи, spire house, храм, арка, пропы).

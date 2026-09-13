@@ -74,15 +74,15 @@ Linux-флоу — Ninja (single-config) + CMake Presets, триплет `x64-li
 
 - Unit-тесты (gtest) — `src/tests/pgg/<name>_test.cpp`, подхватываются GLOB'ом; бинарь `pgg_tests`.
 - Корпус эталонов — `src/tests/pgg/corpus/`; голдены фингерпринтов — `src/tests/pgg/goldens/` (перезапись: `PggTool run <file> --update-goldens` из корня репо).
-- Продуктовые/арт-примеры — `resources/pgg/`, не путать с тестовым корпусом.
+- Продуктовые/арт-примеры — `resources/pgg/` (`lib/` и оставшиеся сцены) и минипроект `resources/AmberEstate/`; не путать с тестовым корпусом.
 
 ## PGG
 
 - Спецификация — `docs/pgg/geometry_generation_language.md` (ТЗ: текст-first нодовый граф для LLM-агентов + нодовая проекция; этапы и критерии — §15, история — §19).
 - Заметки по реализации (этапы E0–E8 по файлам, грабли ANTLR/ядра, PggTool/PggViewer/PggServe CLI, корпус и сьюты) — `docs/pgg/implementation.md`. **Правя `src/libs/pgg`, `src/apps/PggTool`, `src/apps/PggViewer`, `src/apps/PggServe` или корпус, обновляй его, а не этот файл.**
-- Коротко: `src/libs/pgg` (ANTLR4 4.13.2; сгенерированный парсер коммитится в `parser_gen/`, после правок `grammar/Pgg.g4` — `tools/pgg/regen_parser.sh`), ядро исполнения `src/libs/pgg/src/eval/`, тесты `src/tests/pgg/*_test.cpp` + корпус `src/tests/pgg/corpus/` (арт-примеры — `resources/pgg/`), CLI `PggTool` (`check`/`fmt`/`ast`/`run`/`docs`), вьювер `PggViewer` (нодовая проекция + превью, `--smoke`, без TCP), демон `PggServe` (слоты по `.pgg`, RPC `:9878`).
+- Коротко: `src/libs/pgg` (ANTLR4 4.13.2; сгенерированный парсер коммитится в `parser_gen/`, после правок `grammar/Pgg.g4` — `tools/pgg/regen_parser.sh`), ядро исполнения `src/libs/pgg/src/eval/`, тесты `src/tests/pgg/*_test.cpp` + корпус `src/tests/pgg/corpus/` (арт-примеры — `resources/pgg/` и `resources/AmberEstate/`), CLI `PggTool` (`check`/`fmt`/`ast`/`run`/`docs`), вьювер `PggViewer` (нодовая проекция + превью, `--smoke`, без TCP), демон `PggServe` (слоты по `.pgg`, RPC `:9878`).
 - Перед grep по спеке и ядру: `pgg_docs("<name>")` / `PggTool docs builtins` / `docs/pgg/cheatsheet.md`.
-- Арт-итерации: правка общего def → рендер **всех** потребителей (grep имени в `resources/pgg`); сравнение «как у дома» — один кадр, где обе детали рядом; числа (`pgg_measure` / `bbox`) до картинки; новые грабли — сразу в cheatsheet §«Грабли»; виды — в `<stem>.views.json`, не в чат; коммит-единица — один визуальный эффект. С нуля по референсу: масса (`pgg_reference`) раньше деталей; возможности рендерера — до проектирования (прозрачности нет); форма раньше палитры/эмиссии; «вижу не то» — сначала `render_state` / явные args, потом модель.
+- Арт-итерации: правка общего def → рендер **всех** потребителей (grep имени в `resources/pgg` и `resources/AmberEstate`); сравнение «как у дома» — один кадр, где обе детали рядом; числа (`pgg_measure` / `bbox`) до картинки; новые грабли — сразу в cheatsheet §«Грабли»; виды — в `<stem>.views.json`, не в чат; коммит-единица — один визуальный эффект. С нуля по референсу: масса (`pgg_reference`) раньше деталей; возможности рендерера — до проектирования (прозрачности нет); форма раньше палитры/эмиссии; «вижу не то» — сначала `render_state` / явные args, потом модель.
 
 ## MCP
 

@@ -1324,7 +1324,7 @@ void init() {
     if (!g_noUi) {
         simgui_desc_t imgui_desc = {};
         // The canvas draws every node box and bezier wire of the graph each
-        // frame; a ~370-node example file (resources/pgg/cottage.pgg) already
+        // frame; a ~370-node example file (resources/AmberEstate/cottage.pgg) already
         // exceeds the simgui default of 65536 vertices — on overflow simgui
         // silently drops the remaining ImGui command lists (side panel and
         // graph vanished, only the preview pane survived). 1M vertices = 20 MB

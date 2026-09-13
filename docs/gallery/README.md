@@ -6,10 +6,10 @@
 
 | Файл | Сцена |
 |---|---|
-| `spire_house.png` | викторианский дом со шпилем (`resources/pgg/spire_house.pgg`) |
-| `cottage.png` | фахверковый коттедж (`resources/pgg/cottage.pgg`) |
+| `spire_house.png` | викторианский дом со шпилем (`resources/AmberEstate/spire_house.pgg`) |
+| `cottage.png` | фахверковый коттедж (`resources/AmberEstate/cottage.pgg`) |
 | `inn_hotel.png` | угловой отель streamline moderne (`resources/pgg/inn_hotel.pgg`) |
-| `stone_arch.png` | арка из тёсаных блоков (`resources/pgg/stone_arch.pgg`) |
+| `stone_arch.png` | арка из тёсаных блоков (`resources/AmberEstate/stone_arch.pgg`) |
 
 ## Как снято
 
@@ -39,7 +39,7 @@ cmake --build --preset linux-release --target PggViewer
 Один кадр вручную:
 
 ```sh
-PggViewer resources/pgg/cottage.pgg \
+PggViewer resources/AmberEstate/cottage.pgg \
     --preview=house --preview-orbit=28,14,1.00 \
     --chrome=off --shot-frame=preview \
     --shot=docs/gallery/cottage.png

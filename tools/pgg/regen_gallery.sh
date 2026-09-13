@@ -62,10 +62,10 @@ shot() {
 # Hero cameras: 3/4 perspective, not ortho. Zoom ~1 so the AABB is inside the
 # frame; crop_gallery.py then squares around the silhouette. Angles in
 # docs/gallery/README.md.
-shot resources/pgg/spire_house.pgg house 38,18,1.02 spire_house.png
-shot resources/pgg/cottage.pgg     house 28,14,1.00 cottage.png
-shot resources/pgg/inn_hotel.pgg    hotel 45,28,1.08 inn_hotel.png
-shot resources/pgg/stone_arch.pgg   scene 25,14,0.82 stone_arch.png
+shot resources/AmberEstate/spire_house.pgg house 38,18,1.02 spire_house.png
+shot resources/AmberEstate/cottage.pgg     house 28,14,1.00 cottage.png
+shot resources/pgg/inn_hotel.pgg              hotel 45,28,1.08 inn_hotel.png
+shot resources/AmberEstate/stone_arch.pgg   scene 25,14,0.82 stone_arch.png
 
 echo "regen_gallery: wrote $OUT"
 ls -l "$OUT"/*.png
