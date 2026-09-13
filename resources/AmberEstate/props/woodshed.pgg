@@ -4,13 +4,14 @@ param post_h: f32 = 1.05
 param seed: int = 11
 
 import lib.parts
-import lib.roofing
 import common
 import wood_pile as logs
 
 # Дровник по референсу props/woodshed.jpg.
-# Четыре столба с башмаками, боковая и задняя обшивка, стопка дров, простой двускат.
+# Четыре столба с башмаками, боковая и задняя обшивка, стопка дров.
+# Крыша — как у колодца: дранка вразбежку от конька, подшив, брус конька.
 # Верх +Y, фасад (открытый) +Z. Именованные узлы: frame, walls, pile, roof, scene.
+
 def shoe(at: vec3, sx: f32, sz: f32) -> (out: geo<mesh>) {
     """Железный уголок: sx/sz — знак наружу по X/Z."""
     a = parts.piece(size = vec3(0.14, 0.12, 0.045), pos = at + vec3(0, 0.06, sz * 0.05), grp = "iron")
@@ -59,15 +60,63 @@ def roof_gable(d: f32, y_base: f32, rise: f32, pitch: f32, x: f32, rng: rng) -> 
     out = clip(c1, origin = peak, normal = n_b, cap_group = "wood")
 }
 
-def ridge_caps(along: f32, y: f32) -> (out: geo<mesh>) {
-    """Ряд квадратных колпаков под 45° — конёк вдоль X."""
-    cap0 = parts.piece(size = vec3(0.16, 0.10, 0.10), pos = vec3(0, 0, 0), grp = "roof")
-    cap = transform(cap0, rotate = vec3(45, 0, 0))
-    n = int(along / 0.14)
-    span = f32(n - 1) * 0.14
-    pts0 = mesh_line(count = n, length = span, dir = (1, 0, 0))
-    pts = transform(pts0, translate = vec3(0.0 - span * 0.5, y, 0))
-    out = mark(realize(instance_on_points(pts, source = cap)), "roof", where = true, domain = faces)
+def shake_slope(hw: f32, n_a: int, n_b: int, rng: rng) -> (out: geo<mesh>) {
+    """Один скат как у колодца: дранка вразбежку от конька в −Z, подшив по кромкам."""
+    tl = 0.26
+    th = 0.016
+    pv = tl * 0.75
+    tilt = degrees(atan2(th, pv))
+    n_rows = 6
+    seam = 0.006
+    pu_a = (2.0 * hw) / f32(n_a)
+    pu_b = (2.0 * hw) / f32(n_b)
+    wa = pu_a - seam
+    wb = pu_b - seam
+    hang = vec3(0, 0, 0.0 - tl * 0.5)
+    flat_a = transform(parts.cbox(size = vec3(wa, th, tl), k = 0.16), translate = hang)
+    flat_b = transform(parts.cbox(size = vec3(wb, th, tl), k = 0.16), translate = hang)
+    src_a = transform(flat_a, rotate = vec3(tilt, 0, 0))
+    src_b = transform(flat_b, rotate = vec3(tilt, 0, 0))
+    a0 = mark(src_a, "wood", where = true, domain = faces)
+    a1 = mark(src_a, "roof", where = true, domain = faces)
+    a2 = mark(src_a, "wood_light", where = true, domain = faces)
+    b0 = mark(src_b, "wood", where = true, domain = faces)
+    b1 = mark(src_b, "roof", where = true, domain = faces)
+    b2 = mark(src_b, "wood_light", where = true, domain = faces)
+    empty = empty_points()
+    anchors_a = repeat (empty, iterations = (n_rows + 1) / 2) |acc| {
+        k = f32(@iteration) * 2.0
+        row0 = mesh_line(count = n_a, length = f32(n_a - 1) * pu_a, dir = (1, 0, 0))
+        row = transform(row0, translate = vec3(0.0 - f32(n_a - 1) * pu_a * 0.5, th * 0.5, pv - k * pv))
+        acc = merge(acc, row)
+    }
+    anchors_b = repeat (empty, iterations = n_rows / 2) |acc| {
+        k = f32(@iteration) * 2.0 + 1.0
+        row0 = mesh_line(count = n_b, length = f32(n_b - 1) * pu_b, dir = (1, 0, 0))
+        row = transform(row0, translate = vec3(0.0 - f32(n_b - 1) * pu_b * 0.5, th * 0.5, pv - k * pv))
+        acc = merge(acc, row)
+    }
+    pts_a = set(anchors_a, "variant", random_int(n = 3, rng = split_rng(rng, key = "ta")))
+    pts_b = set(anchors_b, "variant", random_int(n = 3, rng = split_rng(rng, key = "tb")))
+    raw_a = realize(instance_on_points(pts_a, source = a0, variants = [a0, a1, a2]))
+    raw_b = realize(instance_on_points(pts_b, source = b0, variants = [b0, b1, b2]))
+    raw = merge(raw_a, raw_b)
+    c_top = clip(raw, origin = vec3(0, 0, 0.05), normal = vec3(0, 0, 0.0 - 1.0), cap_group = "wood")
+    field = compute_normals(c_top, mode = flat)
+    z_eave = pv - f32(n_rows - 1) * pv - tl
+    bw = 0.070
+    bh = 0.104
+    y_under = 0.0 - bh * 0.52
+    x_b = hw - bw * 0.5
+    z_lo = z_eave
+    z_hi = 0.0 - 0.05
+    span_z = z_hi - z_lo
+    z_mid = (z_hi + z_lo) * 0.5
+    barge_l = parts.piece(size = vec3(bw, bh, span_z), pos = vec3(0.0 - x_b, y_under, z_mid), grp = "wood")
+    barge_r = parts.piece(size = vec3(bw, bh, span_z), pos = vec3(x_b, y_under, z_mid), grp = "wood")
+    fascia_e = parts.piece(size = vec3(2.0 * hw, bh, bw), pos = vec3(0, y_under, z_lo + bw * 0.5), grp = "wood")
+    fascia_r = parts.piece(size = vec3(2.0 * hw, bh, bw), pos = vec3(0, y_under, z_hi - bw * 0.5), grp = "wood")
+    out = merge(field, barge_l, barge_r, fascia_e, fascia_r)
 }
 
 def place_pile(rng: rng) -> (out: geo<mesh>) {
@@ -81,50 +130,40 @@ def place_pile(rng: rng) -> (out: geo<mesh>) {
 }
 
 def make_roof(w: f32, d: f32, h: f32, rng: rng) -> (out: geo<mesh>) {
-    """Двускат: конёк вдоль X, скаты на ±Z, черепица, колпаки, щипцы, мох."""
-    pitch = 32.0
-    oh = 0.10
-    oh_z = 0.12
-    pr = radians(pitch)
-    eave_z = d * 0.5 + oh_z
-    rise = eave_z * tan(pr)
-    ridge_y = h + rise
-    along = w + 2.0 * oh
-    slope_len = eave_z / cos(pr)
-    raw = roofing.tile_field(w_along = along, slope_len = slope_len, tw = 0.24, tl = 0.28, th = 0.028, pu = 0.22, pv = 0.175, lift = 0.010, rng = split_rng(rng, key = "tiles"))
-    c_l = clip(raw, origin = vec3(0.0 - along * 0.5, 0, 0), normal = vec3(1, 0, 0), cap_group = "roof")
-    c_r = clip(c_l, origin = vec3(along * 0.5, 0, 0), normal = vec3(-1, 0, 0), cap_group = "roof")
-    field = clip(c_r, origin = vec3(0, 0, 0.03 - slope_len), normal = vec3(0, 0, 1), cap_group = "roof")
-    deck = parts.piece(size = vec3(along - 0.06, 0.016, slope_len + 0.02), pos = vec3(0, 0.0 - 0.008, 0.0 - slope_len * 0.48), grp = "wood")
-    slope = merge(field, deck)
-    front = transform(transform(slope, rotate = vec3(pitch, 0, 0)), translate = vec3(0, h + 0.02, eave_z - 0.02))
-    back = transform(transform(transform(slope, rotate = vec3(0, 180, 0)), rotate = vec3(0.0 - pitch, 0, 0)), translate = vec3(0, h + 0.02, 0.02 - eave_z))
-    caps = ridge_caps(along = along - 0.08, y = ridge_y + 0.03)
+    """Двускат как у колодца: дранка от конька, −pitch, брус конька, щипцы."""
+    pitch = 42.0
+    hw = w * 0.5 + 0.10
+    tl = 0.26
+    pv = tl * 0.75
+    n_rows = 6
+    z_eave = pv - f32(n_rows - 1) * pv - tl
+    rise = (0.0 - z_eave) * sin(radians(pitch))
+    ridge_y = h + 0.02 + rise
+    deck = shake_slope(hw = hw, n_a = 9, n_b = 10, rng = split_rng(rng, key = "shakes"))
+    pitched = transform(deck, rotate = vec3(0.0 - pitch, 0, 0))
+    front = transform(pitched, translate = vec3(0, ridge_y, 0))
+    back = transform(transform(pitched, rotate = vec3(0, 180, 0)), translate = vec3(0, ridge_y, 0))
+    cap = parts.piece(size = vec3(2.0 * hw + 0.06, 0.12, 0.20), pos = vec3(0, ridge_y + 0.04, 0), grp = "wood")
     gx = w * 0.5 - 0.04
     g_l = roof_gable(d = d, y_base = h, rise = rise, pitch = pitch, x = 0.0 - gx, rng = split_rng(rng, key = "gl"))
     g_r = roof_gable(d = d, y_base = h, rise = rise, pitch = pitch, x = gx, rng = split_rng(rng, key = "gr"))
-    moss0 = mark(transform(ico_sphere(subdiv = 1, radius = 0.040), translate = vec3(0.18, ridge_y - 0.05, 0.10)), "moss", where = true, domain = faces)
-    moss1 = mark(transform(ico_sphere(subdiv = 1, radius = 0.034), translate = vec3(0.0 - 0.38, ridge_y - 0.08, 0.06)), "moss", where = true, domain = faces)
-    moss2 = mark(transform(ico_sphere(subdiv = 1, radius = 0.028), translate = vec3(0.48, ridge_y - 0.10, 0.0 - 0.08)), "moss", where = true, domain = faces)
-    out = merge(front, back, caps, g_l, g_r, moss0, moss1, moss2)
+    out = merge(front, back, cap, g_l, g_r)
 }
 
 def paint(raw: geo<mesh>, rng: rng) -> (out: geo<mesh>) {
-    """Окрас дровника: каркас, дрова, черепица, мох."""
+    """Окрас дровника: каркас, дрова, дранка."""
     wood_col = vec3(0.62, 0.38, 0.16) * @tint
     wood_lt = vec3(0.90, 0.72, 0.42) * @tint
     bark_col = vec3(0.38, 0.20, 0.08)
     iron_col = vec3(0.22, 0.22, 0.24)
     roof_col = vec3(0.86, 0.40, 0.16) * @tint
-    moss_col = vec3(0.32, 0.48, 0.16)
     c0 = ingroup("wood") ? wood_col : vec3(1.0, 0.0, 1.0)
     c1 = ingroup("wood_light") ? wood_lt : c0
     c2 = ingroup("bark") ? bark_col : c1
     c3 = ingroup("iron") ? iron_col : c2
     c4 = ingroup("roof") ? roof_col : c3
-    c5 = ingroup("moss") ? moss_col : c4
     edge_mul = ingroup("edge") ? vec3(1.16, 1.12, 1.06) : vec3(1.0)
-    out = common.ao(set(raw, "Cd", c5 * edge_mul, domain = faces), rng = rng)
+    out = common.ao(set(raw, "Cd", c4 * edge_mul, domain = faces), rng = rng)
 }
 
 def assemble(w: f32, d: f32, h: f32, rng: rng) -> (out: geo<mesh>) {
