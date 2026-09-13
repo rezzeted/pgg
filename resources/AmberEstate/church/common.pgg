@@ -1,0 +1,90 @@
+# Общий словарь католического храма: крупные плиты без относительной фаски,
+# стрельчатый клип, латинский крест, двускат и четырёхгранный шпиль клипом бокса.
+# Лицо деталей +Z, низ на y = 0, если не сказано иначе.
+
+import lib.parts
+
+def to_group(g: geo<mesh>, src: string, dst: string) -> (out: geo<mesh>) {
+    """Переметить грани src → dst."""
+    out = unmark(mark(g, dst, where = ingroup(src), domain = faces), src)
+}
+
+def slab(size: vec3, pos: vec3, grp: string) -> (out: geo<mesh>) {
+    """Прямой бокс без фаски (крупные объёмы: cbox загибает грани)."""
+    body = compute_normals(box(size = size), mode = flat)
+    out = mark(transform(body, translate = pos), grp, where = true, domain = faces)
+}
+
+def pointed_clip(g: geo<mesh>, w: f32, h: f32, y0: f32) -> (out: geo<mesh>) {
+    """Стрельчатый силуэт в XY: вершина (0, y0+h), пружины (±w/2, y0+h − 0.72·w).
+    clip держит сторону нормали — оставляем тело под скатами."""
+    rise = w * 0.72
+    apex = vec3(0, y0 + h, 0)
+    n_l = vec3(rise, 0.0 - w * 0.5, 0)
+    n_r = vec3(0.0 - rise, 0.0 - w * 0.5, 0)
+    c0 = clip(g, origin = apex, normal = n_l)
+    out = clip(c0, origin = apex, normal = n_r)
+}
+
+def pointed_panel(w: f32, h: f32, t: f32, grp: string) -> (out: geo<mesh>) {
+    """Стрельчатая плита: ширина w, высота h, толщина t, низ y = 0, центр x/z = 0."""
+    expect h > w * 0.72 + 0.25: "pointed_panel: высота меньше стрельчатой головки"
+    raw = slab(size = vec3(w, h, t), pos = vec3(0, h * 0.5, 0), grp = grp)
+    out = pointed_clip(g = raw, w = w, h = h, y0 = 0.0)
+}
+
+def latin_cross(h: f32, grp: string = "iron") -> (out: geo<mesh>) {
+    """Латинский крест высоты h, низ на y = 0, перекладина на 0.72·h."""
+    t = max(h * 0.065, 0.045)
+    up = slab(size = vec3(t, h, t), pos = vec3(0, h * 0.5, 0), grp = grp)
+    arm = slab(size = vec3(h * 0.52, t, t), pos = vec3(0, h * 0.72, 0), grp = grp)
+    out = merge(up, arm)
+}
+
+def gable_volume(w: f32, d: f32, y0: f32, rise: f32, grp: string) -> (out: geo<mesh>) {
+    """Двускатная призма: конёк вдоль Z на y = y0+rise, карнизы x = ±w/2 на y0."""
+    expect rise > 0.2: "gable_volume: rise слишком мал"
+    body = slab(size = vec3(w, rise, d), pos = vec3(0, y0 + rise * 0.5, 0), grp = grp)
+    peak = vec3(0, y0 + rise, 0)
+    n_l = vec3(rise, 0.0 - w * 0.5, 0)
+    n_r = vec3(0.0 - rise, 0.0 - w * 0.5, 0)
+    c1 = clip(body, origin = peak, normal = n_l)
+    out = clip(c1, origin = peak, normal = n_r)
+}
+
+def shed_volume(run: f32, along: f32, y0: f32, rise: f32, grp: string) -> (out: geo<mesh>) {
+    """Односкат: высокий край на x = 0 (y0+rise), карниз на x = run (y0), длина along по Z."""
+    expect run > 0.3 & rise > 0.15: "shed_volume: run/rise"
+    body = slab(size = vec3(run, rise, along), pos = vec3(run * 0.5, y0 + rise * 0.5, 0), grp = grp)
+    n = vec3(0.0 - rise, 0.0 - run, 0)
+    out = clip(body, origin = vec3(0, y0 + rise, 0), normal = n)
+}
+
+def pyramid_solid(hw: f32, hd: f32, h: f32, y0: f32, grp: string) -> (out: geo<mesh>) {
+    """Сплошной четырёхгранный шатёр: основание 2hw×2hd на y0, вершина на y0+h.
+    Клип бокса четырьмя плоскостями — не полый sweep."""
+    expect h > 0.4: "pyramid_solid: высота"
+    body = slab(size = vec3(hw * 2.0, h, hd * 2.0), pos = vec3(0, y0 + h * 0.5, 0), grp = grp)
+    apex = vec3(0, y0 + h, 0)
+    # Нормаль ската: Y = −run, осевая компонента = −/+ rise. Не путать с
+    # (0, −h, −hd) — это срезает шатёр в усечённую пирамиду.
+    c1 = clip(body, origin = apex, normal = vec3(0.0 - h, 0.0 - hw, 0))
+    c2 = clip(c1, origin = apex, normal = vec3(h, 0.0 - hw, 0))
+    c3 = clip(c2, origin = apex, normal = vec3(0, 0.0 - hd, 0.0 - h))
+    out = clip(c3, origin = apex, normal = vec3(0, 0.0 - hd, h))
+}
+
+def rake_bars(w: f32, y0: f32, rise: f32, z: f32, t: f32, grp: string) -> (out: geo<mesh>) {
+    """Кирпичные тяги по скатам щипца (ветровые): конёк вдоль Z, лицо на z."""
+    sl = length(vec3(w * 0.5, rise, 0))
+    ang = degrees(atan2(rise, w * 0.5))
+    bar = slab(size = vec3(sl + 0.08, 0.14, t), pos = vec3(0, 0, 0), grp = grp)
+    left = transform(bar, rotate = vec3(0, 0, ang), translate = vec3(0.0 - w * 0.25, y0 + rise * 0.5, z))
+    right = transform(bar, rotate = vec3(0, 0, 180.0 - ang), translate = vec3(w * 0.25, y0 + rise * 0.5, z))
+    out = merge(left, right)
+}
+
+def belt_box(w: f32, d: f32, y: f32, h: f32, over: f32, grp: string) -> (out: geo<mesh>) {
+    """Горизонтальный пояс вокруг прямоугольника w×d, центр пояса на y, вынос over."""
+    out = slab(size = vec3(w + over * 2.0, h, d + over * 2.0), pos = vec3(0, y, 0), grp = grp)
+}

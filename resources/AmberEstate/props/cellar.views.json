@@ -1,0 +1,7 @@
+[
+  {"name": "iso", "node": "scene", "orbit": [28, 24], "zoom": 1.08, "chrome": "off", "wire": false},
+  {"name": "oblique", "node": "scene", "orbit": [-72, 14], "zoom": 1.08, "chrome": "off", "wire": false},
+  {"name": "front", "node": "scene", "orbit": [0, 8], "zoom": 1.08, "ortho": "front", "chrome": "off"},
+  {"name": "side", "node": "scene", "orbit": [90, 8], "zoom": 1.08, "ortho": "side", "chrome": "off"},
+  {"name": "top", "node": "scene", "orbit": [0, 89], "zoom": 1.05, "ortho": "top", "chrome": "off"}
+]

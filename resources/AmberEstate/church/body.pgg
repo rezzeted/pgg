@@ -1,0 +1,69 @@
+# Корпус: неф, боковые приделы, цоколь, щипцы нефа. Башни — towers.pgg.
+# +Z запад (фасад), +X юг. Центр плана в origin.
+
+import church.common as common
+import church.towers as twr
+
+def plinths(nave_w: f32, nave_len: f32, tower_w: f32, aisle_w: f32, plinth_h: f32) -> (out: geo<mesh>) {
+    """Тёмный кирпичный цоколь под нефом, приделами и башнями, чуть шире стен."""
+    total_d = tower_w + nave_len
+    east_z = 0.0 - total_d * 0.5
+    facade_z = total_d * 0.5
+    aisle_cz = east_z + nave_len * 0.5
+    tcx = nave_w * 0.5 + tower_w * 0.5
+    tcz = facade_z - tower_w * 0.5
+    o = 0.14
+    nave = common.slab(size = vec3(nave_w + 0.16, plinth_h, total_d + 0.12), pos = vec3(0, plinth_h * 0.5, 0), grp = "plinth")
+    as_s = common.slab(size = vec3(aisle_w + 0.16, plinth_h, nave_len + 0.10), pos = vec3(nave_w * 0.5 + aisle_w * 0.5, plinth_h * 0.5, aisle_cz), grp = "plinth")
+    as_n = common.slab(size = vec3(aisle_w + 0.16, plinth_h, nave_len + 0.10), pos = vec3(0.0 - (nave_w * 0.5 + aisle_w * 0.5), plinth_h * 0.5, aisle_cz), grp = "plinth")
+    ts = common.slab(size = vec3(tower_w + o, plinth_h, tower_w + o), pos = vec3(tcx, plinth_h * 0.5, tcz), grp = "plinth")
+    tn = common.slab(size = vec3(tower_w + o, plinth_h, tower_w + o), pos = vec3(0.0 - tcx, plinth_h * 0.5, tcz), grp = "plinth")
+    out = merge(nave, as_s, as_n, ts, tn)
+}
+
+def walls(nave_w: f32, nave_len: f32, tower_w: f32, aisle_w: f32, nave_h: f32, aisle_h: f32) -> (out: geo<mesh>) {
+    """Штукатурные объёмы нефа и приделов (башни отдельно, чтобы не сливались)."""
+    total_d = tower_w + nave_len
+    east_z = 0.0 - total_d * 0.5
+    aisle_cz = east_z + nave_len * 0.5
+    nave = common.slab(size = vec3(nave_w, nave_h, total_d), pos = vec3(0, nave_h * 0.5, 0), grp = "stucco")
+    as_s = common.slab(size = vec3(aisle_w, aisle_h, nave_len), pos = vec3(nave_w * 0.5 + aisle_w * 0.5, aisle_h * 0.5, aisle_cz), grp = "stucco")
+    as_n = common.slab(size = vec3(aisle_w, aisle_h, nave_len), pos = vec3(0.0 - (nave_w * 0.5 + aisle_w * 0.5), aisle_h * 0.5, aisle_cz), grp = "stucco")
+    out = merge(nave, as_s, as_n)
+}
+
+def gables(nave_w: f32, nave_len: f32, tower_w: f32, nave_h: f32, nave_rise: f32) -> (out: geo<mesh>) {
+    """Западный и восточный щипцы нефа + кирпичные тяги по западному щипцу."""
+    total_d = tower_w + nave_len
+    facade_z = total_d * 0.5
+    east_z = 0.0 - total_d * 0.5
+    west = common.gable_volume(w = nave_w, d = 0.38, y0 = nave_h, rise = nave_rise, grp = "stucco")
+    west_p = transform(west, translate = vec3(0, 0, facade_z - 0.12))
+    east = common.gable_volume(w = nave_w, d = 0.38, y0 = nave_h, rise = nave_rise, grp = "stucco")
+    east_p = transform(east, translate = vec3(0, 0, east_z + 0.12))
+    rakes = common.rake_bars(w = nave_w + 0.08, y0 = nave_h, rise = nave_rise, z = facade_z + 0.08, t = 0.20, grp = "brick")
+    peak = common.latin_cross(h = 0.85, grp = "brick")
+    peak_p = transform(peak, translate = vec3(0, nave_h + nave_rise - 0.04, facade_z + 0.02))
+    out = merge(west_p, east_p, rakes, peak_p)
+}
+
+def aisle_gables(nave_w: f32, nave_len: f32, tower_w: f32, aisle_w: f32, aisle_h: f32, aisle_rise: f32) -> (out: geo<mesh>) {
+    """Восточные торцы приделов: вертикальная стена + треугольная шапка односката."""
+    total_d = tower_w + nave_len
+    east_z = 0.0 - total_d * 0.5
+    cap_s = common.shed_volume(run = aisle_w, along = 0.32, y0 = aisle_h, rise = aisle_rise, grp = "stucco")
+    cap_s_p = transform(cap_s, translate = vec3(nave_w * 0.5, 0, east_z + 0.10))
+    cap_n0 = common.shed_volume(run = aisle_w, along = 0.32, y0 = aisle_h, rise = aisle_rise, grp = "stucco")
+    cap_n = transform(cap_n0, rotate = vec3(0, 180, 0), translate = vec3(0.0 - nave_w * 0.5, 0, east_z + 0.10))
+    out = merge(cap_s_p, cap_n)
+}
+
+def body_all(nave_w: f32, nave_len: f32, tower_w: f32, aisle_w: f32, nave_h: f32, aisle_h: f32, nave_rise: f32, aisle_rise: f32, plinth_h: f32) -> (out: geo<mesh>) {
+    """Неф + приделы + цоколь + щипцы + квойны восточных углов придела."""
+    total_d = tower_w + nave_len
+    east_z = 0.0 - total_d * 0.5
+    ax = nave_w * 0.5 + aisle_w
+    q_se = twr.quoin_corner(h = aisle_h, x = ax, z = east_z, sx = 1.0, sz = 0.0 - 1.0)
+    q_ne = twr.quoin_corner(h = aisle_h, x = 0.0 - ax, z = east_z, sx = 0.0 - 1.0, sz = 0.0 - 1.0)
+    out = merge(plinths(nave_w = nave_w, nave_len = nave_len, tower_w = tower_w, aisle_w = aisle_w, plinth_h = plinth_h), walls(nave_w = nave_w, nave_len = nave_len, tower_w = tower_w, aisle_w = aisle_w, nave_h = nave_h, aisle_h = aisle_h), gables(nave_w = nave_w, nave_len = nave_len, tower_w = tower_w, nave_h = nave_h, nave_rise = nave_rise), aisle_gables(nave_w = nave_w, nave_len = nave_len, tower_w = tower_w, aisle_w = aisle_w, aisle_h = aisle_h, aisle_rise = aisle_rise), q_se, q_ne)
+}

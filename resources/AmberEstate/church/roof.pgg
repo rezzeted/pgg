@@ -1,0 +1,69 @@
+# Кровли: двускат нефа и односкаты приделов — настил-призма + черепица
+# roofing.tile_field (нахлёст вдоль ската). Конёк нефа — колпаки. Шпили — towers.
+
+import lib.parts
+import lib.roofing
+import church.common as common
+
+def ridge_caps_z(along: f32, y: f32) -> (out: geo<mesh>) {
+    """Колпаки конька вдоль Z (скаты на ±X): уголок 45° в плоскости XY."""
+    cap0 = parts.piece(size = vec3(0.14, 0.12, 0.16), pos = vec3(0, 0, 0), grp = "roof")
+    cap = transform(cap0, rotate = vec3(0, 0, 45))
+    n = int(along / 0.15)
+    span = f32(n - 1) * 0.15
+    pts0 = mesh_line(count = n, length = span, dir = (0, 0, 1))
+    pts = transform(pts0, translate = vec3(0, y, 0.0 - span * 0.5))
+    out = mark(realize(instance_on_points(pts, source = cap)), "roof", where = true, domain = faces)
+}
+
+def slope_tiles(along: f32, slope_len: f32, rng: rng) -> (out: geo<mesh>) {
+    """Поле черепицы в локали ската: x вдоль карниза, −Z к коньку."""
+    raw = roofing.tile_field(w_along = along, slope_len = slope_len, tw = 0.24, tl = 0.28, th = 0.028, pu = 0.22, pv = 0.175, lift = 0.010, rng = rng)
+    c_l = clip(raw, origin = vec3(0.0 - along * 0.5, 0, 0), normal = vec3(1, 0, 0), cap_group = "roof")
+    c_r = clip(c_l, origin = vec3(along * 0.5, 0, 0), normal = vec3(-1, 0, 0), cap_group = "roof")
+    out = clip(c_r, origin = vec3(0, 0, 0.03 - slope_len), normal = vec3(0, 0, 1), cap_group = "roof")
+}
+
+def nave_roof(nave_w: f32, nave_len: f32, tower_w: f32, nave_h: f32, nave_rise: f32, rng: rng) -> (out: geo<mesh>) {
+    """Двускат нефа: призма-настил, два ската черепицы, колпаки. Конёк вдоль Z."""
+    total_d = tower_w + nave_len
+    oh = 0.28
+    eave = nave_w * 0.5 + oh
+    pitch = degrees(atan2(nave_rise, eave))
+    slope_len = eave / cos(radians(pitch))
+    along = total_d + 0.18
+    deck = common.gable_volume(w = nave_w + oh * 2.0, d = total_d + 0.12, y0 = nave_h - 0.04, rise = nave_rise + 0.04, grp = "roof")
+    field = slope_tiles(along = along, slope_len = slope_len, rng = split_rng(rng, key = "nv"))
+    pitched = transform(field, rotate = vec3(pitch, 0, 0))
+    # После pitch конёк в −Z. Ry(90): конёк в −X — от карниза +X к оси нефа.
+    south = transform(pitched, rotate = vec3(0, 90, 0), translate = vec3(eave - 0.02, nave_h + 0.02, 0))
+    north = transform(pitched, rotate = vec3(0, -90, 0), translate = vec3(0.02 - eave, nave_h + 0.02, 0))
+    caps = ridge_caps_z(along = along - 0.20, y = nave_h + nave_rise + 0.04)
+    out = merge(deck, south, north, caps)
+}
+
+def aisle_roofs(nave_w: f32, nave_len: f32, tower_w: f32, aisle_w: f32, aisle_h: f32, aisle_rise: f32, rng: rng) -> (out: geo<mesh>) {
+    """Односкаты приделов: высокий край к нефу, черепица, настил."""
+    total_d = tower_w + nave_len
+    east_z = 0.0 - total_d * 0.5
+    aisle_cz = east_z + nave_len * 0.5
+    oh = 0.20
+    run = aisle_w + oh
+    pitch = degrees(atan2(aisle_rise, run))
+    slope_len = run / cos(radians(pitch))
+    along = nave_len + 0.12
+    field = slope_tiles(along = along, slope_len = slope_len, rng = split_rng(rng, key = "as"))
+    pitched = transform(field, rotate = vec3(pitch, 0, 0))
+    south_t = transform(pitched, rotate = vec3(0, 90, 0), translate = vec3(nave_w * 0.5 + run - 0.04, aisle_h + 0.02, aisle_cz))
+    north_t = transform(pitched, rotate = vec3(0, -90, 0), translate = vec3(0.0 - (nave_w * 0.5 + run - 0.04), aisle_h + 0.02, aisle_cz))
+    deck_s = common.shed_volume(run = run, along = nave_len + 0.10, y0 = aisle_h - 0.04, rise = aisle_rise + 0.06, grp = "roof")
+    south_d = transform(deck_s, translate = vec3(nave_w * 0.5, 0, aisle_cz))
+    deck_n0 = common.shed_volume(run = run, along = nave_len + 0.10, y0 = aisle_h - 0.04, rise = aisle_rise + 0.06, grp = "roof")
+    north_d = transform(deck_n0, rotate = vec3(0, 180, 0), translate = vec3(0.0 - nave_w * 0.5, 0, aisle_cz))
+    out = merge(south_d, north_d, south_t, north_t)
+}
+
+def roofs(nave_w: f32, nave_len: f32, tower_w: f32, aisle_w: f32, nave_h: f32, aisle_h: f32, nave_rise: f32, aisle_rise: f32, rng: rng) -> (out: geo<mesh>) {
+    """Неф + приделы. Шпили — в towers."""
+    out = merge(nave_roof(nave_w = nave_w, nave_len = nave_len, tower_w = tower_w, nave_h = nave_h, nave_rise = nave_rise, rng = split_rng(rng, key = "nave")), aisle_roofs(nave_w = nave_w, nave_len = nave_len, tower_w = tower_w, aisle_w = aisle_w, aisle_h = aisle_h, aisle_rise = aisle_rise, rng = split_rng(rng, key = "aisle")))
+}

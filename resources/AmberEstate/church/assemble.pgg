@@ -1,0 +1,24 @@
+# Сборка и окраска: кремовая штукатурка, терракотовый кирпич и кровля,
+# тёмные ниши вместо стекла (прозрачности нет). AO короткий — тени в швах.
+
+def assemble(body: geo<mesh>, towers: geo<mesh>, openings: geo<mesh>, roofs: geo<mesh>, rng: rng) -> (out: geo<mesh>) {
+    """Сливает корпус, башни, проёмы и кровли, красит @Cd по группам, печёт AO."""
+    raw = merge(body, towers, openings, roofs)
+    pr = split_rng(rng, key = "paint")
+    stucco_col = mix(vec3(1.22, 1.06, 0.90), vec3(1.08, 0.96, 0.80), fbm(scale = 1.3, octaves = 3, rng = split_rng(pr, key = "stucco")))
+    brick_col = mix(vec3(0.90, 0.46, 0.22), vec3(0.66, 0.28, 0.12), fbm(scale = 1.8, octaves = 3, rng = split_rng(pr, key = "brick"))) * @tint
+    roof_col = mix(vec3(0.86, 0.42, 0.18), vec3(0.58, 0.26, 0.10), fbm(scale = 2.2, octaves = 3, rng = split_rng(pr, key = "roof"))) * @tint
+    plinth_col = mix(vec3(0.32, 0.14, 0.10), vec3(0.18, 0.08, 0.06), fbm(scale = 1.6, octaves = 2, rng = split_rng(pr, key = "plinth")))
+    stone_col = mix(vec3(0.62, 0.62, 0.64), vec3(0.48, 0.48, 0.50), fbm(scale = 2.0, octaves = 2, rng = split_rng(pr, key = "stone")))
+    c0 = ingroup("stucco") ? stucco_col : vec3(1.0, 0.0, 1.0)
+    c1 = ingroup("brick") ? brick_col : c0
+    c2 = ingroup("roof") ? roof_col : c1
+    c3 = ingroup("plinth") ? plinth_col : c2
+    c4 = ingroup("stone") ? stone_col : c3
+    c5 = ingroup("wood") ? vec3(0.22, 0.12, 0.07) * @tint : c4
+    c6 = ingroup("glass") ? vec3(0.07, 0.045, 0.035) : c5
+    c7 = ingroup("iron") ? vec3(0.04, 0.04, 0.05) : c6
+    edge_mul = ingroup("edge") ? vec3(1.22, 1.18, 1.12) : vec3(1.0)
+    painted = set(raw, "Cd", c7 * edge_mul, domain = faces)
+    out = bake_ao(painted, rays = 10, distance = 0.50, rng = split_rng(rng, key = "ao"), domain = points)
+}

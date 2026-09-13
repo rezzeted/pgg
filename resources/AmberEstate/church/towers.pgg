@@ -1,0 +1,83 @@
+# Квадратные западные башни: штукатурный ствол, поясок, ярус звона, карниз,
+# квойны, черепичный шатёр (масса) и железный крест. Локально башня в origin,
+# ставится translate в (cx, 0, cz).
+
+import lib.roofing
+import lib.shapes as shapes
+import church.common as common
+
+def tower_body(w: f32, low_h: f32, belfry_h: f32, cornice_h: f32) -> (out: geo<mesh>) {
+    """Ствол + поясок на low_h + карниз под шпилем. Низ на y = 0."""
+    body_h = low_h + belfry_h + cornice_h
+    shaft = common.slab(size = vec3(w, body_h, w), pos = vec3(0, body_h * 0.5, 0), grp = "stucco")
+    belt = common.belt_box(w = w, d = w, y = low_h, h = 0.22, over = 0.08, grp = "brick")
+    corn = common.belt_box(w = w, d = w, y = body_h - cornice_h * 0.5, h = cornice_h, over = 0.16, grp = "brick")
+    out = merge(shaft, belt, corn)
+}
+
+def quoin_corner(h: f32, x: f32, z: f32, sx: f32, sz: f32) -> (out: geo<mesh>) {
+    """Цепочка угловых кирпичей: два ложка на грань, низ y = 0, угол в (x, z), sx/sz — знак наружу."""
+    ch = 0.092
+    n = int(h / ch)
+    L = 0.26
+    t = 0.095
+    y0 = ch * 0.5
+    bz = common.slab(size = vec3(L, ch * 0.86, t), pos = vec3(x - sx * L * 0.5, y0, z + sz * t * 0.5), grp = "brick")
+    bx = common.slab(size = vec3(t, ch * 0.86, L), pos = vec3(x + sx * t * 0.5, y0, z - sz * L * 0.5), grp = "brick")
+    row0 = merge(bz, bx)
+    out = repeat (row0, iterations = n - 1) |acc| {
+        k = f32(@iteration) + 1.0
+        y = y0 + k * ch
+        acc = merge(acc, common.slab(size = vec3(L, ch * 0.86, t), pos = vec3(x - sx * L * 0.5, y, z + sz * t * 0.5), grp = "brick"), common.slab(size = vec3(t, ch * 0.86, L), pos = vec3(x + sx * t * 0.5, y, z - sz * L * 0.5), grp = "brick"))
+    }
+}
+
+def tower_quoins(w: f32, h: f32) -> (out: geo<mesh>) {
+    """Четыре тонких квойна на углах квадрата w×w."""
+    hw = w * 0.5
+    c0 = quoin_corner(h = h, x = hw, z = hw, sx = 1.0, sz = 1.0)
+    c1 = quoin_corner(h = h, x = hw, z = 0.0 - hw, sx = 1.0, sz = 0.0 - 1.0)
+    c2 = quoin_corner(h = h, x = 0.0 - hw, z = hw, sx = 0.0 - 1.0, sz = 1.0)
+    c3 = quoin_corner(h = h, x = 0.0 - hw, z = 0.0 - hw, sx = 0.0 - 1.0, sz = 0.0 - 1.0)
+    out = merge(c0, c1, c2, c3)
+}
+
+def tower_spire(w: f32, h: f32, y0: f32, rng: rng) -> (out: geo<mesh>) {
+    """Шатёр: сплошная пирамида, черепица по четырём граням, юбка, крест."""
+    oh = 0.10
+    a0 = w * 0.5 + oh
+    pyr = common.pyramid_solid(hw = a0, hd = a0, h = h, y0 = y0, grp = "roof")
+    skirt = common.belt_box(w = w, d = w, y = y0 + 0.06, h = 0.14, over = 0.22, grp = "brick")
+    slope_len = length(vec3(a0, h, 0))
+    pitch = degrees(atan2(h, a0))
+    face0 = roofing.tile_face_tri(r0 = a0 * 2.0, r1 = 0.10, slope_len = slope_len, rng = rng, apex_clip = 0.12)
+    face_on = transform(transform(face0, rotate = vec3(pitch, 0, 0)), translate = vec3(0, y0, a0))
+    tiles = shapes.polar_array(g = face_on, n = 4)
+    hip0 = roofing.hip_caps(p0 = vec3(a0, y0, a0), p1 = vec3(0, y0 + h - 0.08, 0), rng = split_rng(rng, key = "hip"), half = 40.0, lift = 0.10, cap_w = 0.22, cap_l = 0.34, y_step = 0.008)
+    hips = shapes.polar_array(g = hip0, n = 4)
+    cr = common.latin_cross(h = 1.15, grp = "iron")
+    cr_p = transform(cr, translate = vec3(0, y0 + h - 0.06, 0))
+    out = merge(pyr, skirt, tiles, hips, cr_p)
+}
+
+def one_tower(w: f32, low_h: f32, belfry_h: f32, cornice_h: f32, spire_h: f32, rng: rng) -> (out: geo<mesh>) {
+    """Полная башня в origin, низ на земле."""
+    body_h = low_h + belfry_h + cornice_h
+    shaft = tower_body(w = w, low_h = low_h, belfry_h = belfry_h, cornice_h = cornice_h)
+    quoins = tower_quoins(w = w, h = body_h - cornice_h)
+    spire = tower_spire(w = w, h = spire_h, y0 = body_h, rng = rng)
+    out = merge(shaft, quoins, spire)
+}
+
+def pair(nave_w: f32, nave_len: f32, tower_w: f32, low_h: f32, belfry_h: f32, cornice_h: f32, spire_h: f32, rng: rng) -> (out: geo<mesh>) {
+    """Южная (+X) и северная (−X) башни на западном фасаде."""
+    total_d = tower_w + nave_len
+    facade_z = total_d * 0.5
+    tcx = nave_w * 0.5 + tower_w * 0.5
+    tcz = facade_z - tower_w * 0.5
+    proto_s = one_tower(w = tower_w, low_h = low_h, belfry_h = belfry_h, cornice_h = cornice_h, spire_h = spire_h, rng = split_rng(rng, key = "s"))
+    proto_n = one_tower(w = tower_w, low_h = low_h, belfry_h = belfry_h, cornice_h = cornice_h, spire_h = spire_h, rng = split_rng(rng, key = "n"))
+    south = transform(proto_s, translate = vec3(tcx, 0, tcz))
+    north = transform(proto_n, translate = vec3(0.0 - tcx, 0, tcz))
+    out = merge(south, north)
+}
