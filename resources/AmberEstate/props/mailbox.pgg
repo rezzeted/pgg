@@ -1,7 +1,7 @@
-param box_w: f32 = 0.42
-param box_d: f32 = 0.28
+param box_w: f32 = 0.29
+param box_d: f32 = 0.48
 param box_h: f32 = 0.32
-param post_h: f32 = 0.72
+param post_h: f32 = 0.56
 param seed: int = 2
 
 import lib.parts
@@ -9,77 +9,183 @@ import lib.ironwork
 import common
 
 # Почтовый ящик по референсу props/mailbox.jpg.
-# Столб, ящик из досок, двускатная крыша из рыжих плит, дверца с пластиной, флажок.
-# Верх +Y, дверца в +Z. Именованные узлы: post_unit, box, roof, flag, scene.
+# Столб в две доски, ящик на рамке из досок с угловыми стойками, щипец спереди,
+# двускат из дранки в два ряда, флажок на правом скате.
+# Верх +Y, дверца и щипец в +Z. Именованные узлы: post_unit, box, roof, flag, scene.
 
 def make_post(h: f32) -> (out: geo<mesh>) {
-    """Квадратный столб, низ в 0."""
-    out = parts.piece(size = vec3(0.18, h, 0.18), pos = vec3(0, h * 0.5, 0), grp = "wood")
+    """Квадратный столб из двух вертикальных досок, низ в 0."""
+    s = 0.12
+    left = parts.piece(size = vec3(s * 0.5, h, s), pos = vec3(0.0 - s * 0.25, h * 0.5, 0), grp = "wood")
+    right = parts.piece(size = vec3(s * 0.5, h, s), pos = vec3(s * 0.25, h * 0.5, 0), grp = "wood_light")
+    out = merge(left, right)
 }
 
-def make_box(w: f32, d: f32, h: f32, y0: f32) -> (out: geo<mesh>) {
-    """Ящик: пол, бока, зад, фасад из 3 досок, дверца с железной пластиной."""
-    floor = parts.piece(size = vec3(w, 0.04, d), pos = vec3(0, y0 + 0.02, 0), grp = "wood")
-    side_l = parts.piece(size = vec3(0.032, h, d - 0.02), pos = vec3(w * 0.5 - 0.016, y0 + h * 0.5, 0), grp = "wood")
-    side_r = parts.piece(size = vec3(0.032, h, d - 0.02), pos = vec3(0.0 - (w * 0.5 - 0.016), y0 + h * 0.5, 0), grp = "wood")
-    back = parts.piece(size = vec3(w - 0.04, h, 0.032), pos = vec3(0, y0 + h * 0.5, 0.0 - (d * 0.5 - 0.016)), grp = "wood")
-    n = 3
-    pitch = (w - 0.06) / f32(n)
-    plank = parts.cbox(size = vec3(pitch - 0.006, h - 0.04, 0.028), k = 0.16)
-    pts0 = mesh_line(count = n, length = w - 0.06 - pitch, dir = (1, 0, 0))
-    pts = transform(pts0, translate = vec3(0.0 - (w - 0.06 - pitch) * 0.5, y0 + h * 0.5, d * 0.5 - 0.012))
-    front = mark(realize(instance_on_points(pts, source = plank)), "wood", where = true, domain = faces)
-    door = parts.piece(size = vec3(0.13, 0.16, 0.02), pos = vec3(0.0 - w * 0.18, y0 + h * 0.42, d * 0.5 + 0.012), grp = "wood_dark")
-    plate = parts.piece(size = vec3(0.09, 0.09, 0.012), pos = vec3(0.0 - w * 0.18, y0 + h * 0.44, d * 0.5 + 0.022), grp = "iron")
-    latch = parts.piece(size = vec3(0.035, 0.018, 0.04), pos = vec3(0.0 - w * 0.18, y0 + h * 0.44, d * 0.5 + 0.04), grp = "iron")
-    out = merge(floor, side_l, side_r, back, front, door, plate, latch)
+def wall_planks(w: f32, h: f32, t: f32, n: int, rng: rng) -> (out: geo<mesh>) {
+    """Щит вертикальных досок: ширина w, высота h, лицо +Z."""
+    out = parts.plank_panel(w = w, h = h, t = t, n = n, rng = rng)
 }
 
-def make_roof(w: f32, d: f32, y0: f32) -> (out: geo<mesh>) {
-    """Двускат: по одной плите на скат, конёк, щель во фронтоне."""
-    slope = 40.0
-    slab = parts.cbox(size = vec3(w + 0.16, 0.034, d * 0.72), k = 0.12)
-    a0 = mark(transform(slab, rotate = vec3(slope, 0, 0), translate = vec3(0, y0 + 0.10, d * 0.14)), "roof", where = true, domain = faces)
-    b0 = mark(transform(slab, rotate = vec3(0.0 - slope, 0, 0), translate = vec3(0, y0 + 0.10, 0.0 - d * 0.14)), "roof", where = true, domain = faces)
-    gable = parts.piece(size = vec3(w - 0.06, 0.16, 0.03), pos = vec3(0, y0 + 0.08, d * 0.5 - 0.01), grp = "wood")
-    slot = parts.piece(size = vec3(0.18, 0.028, 0.04), pos = vec3(0, y0 + 0.10, d * 0.5 + 0.02), grp = "wood_dark")
-    out = merge(a0, b0, gable, slot)
+def make_box(w: f32, d: f32, h: f32, y0: f32, rng: rng) -> (out: geo<mesh>) {
+    """Рамка-основание из досок по контуру, угловые стойки, стены из досок, люк слева."""
+    sill_h = 0.055
+    bw = 0.040
+    ow = w + 0.04
+    od = d + 0.08
+    y_rim = y0 + sill_h * 0.5
+    hx_s = ow * 0.5 - bw * 0.5
+    hz_s = od * 0.5 - bw * 0.5
+    span_z = od - 2.0 * bw - 0.003
+    s_f = parts.piece(size = vec3(ow, sill_h, bw), pos = vec3(0, y_rim, hz_s), grp = "wood")
+    s_b = parts.piece(size = vec3(ow, sill_h, bw), pos = vec3(0, y_rim, 0.0 - hz_s), grp = "wood")
+    s_l = parts.piece(size = vec3(bw, sill_h, span_z), pos = vec3(0.0 - hx_s, y_rim, 0), grp = "wood")
+    s_r = parts.piece(size = vec3(bw, sill_h, span_z), pos = vec3(hx_s, y_rim, 0), grp = "wood")
+    inner_w = ow - 2.0 * bw
+    inner_d = od - 2.0 * bw
+    shelf = parts.piece(size = vec3(inner_w + 0.008, 0.016, inner_d + 0.008), pos = vec3(0, y0 + 0.010, 0), grp = "wood")
+    y_wall = y0 + sill_h
+    cs = 0.032
+    t = 0.028
+    y_mid = y_wall + h * 0.5
+    hx = w * 0.5 - cs * 0.5
+    hz = d * 0.5 - cs * 0.5
+    p00 = parts.piece(size = vec3(cs, h, cs), pos = vec3(hx, y_mid, hz), grp = "wood")
+    p01 = parts.piece(size = vec3(cs, h, cs), pos = vec3(0.0 - hx, y_mid, hz), grp = "wood")
+    p10 = parts.piece(size = vec3(cs, h, cs), pos = vec3(hx, y_mid, 0.0 - hz), grp = "wood")
+    p11 = parts.piece(size = vec3(cs, h, cs), pos = vec3(0.0 - hx, y_mid, 0.0 - hz), grp = "wood")
+    fw = w - 2.0 * cs - 0.004
+    fd = d - 2.0 * cs - 0.004
+    front = transform(wall_planks(w = fw, h = h - 0.02, t = t, n = 3, rng = split_rng(rng, key = "f")), translate = vec3(0, y_mid, d * 0.5 - t * 0.5))
+    back = parts.place(wall_planks(w = fw, h = h - 0.02, t = t, n = 3, rng = split_rng(rng, key = "b")), yaw_deg = 180.0, at = vec3(0, y_mid, 0.0 - (d * 0.5 - t * 0.5)))
+    left = parts.place(wall_planks(w = fd, h = h - 0.02, t = t, n = 3, rng = split_rng(rng, key = "l")), yaw_deg = 0.0 - 90.0, at = vec3(0.0 - (w * 0.5 - t * 0.5), y_mid, 0))
+    right0 = parts.place(wall_planks(w = fd, h = h - 0.02, t = t, n = 3, rng = split_rng(rng, key = "r")), yaw_deg = 90.0, at = vec3(w * 0.5 - t * 0.5, y_mid, 0))
+    right = mark(unmark(right0, "wood"), "wood_light", where = true, domain = faces)
+    door = parts.piece(size = vec3(0.08, 0.14, 0.014), pos = vec3(0.0 - w * 0.18, y_wall + h * 0.48, d * 0.5 + 0.010), grp = "wood")
+    plate = parts.piece(size = vec3(0.062, 0.072, 0.012), pos = vec3(0.0 - w * 0.18, y_wall + h * 0.49, d * 0.5 + 0.022), grp = "iron")
+    latch = parts.piece(size = vec3(0.016, 0.030, 0.016), pos = vec3(0.0 - w * 0.18, y_wall + h * 0.49, d * 0.5 + 0.036), grp = "iron")
+    knob = ironwork.spool(p0 = vec3(0.0 - w * 0.18, y_wall + h * 0.49, d * 0.5 + 0.044), p1 = vec3(0.0 - w * 0.18, y_wall + h * 0.49, d * 0.5 + 0.064), r0 = 0.009, r1 = 0.009, sides = 8)
+    out = merge(s_f, s_b, s_l, s_r, shelf, p00, p01, p10, p11, front, back, left, right, door, plate, latch, knob)
 }
 
-def make_flag(w: f32, d: f32, y0: f32) -> (out: geo<mesh>) {
-    """Флажок на правом скате: стойка, полотнище, железная пятка."""
-    shoe = parts.piece(size = vec3(0.05, 0.04, 0.05), pos = vec3(w * 0.22, y0 + 0.10, d * 0.10), grp = "iron")
-    pole = parts.piece(size = vec3(0.024, 0.36, 0.024), pos = vec3(w * 0.22, y0 + 0.28, d * 0.10), grp = "flag")
-    cloth = parts.piece(size = vec3(0.14, 0.11, 0.018), pos = vec3(w * 0.22 + 0.07, y0 + 0.42, d * 0.10), grp = "flag")
-    out = merge(shoe, pole, cloth)
+def make_gable(w: f32, rise: f32, y_base: f32, z: f32, pitch: f32, rng: rng) -> (out: geo<mesh>) {
+    """Щипец: три доски, обрезанные двумя скатами от конька вниз к карнизу."""
+    panel = wall_planks(w = w + 0.04, h = rise, t = 0.026, n = 3, rng = rng)
+    placed = transform(panel, translate = vec3(0, y_base + rise * 0.5, z))
+    peak = vec3(0, y_base + rise, z)
+    pr = radians(pitch)
+    n_l = vec3(sin(pr), 0.0 - cos(pr), 0)
+    n_r = vec3(0.0 - sin(pr), 0.0 - cos(pr), 0)
+    c1 = clip(placed, origin = peak, normal = n_l, cap_group = "wood")
+    out = clip(c1, origin = peak, normal = n_r, cap_group = "wood")
+}
+
+def shake_slope(along: f32, slope_len: f32, rng: rng) -> (out: geo<mesh>) {
+    """Дранка: два ряда вразбежку, вниз +X, вдоль конька +Z, нахлёст четверть."""
+    expect slope_len > 0.12: "shake_slope: короткий скат"
+    n_a = 4
+    n_b = 5
+    seam = 0.004
+    th = 0.014
+    tl = (slope_len + 0.04) / 1.70
+    pv = tl * 0.75
+    pu_a = along / f32(n_a)
+    pu_b = along / f32(n_b)
+    wa = pu_a - seam
+    wb = pu_b - seam
+    tilt = degrees(atan2(th, pv))
+    hang = vec3(tl * 0.5, 0, 0)
+    flat_a = transform(parts.cbox(size = vec3(tl, th, wa), k = 0.16), translate = hang)
+    flat_b = transform(parts.cbox(size = vec3(tl, th, wb), k = 0.16), translate = hang)
+    src_a = transform(flat_a, rotate = vec3(0, 0, 0.0 - tilt))
+    src_b = transform(flat_b, rotate = vec3(0, 0, 0.0 - tilt))
+    a0 = mark(src_a, "wood", where = true, domain = faces)
+    a1 = mark(src_a, "roof", where = true, domain = faces)
+    a2 = mark(src_a, "wood_light", where = true, domain = faces)
+    b0 = mark(src_b, "wood", where = true, domain = faces)
+    b1 = mark(src_b, "roof", where = true, domain = faces)
+    b2 = mark(src_b, "wood_light", where = true, domain = faces)
+    row_a0 = mesh_line(count = n_a, length = along - pu_a, dir = (0, 0, 1))
+    row_a = transform(row_a0, translate = vec3(0, th * 0.5, 0.0 - (along - pu_a) * 0.5))
+    row_b0 = mesh_line(count = n_b, length = along - pu_b, dir = (0, 0, 1))
+    row_b = transform(row_b0, translate = vec3(pv, th * 0.5, 0.0 - (along - pu_b) * 0.5))
+    shade_a = random(lo = 0.88, hi = 1.12, rng = split_rng(rng, key = "ta"))
+    shade_b = random(lo = 0.88, hi = 1.12, rng = split_rng(rng, key = "tb"))
+    pts_a = set(set(row_a, "variant", random_int(n = 3, rng = split_rng(rng, key = "va"))), "tint", vec3(shade_a * 1.03, shade_a, shade_a * 0.94))
+    pts_b = set(set(row_b, "variant", random_int(n = 3, rng = split_rng(rng, key = "vb"))), "tint", vec3(shade_b * 1.03, shade_b, shade_b * 0.94))
+    raw_a = realize(instance_on_points(pts_a, source = a0, variants = [a0, a1, a2]))
+    raw_b = realize(instance_on_points(pts_b, source = b0, variants = [b0, b1, b2]))
+    shakes = compute_normals(merge(raw_a, raw_b), mode = flat)
+    deck = parts.piece(size = vec3(slope_len + 0.02, 0.010, along - 0.02), pos = vec3(slope_len * 0.48, 0.0 - 0.004, 0), grp = "wood")
+    out = merge(deck, shakes)
+}
+
+def make_roof(w: f32, d: f32, y_top: f32, rng: rng) -> (out: geo<mesh>) {
+    """Двускат: конёк вдоль Z, два ряда дранки вразбежку, щипцы, щель спереди."""
+    pitch = 38.0
+    oh = 0.035
+    oh_z = 0.06
+    pr = radians(pitch)
+    rise = w * 0.5 * tan(pr)
+    ridge_y = y_top + rise
+    along = d + 2.0 * oh_z
+    slope_len = (w * 0.5 + oh) / cos(pr)
+    field = shake_slope(along = along, slope_len = slope_len, rng = split_rng(rng, key = "shakes"))
+    right = transform(field, rotate = vec3(0, 0, 0.0 - pitch), translate = vec3(0, ridge_y, 0))
+    left0 = transform(field, rotate = vec3(0, 180, 0))
+    left = transform(left0, rotate = vec3(0, 0, pitch), translate = vec3(0, ridge_y, 0))
+    g_f = make_gable(w = w, rise = rise, y_base = y_top, z = d * 0.5 - 0.012, pitch = pitch, rng = split_rng(rng, key = "gf"))
+    g_b = make_gable(w = w, rise = rise, y_base = y_top, z = 0.0 - (d * 0.5 - 0.012), pitch = pitch, rng = split_rng(rng, key = "gb"))
+    cap = parts.piece(size = vec3(0.022, 0.022, along), pos = vec3(0, ridge_y + 0.010, 0), grp = "wood")
+    slot = parts.piece(size = vec3(w * 0.46, 0.022, 0.020), pos = vec3(0, y_top + rise * 0.28, d * 0.5 + 0.008), grp = "wood_dark")
+    out = merge(right, left, g_f, g_b, cap, slot)
+}
+
+def make_flag(w: f32, d: f32, y_top: f32) -> (out: geo<mesh>) {
+    """Флажок-весло на правом скате: железная пятка с болтом, стойка, полотнище сверху."""
+    pitch = 38.0
+    pr = radians(pitch)
+    rise = w * 0.5 * tan(pr)
+    ridge_y = y_top + rise
+    fx = w * 0.22
+    fz = d * 0.06
+    fy = ridge_y - fx * tan(pr) + 0.024
+    shoe = parts.piece(size = vec3(0.040, 0.034, 0.040), pos = vec3(fx, fy, fz), grp = "iron")
+    bolt = mark(transform(ico_sphere(subdiv = 1, radius = 0.010), translate = vec3(fx, fy + 0.006, fz + 0.024)), "iron", where = true, domain = faces)
+    pole = parts.piece(size = vec3(0.018, 0.18, 0.012), pos = vec3(fx, fy + 0.11, fz), grp = "flag")
+    head = parts.piece(size = vec3(0.040, 0.13, 0.014), pos = vec3(fx, fy + 0.26, fz), grp = "flag")
+    out = merge(shoe, bolt, pole, head)
 }
 
 def paint(raw: geo<mesh>, rng: rng) -> (out: geo<mesh>) {
     """Окрас ящика: дерево, черепица, флажок, железо."""
-    wood_col = vec3(0.48, 0.28, 0.12) * @tint
-    wood_dk = vec3(0.28, 0.16, 0.08)
-    iron_col = vec3(0.22, 0.24, 0.26)
-    roof_col = vec3(0.88, 0.42, 0.18) * @tint
-    flag_col = vec3(0.90, 0.32, 0.16)
+    wood_col = vec3(0.46, 0.26, 0.12) * @tint
+    wood_lt = vec3(0.78, 0.52, 0.26) * @tint
+    wood_dk = vec3(0.22, 0.14, 0.08)
+    iron_col = vec3(0.28, 0.30, 0.34)
+    roof_col = vec3(0.64, 0.40, 0.20) * @tint
+    flag_col = vec3(0.90, 0.34, 0.22)
     c0 = ingroup("wood") ? wood_col : vec3(1.0, 0.0, 1.0)
-    c1 = ingroup("wood_dark") ? wood_dk : c0
-    c2 = ingroup("iron") ? iron_col : c1
-    c3 = ingroup("roof") ? roof_col : c2
-    c4 = ingroup("flag") ? flag_col : c3
+    c1 = ingroup("wood_light") ? wood_lt : c0
+    c2 = ingroup("wood_dark") ? wood_dk : c1
+    c3 = ingroup("iron") ? iron_col : c2
+    c4 = ingroup("roof") ? roof_col : c3
+    c5 = ingroup("flag") ? flag_col : c4
     edge_mul = ingroup("edge") ? vec3(1.20, 1.16, 1.08) : vec3(1.0)
-    out = common.ao(set(raw, "Cd", c4 * edge_mul, domain = faces), rng = rng)
+    out = common.ao(set(raw, "Cd", c5 * edge_mul, domain = faces), rng = rng)
 }
 
 def assemble(w: f32, d: f32, h: f32, ph: f32, rng: rng) -> (out: geo<mesh>) {
     """Ящик на столбе: столб, корпус, крыша, флажок."""
-    y0 = ph - 0.02
-    out = paint(merge(make_post(h = ph), make_box(w = w, d = d, h = h, y0 = y0), make_roof(w = w, d = d, y0 = y0 + h), make_flag(w = w, d = d, y0 = y0 + h)), rng = rng)
+    y0 = ph
+    sill_h = 0.055
+    y_top = y0 + sill_h + h
+    out = paint(merge(make_post(h = ph), make_box(w = w, d = d, h = h, y0 = y0, rng = split_rng(rng, key = "box")), make_roof(w = w, d = d, y_top = y_top, rng = split_rng(rng, key = "roof")), make_flag(w = w, d = d, y_top = y_top)), rng = rng)
 }
 
 root_rng = rng_from_seed(seed)
 post_unit = make_post(h = post_h)
-box = make_box(w = box_w, d = box_d, h = box_h, y0 = post_h - 0.02)
-roof = make_roof(w = box_w, d = box_d, y0 = post_h - 0.02 + box_h)
-flag = make_flag(w = box_w, d = box_d, y0 = post_h - 0.02 + box_h)
+box = make_box(w = box_w, d = box_d, h = box_h, y0 = post_h, rng = split_rng(root_rng, key = "box"))
+roof = make_roof(w = box_w, d = box_d, y_top = post_h + 0.055 + box_h, rng = split_rng(root_rng, key = "roof"))
+flag = make_flag(w = box_w, d = box_d, y_top = post_h + 0.055 + box_h)
 scene = paint(merge(post_unit, box, roof, flag), rng = split_rng(root_rng, key = "ao"))
 output scene
