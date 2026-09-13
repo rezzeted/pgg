@@ -4,7 +4,6 @@ import lib.ironwork
 
 # Общая палитра и точёные заготовки для пропов AmberEstate.
 # import common из соседнего файла в props/.
-
 def ao(raw: geo<mesh>, rng: rng) -> (out: geo<mesh>) {
     """Короткий AO в стыках. @Cd пишет вызывающий — только по группам этого меша."""
     out = bake_ao(raw, rays = 12, distance = 0.45, rng = rng, domain = points)
@@ -43,12 +42,66 @@ def wood_disc(y: f32, r: f32, h: f32, grp: string) -> (out: geo<mesh>) {
     out = mark(unmark(body, "iron"), grp, where = true, domain = faces)
 }
 
-def split_log(len: f32, w: f32, h: f32) -> (out: geo<mesh>) {
-    """Полешко: светлый брус + кора сверху. Длина вдоль X, центр в 0."""
+def log_sector_profile(r: f32, a0: f32, a1: f32, lift: f32, warp: f32, n: int) -> (out: geo<points>) {
+    """Неровный сектор со срубленной сердцевиной и живой дугой a0..a1."""
+    expect n >= 8: "log_sector_profile: мало точек дуги"
+    first = @index == 0
+    last = @index == n + 1
+    j = @index - 1
+    t = f32(j) / f32(n - 1)
+    a = radians(a0 + (a1 - a0) * t)
+    edge = 1.0 + warp * (0.55 * sin(a * 3.0) + 0.45 * cos(a * 5.0))
+    core = r * (0.10 + warp)
+    skew = vec3(r * warp * 0.35, r * warp * 0.12, 0)
+    inner0 = vec3(core * cos(radians(a0)), core * sin(radians(a0)) + lift, 0) + skew
+    inner1 = vec3(core * cos(radians(a1)), core * sin(radians(a1)) + lift, 0) + skew
+    arc = vec3(r * edge * cos(a), r * edge * sin(a) + lift, 0)
+    p = first ? inner0 : (last ? inner1 : arc)
+    out = set_position(mesh_line(count = n + 2, length = 0.0), pos = p)
+}
+
+def log_bark_profile(r_in: f32, r_out: f32, a0: f32, a1: f32, lift: f32, warp: f32, n: int) -> (out: geo<points>) {
+    """Неровный кольцевой сектор коры: n точек наружу, n обратно."""
+    expect r_out > r_in: "log_bark_profile: толщина коры"
+    expect n >= 8: "log_bark_profile: мало точек дуги"
+    fwd = @index < n
+    j = fwd ? @index : @index - n
+    t = f32(j) / f32(n - 1)
+    a = fwd ? radians(a0 + (a1 - a0) * t) : radians(a1 + (a0 - a1) * t)
+    edge = 1.0 + warp * (0.55 * sin(a * 3.0) + 0.45 * cos(a * 5.0))
+    rr = (fwd ? r_out : r_in) * edge
+    out = set_position(mesh_line(count = 2 * n, length = 0.0), pos = vec3(rr * cos(a), rr * sin(a) + lift, 0))
+}
+
+def split_log(len: f32, r: f32, bite: f32) -> (out: geo<mesh>) {
+    """Колотое полено: неровный сектор с лёгким изгибом, сужением и скруткой вдоль X."""
     expect len > 0.15: "split_log: короткое"
-    body = mark(parts.cbox(size = vec3(len, h, w), k = 0.14), "wood_light", where = true, domain = faces)
-    bark = parts.piece(size = vec3(len * 0.97, h * 0.22, w * 0.90), pos = vec3(0, h * 0.40, 0), grp = "bark")
-    out = merge(body, bark)
+    expect r > 0.03: "split_log: тонкое"
+    expect bite >= 80.0 & bite <= 140.0: "split_log: выкус 15–20 минут"
+    n = 20
+    a0 = 90.0 - bite * 0.5
+    a1 = 90.0 + bite * 0.5
+    bt = r * 0.10
+    r_out = r + bt
+    character = (bite - 108.0) / 32.0
+    warp = 0.035 + 0.018 * character
+    path0 = mesh_line(count = 5, length = len, dir = (1, 0, 0))
+    u = f32(@index) / 4.0
+    x = len * (u - 0.5)
+    bend_y = r * 0.030 * sin(3.14159265 * u)
+    bend_z = r * (0.030 * sin(6.2831853 * u + character) + 0.018 * character * (u - 0.5))
+    path1 = set_position(path0, pos = vec3(x, bend_y, bend_z))
+    taper_x = 0.965 + 0.035 * sin(3.14159265 * u) + 0.018 * character * (u - 0.5)
+    taper_y = 0.975 + 0.025 * sin(3.14159265 * u + 0.7) - 0.012 * character * (u - 0.5)
+    path2 = set(path1, "profile_scale", vec2(taper_x, taper_y), domain = points)
+    path = set(path2, "twist", f32(2.2 * character * (u - 0.5)), domain = points)
+    profile_wood = log_sector_profile(r = r, a0 = a0, a1 = a1, lift = 0, warp = warp, n = n)
+    profile_bark = log_bark_profile(r_in = r * 0.98, r_out = r_out, a0 = a0, a1 = a1, lift = 0, warp = warp, n = n)
+    wood0 = sweep(path, profile = profile_wood)
+    bark0 = sweep(path, profile = profile_bark)
+    wood = mark(compute_normals(wood0, mode = flat), "wood_light", where = true, domain = faces)
+    bark = mark(compute_normals(bark0, mode = auto, angle = 28), "bark", where = true, domain = faces)
+    out = set(merge(wood, bark), "tint", vec3(1.0, 1.0, 1.0), domain = faces)
 }
 
 def post(w: f32, h: f32, at: vec3, grp: string) -> (out: geo<mesh>) {

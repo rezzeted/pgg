@@ -1,4 +1,5 @@
 param log_len: f32 = 0.62
+param log_r: f32 = 0.09
 param n_rows: int = 4
 param seed: int = 5
 
@@ -6,48 +7,102 @@ import lib.parts
 import common
 
 # Стопка дров по референсу props/wood_pile.jpg.
-# 4 ряда полешек вдоль Z, кора сверху; верхний ряд из трёх, нижние из четырёх.
-# Верх +Y. Именованные узлы: pile, scene.
-
-def make_row(len: f32, n: int, y: f32, w: f32, ht: f32, z0: f32) -> (out: geo<mesh>) {
-    """Ряд n полешек вдоль Z через instance_on_points (не def в зоне)."""
-    expect n >= 2: "make_row: мало"
-    pitch = w + 0.012
-    span = pitch * f32(n - 1)
-    src = common.split_log(len = len, w = w, h = ht)
-    pts0 = mesh_line(count = n, length = span, dir = (0, 0, 1))
-    pts = transform(pts0, translate = vec3(0, y, z0 + 0.0 - span * 0.5))
-    out = realize(instance_on_points(pts, source = src))
-}
-
-def make_pile(len: f32, rows: int) -> (out: geo<mesh>) {
-    """Стопка: нижние ряды по 4, верхний по 3, высота наслаивается."""
-    expect rows >= 3: "make_pile: мало рядов"
-    w = 0.13
-    ht = 0.095
-    r0 = make_row(len = len, n = 4, y = ht * 0.5, w = w, ht = ht, z0 = 0)
-    r1 = make_row(len = len * 0.98, n = 4, y = ht * 1.5 + 0.004, w = w, ht = ht, z0 = 0.01)
-    r2 = make_row(len = len * 1.02, n = 4, y = ht * 2.5 + 0.008, w = w, ht = ht, z0 = -0.008)
-    r3 = make_row(len = len * 0.97, n = 3, y = ht * 3.5 + 0.012, w = w, ht = ht, z0 = 0)
-    out = merge(r0, r1, r2, r3)
-}
-
+# Каждое полено независимо: устойчивой гранью вниз, но со своим размером,
+# положением торца и небольшим разворотом. Слои опираются на карманы нижних,
+# не образуя пар, полукругов и регулярной мозаики.
+# Верх +Y. Именованные узлы: log, variants, pile, scene.
 def paint(raw: geo<mesh>, rng: rng) -> (out: geo<mesh>) {
-    """Окрас полешек: светлый срез и кора."""
-    wood_lt = vec3(0.90, 0.72, 0.42) * @tint
-    bark_col = vec3(0.38, 0.20, 0.08)
+    """Окрас: светлый срез/торец, тёмная кора на верхней дуге."""
+    wood_lt = vec3(0.93, 0.74, 0.44) * @tint
+    bark_col = vec3(0.18, 0.08, 0.04)
     c0 = ingroup("wood_light") ? wood_lt : vec3(1.0, 0.0, 1.0)
     c1 = ingroup("bark") ? bark_col : c0
-    edge_mul = ingroup("edge") ? vec3(1.16, 1.12, 1.06) : vec3(1.0)
-    out = common.ao(set(raw, "Cd", c1 * edge_mul, domain = faces), rng = rng)
+    out = common.ao(set(raw, "Cd", c1, domain = faces), rng = rng)
+}
+
+def log_a(len: f32, r: f32) -> (out: geo<mesh>) {
+    """Вариант A: выкус 90° (15 минут)."""
+    out = common.split_log(len = len, r = r, bite = 90.0)
+}
+
+def log_b(len: f32, r: f32) -> (out: geo<mesh>) {
+    """Вариант B: выкус 105° (~17 минут), чуть толще."""
+    out = common.split_log(len = len * 0.96, r = r * 1.10, bite = 105.0)
+}
+
+def log_c(len: f32, r: f32) -> (out: geo<mesh>) {
+    """Вариант C: выкус 120° (20 минут), чуть длиннее и тоньше."""
+    out = common.split_log(len = len * 1.06, r = r * 0.90, bite = 120.0)
+}
+
+def place_log(len: f32, r: f32, bite: f32, at: vec3, roll: f32, yaw: f32, pitch: f32, shade: f32) -> (out: geo<mesh>) {
+    """Одно полено: форма строится из значений якоря и ставится независимо."""
+    expect len > 0.15: "place_log: короткое"
+    expect r > 0.03: "place_log: тонкое"
+    expect bite >= 80.0 & bite <= 140.0: "place_log: выкус"
+    raw = common.split_log(len = len, r = r, bite = bite)
+    placed = transform(raw, rotate = vec3(roll, yaw, pitch), translate = at)
+    out = set(placed, "tint", vec3(shade * 1.04, shade, shade * 0.94), domain = faces)
+}
+
+def anchor_row(len: f32, r: f32, layer: int, rows: int, rng: rng) -> (out: geo<points>) {
+    """Опорные карманы одного слоя; верх уже, соседние слои имеют разное число поленьев."""
+    expect rows >= 3: "anchor_row: мало рядов"
+    top = layer == rows - 1
+    n = rows + 1 - layer
+    spacing = r * (layer == 0 ? 0.95 : 1.10)
+    span = spacing * f32(n - 1)
+    y0 = r * 0.070 + f32(layer) * r * 0.64
+    row_bias = f32(layer % 3 - 1) * r * 0.025
+    base0 = mesh_line(count = n, length = span, dir = (0, 0, 1))
+    base = transform(base0, translate = vec3(0, y0, row_bias - span * 0.5))
+    x_jitter = random(lo = 0.0 - len * 0.055, hi = len * 0.055, rng = split_rng(rng, key = "x"))
+    y_jitter = random(lo = 0.0 - r * 0.030, hi = r * 0.045, rng = split_rng(rng, key = "y"))
+    z_jitter = random(lo = 0.0 - r * 0.030, hi = r * 0.030, rng = split_rng(rng, key = "z"))
+    anchors0 = set_position(base, offset = vec3(x_jitter, y_jitter, z_jitter))
+    anchors1 = set(anchors0, "log_len", len * random(lo = 0.88, hi = 1.08, rng = split_rng(rng, key = "len")), domain = points)
+    anchors2 = set(anchors1, "radius", r * random(lo = 0.90, hi = 1.08, rng = split_rng(rng, key = "radius")), domain = points)
+    anchors3 = set(anchors2, "bite", random(lo = 88.0, hi = 126.0, rng = split_rng(rng, key = "bite")), domain = points)
+    rest_count = layer == 0 ? 2 : 6
+    rest_face = top ? (@index == 0 ? 2 : 3) : random_int(n = rest_count, rng = split_rng(rng, key = "face"))
+    anchors4 = set(anchors3, "rest_face", rest_face, domain = points)
+    a0 = 90.0 - @bite * 0.5
+    a1 = 90.0 + @bite * 0.5
+    stable_roll = @rest_face == 0 ? (0.0 - a0) : (@rest_face == 1 ? (180.0 - a1) : (@rest_face == 2 ? (180.0 - a0) : (@rest_face == 3 ? (0.0 - a1) : (@rest_face == 4 ? (0.0 - a0) : (180.0 - a1)))))
+    anchors5 = set(anchors4, "roll", stable_roll + random(lo = -2.2, hi = 2.2, rng = split_rng(rng, key = "roll")), domain = points)
+    anchors6 = set(anchors5, "yaw", random(lo = -5.2, hi = 5.2, rng = split_rng(rng, key = "yaw")), domain = points)
+    anchors7 = set(anchors6, "pitch", random(lo = -1.7, hi = 1.7, rng = split_rng(rng, key = "pitch")), domain = points)
+    out = set(anchors7, "shade", random(lo = 0.91, hi = 1.08, rng = split_rng(rng, key = "shade")), domain = points)
+}
+
+def make_pile(len: f32, rows: int, rng: rng) -> (out: geo<mesh>) {
+    """Стопка независимых поленьев на опорных якорях."""
+    expect rows >= 3: "make_pile: мало рядов"
+    expect len > 0.2: "make_pile: короткое"
+    r = 0.092
+    anchors = repeat (empty_points(), iterations = rows) |acc| {
+        row = anchor_row(len = len, r = r, layer = @iteration, rows = rows, rng = split_rng(rng, key = @iteration))
+        acc = merge(acc, row)
+    }
+    stacked = foreach a in anchors {
+        a = place_log(len = value(@log_len, on = a), r = value(@radius, on = a), bite = value(@bite, on = a), at = value(@P, on = a), roll = value(@roll, on = a), yaw = value(@yaw, on = a), pitch = value(@pitch, on = a), shade = value(@shade, on = a))
+    }
+    out = stacked
 }
 
 def assemble(len: f32, rows: int, rng: rng) -> (out: geo<mesh>) {
     """Стопка дров с окраской."""
-    out = paint(make_pile(len = len, rows = rows), rng = rng)
+    out = paint(make_pile(len = len, rows = rows, rng = split_rng(rng, key = "pile")), rng = rng)
 }
 
 root_rng = rng_from_seed(seed)
-pile = make_pile(len = log_len, rows = n_rows)
+a0 = log_a(len = log_len, r = log_r)
+a1 = log_b(len = log_len, r = log_r)
+a2 = log_c(len = log_len, r = log_r)
+log = paint(a0, rng = split_rng(root_rng, key = "log"))
+v1 = transform(paint(a1, rng = split_rng(root_rng, key = "b")), translate = vec3(0, 0, 0.22))
+v2 = transform(paint(a2, rng = split_rng(root_rng, key = "c")), translate = vec3(0, 0, 0.0 - 0.22))
+variants = merge(log, v1, v2)
+pile = make_pile(len = log_len, rows = n_rows, rng = split_rng(root_rng, key = "pile"))
 scene = paint(pile, rng = split_rng(root_rng, key = "ao"))
 output scene
