@@ -4,12 +4,11 @@ param box_h: f32 = 0.16
 param seed: int = 6
 
 import lib.parts
-import lib.ironwork
 import common
 
 # Улей по референсу props/beehive.jpg.
-# Три корпуса, крышка с рамкой, прилётная доска, летки, капля мёда.
-# Верх +Y, леток в +Z. Именованные узлы: stack, lid, honey, scene.
+# Три корпуса, крышка-щит (рамка из досок + заполнение), прилётная доска, летки.
+# Верх +Y, леток в +Z. Именованные узлы: stack, lid, scene.
 
 def super_box(w: f32, d: f32, h: f32, y: f32, grp: string) -> (out: geo<mesh>) {
     """Один корпус: ящик + леток-щель спереди (не вырезан — накладка тёмной планки)."""
@@ -28,53 +27,60 @@ def make_stack(w: f32, d: f32, h: f32) -> (out: geo<mesh>) {
     out = merge(s0, s1, s2, base, land)
 }
 
-def make_lid(w: f32, d: f32, y: f32) -> (out: geo<mesh>) {
-    """Крышка: рамка свеса + 4 доски щита."""
-    frame = parts.piece(size = vec3(w + 0.08, 0.045, d + 0.08), pos = vec3(0, y + 0.022, 0), grp = "wood_light")
-    n = 4
-    pitch = w / f32(n)
-    plank = parts.cbox(size = vec3(pitch - 0.006, 0.022, d - 0.04), k = 0.16)
-    pts0 = mesh_line(count = n, length = w - pitch, dir = (1, 0, 0))
-    pts = transform(pts0, translate = vec3(0.0 - (w - pitch) * 0.5, y + 0.038, 0))
-    boards = mark(realize(instance_on_points(pts, source = plank)), "wood_light", where = true, domain = faces)
-    out = merge(frame, boards)
-}
-
-def make_honey(w: f32, d: f32) -> (out: geo<mesh>) {
-    """Капля с прилётной доски: короткий spool вниз + шарик."""
-    y = 0.042
-    z = d * 0.5 + 0.16
-    drip = mark(unmark(ironwork.spool(p0 = vec3(w * 0.22, y, z), p1 = vec3(w * 0.24, y - 0.08, z + 0.02), r0 = 0.018, r1 = 0.012, sides = 8), "iron"), "honey", where = true, domain = faces)
-    blob = mark(transform(ico_sphere(subdiv = 2, radius = 0.022), translate = vec3(w * 0.24, y - 0.095, z + 0.025)), "honey", where = true, domain = faces)
-    drop = mark(transform(ico_sphere(subdiv = 1, radius = 0.010), translate = vec3(w * 0.25, y - 0.13, z + 0.03)), "honey", where = true, domain = faces)
-    out = merge(drip, blob, drop)
+def make_lid(w: f32, d: f32, y: f32, rng: rng) -> (out: geo<mesh>) {
+    """Крышка-щит: четыре доски по контуру встык и заполнение из досок вдоль Z."""
+    ow = w + 0.08
+    od = d + 0.08
+    bw = 0.056
+    th = 0.042
+    y_rim = y + th * 0.5
+    hx = ow * 0.5 - bw * 0.5
+    hz = od * 0.5 - bw * 0.5
+    span_z = od - 2.0 * bw - 0.003
+    front = parts.piece(size = vec3(ow, th, bw), pos = vec3(0, y_rim, hz), grp = "wood")
+    back = parts.piece(size = vec3(ow, th, bw), pos = vec3(0, y_rim, 0.0 - hz), grp = "wood")
+    left = parts.piece(size = vec3(bw, th, span_z), pos = vec3(0.0 - hx, y_rim, 0), grp = "wood")
+    right = parts.piece(size = vec3(bw, th, span_z), pos = vec3(hx, y_rim, 0), grp = "wood")
+    n = 5
+    inner_w = ow - 2.0 * bw
+    inner_d = od - 2.0 * bw
+    gap = 0.005
+    pt = 0.028
+    pitch = inner_w / f32(n)
+    shelf = parts.piece(size = vec3(inner_w + 0.010, 0.012, inner_d + 0.010), pos = vec3(0, y + 0.008, 0), grp = "wood")
+    plank = parts.cbox(size = vec3(pitch - gap, pt, inner_d + 0.002), k = 0.14, k_abs = 0.003)
+    pts0 = mesh_line(count = n, length = inner_w - pitch, dir = (1, 0, 0))
+    y_fill = y + th - 0.003 - pt * 0.5
+    pts1 = transform(pts0, translate = vec3(0.0 - (inner_w - pitch) * 0.5, y_fill, 0))
+    pts2 = set_position(pts1, offset = random_vec(lo = vec3(0, -0.0015, 0), hi = vec3(0, 0.0015, 0), rng = split_rng(rng, key = "y")))
+    shade = random(lo = 0.84, hi = 1.16, rng = split_rng(rng, key = "tint"))
+    pts3 = set(pts2, "tint", vec3(shade * 1.04, shade, shade * 0.94))
+    fill = mark(realize(instance_on_points(pts3, source = plank)), "wood_light", where = true, domain = faces)
+    out = merge(front, back, left, right, shelf, fill)
 }
 
 def paint(raw: geo<mesh>, rng: rng) -> (out: geo<mesh>) {
-    """Окрас улья: корпуса, крышка, летки, мёд."""
+    """Окрас улья: корпуса, крышка, летки."""
     wood_col = vec3(0.72, 0.42, 0.18) * @tint
     wood_lt = vec3(0.88, 0.62, 0.32) * @tint
     wood_dk = vec3(0.28, 0.16, 0.08)
     faded = vec3(0.50, 0.40, 0.36) * @tint
-    honey_col = vec3(0.95, 0.55, 0.08)
     c0 = ingroup("wood") ? wood_col : vec3(1.0, 0.0, 1.0)
     c1 = ingroup("wood_light") ? wood_lt : c0
     c2 = ingroup("wood_dark") ? wood_dk : c1
     c3 = ingroup("weathered") ? faded : c2
-    c4 = ingroup("honey") ? honey_col : c3
     edge_mul = ingroup("edge") ? vec3(1.18, 1.14, 1.08) : vec3(1.0)
-    out = common.ao(set(raw, "Cd", c4 * edge_mul, domain = faces), rng = rng)
+    out = common.ao(set(raw, "Cd", c3 * edge_mul, domain = faces), rng = rng)
 }
 
 def assemble(w: f32, d: f32, h: f32, rng: rng) -> (out: geo<mesh>) {
-    """Улей: три корпуса, крышка, мёд, окраска."""
+    """Улей: три корпуса, крышка-щит, окраска."""
     y_lid = 0.04 + h * 3.0
-    out = paint(merge(make_stack(w = w, d = d, h = h), make_lid(w = w, d = d, y = y_lid), make_honey(w = w, d = d)), rng = rng)
+    out = paint(merge(make_stack(w = w, d = d, h = h), make_lid(w = w, d = d, y = y_lid, rng = split_rng(rng, key = "lid"))), rng = rng)
 }
 
 root_rng = rng_from_seed(seed)
 stack = make_stack(w = box_w, d = box_d, h = box_h)
-lid = make_lid(w = box_w, d = box_d, y = 0.04 + box_h * 3.0)
-honey = make_honey(w = box_w, d = box_d)
-scene = paint(merge(stack, lid, honey), rng = split_rng(root_rng, key = "ao"))
+lid = make_lid(w = box_w, d = box_d, y = 0.04 + box_h * 3.0, rng = split_rng(root_rng, key = "lid"))
+scene = paint(merge(stack, lid), rng = split_rng(root_rng, key = "ao"))
 output scene
