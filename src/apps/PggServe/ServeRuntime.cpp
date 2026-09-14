@@ -167,7 +167,7 @@ bool ServeRuntime::postGpuAndWait(const std::shared_ptr<GpuJob>& job) {
     if (!m_gpuReady) {
         job->ok = false;
         job->errKind = "no_gpu";
-        job->errMessage = "PggServe is running without a GPU context (headless --smoke)";
+        job->errMessage = "PggServe is running without a GPU context (headless or no visible window yet)";
         job->done = true;
         return true;
     }
