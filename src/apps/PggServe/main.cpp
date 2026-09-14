@@ -7,9 +7,12 @@
 
 #include "pch.h"
 
+#include <atomic>
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <thread>
 
 #include <spdlog/spdlog.h>
 
@@ -49,10 +52,12 @@ ServeRpcServer* g_rpc = nullptr;
 ServeRuntime* g_runtime = nullptr;
 GeometryPreview g_preview;
 bool g_gfxOk = false;
+std::atomic<bool> g_frameLoopAlive{false};
 uint16_t g_port = ServeRpcServer::kDefaultPort;
 std::string g_host = "127.0.0.1";
 
 void init() {
+    g_frameLoopAlive.store(true, std::memory_order_relaxed);
     spdlog::set_level(spdlog::level::info);
     spdlog::info("PggServe: init()");
     stm_setup();
@@ -146,6 +151,21 @@ int main(int argc, char* argv[]) {
     g_rpc = &rpc;
     g_runtime = &runtime;
 
+    // Listen and pump RPC ahead of the Sokol run loop: the first frame (which
+    // runs init()) may never arrive when the window cannot become visible
+    // (background session, locked screen). CPU-side ops work without the GPU;
+    // render/reference answer no_gpu until a frame sets gpuReady.
+    if (!rpc.start(g_host, g_port)) {
+        spdlog::error("PggServe: cannot listen on {}:{}", g_host, g_port);
+        return 1;
+    }
+    std::thread rpcPump([&rpc] {
+        while (!g_frameLoopAlive.load(std::memory_order_relaxed) && rpc.running()) {
+            rpc.poll();
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+    });
+
     sapp_desc desc = {};
     desc.init_cb = init;
     desc.frame_cb = frame;
@@ -162,6 +182,9 @@ int main(int argc, char* argv[]) {
 #endif
     desc.logger.func = slog_func;
     sapp_run(&desc);
+    if (rpcPump.joinable()) {
+        rpcPump.join();
+    }
     g_rpc = nullptr;
     g_runtime = nullptr;
     return 0;
