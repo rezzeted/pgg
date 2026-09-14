@@ -25,6 +25,9 @@ compile_commands.json
 # PGG MCP server venv
 tools/pgg_mcp/.venv/
 
+# Kimi Code local project config (machine-local MCP paths)
+.kimi-code/
+
 # Scratch space for local experiments
 tmp/
 
