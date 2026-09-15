@@ -1,0 +1,5 @@
+[
+  {"name": "iso", "node": "crossroad", "orbit": [35, 34], "zoom": 1.25, "chrome": "off"},
+  {"name": "plan", "node": "crossroad", "orbit": [0, 89], "zoom": 1.0, "ortho": "top", "chrome": "off"},
+  {"name": "rim", "node": "crossroad", "orbit": [20, 24], "zoom": 3.2, "chrome": "off"}
+]

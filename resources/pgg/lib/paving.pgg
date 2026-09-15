@@ -26,15 +26,16 @@ def sett_source(w: f32, h: f32, l: f32, grp: string) -> (out: geo<mesh>) {
     out = set(b1, "Cd", vec3(1, 1, 1), domain = faces)
 }
 
-def sett(p: geo<points>, yaw: field<f32>, y: f32, tone: f32, mode: int, rng: rng) -> (out: geo<points>) {
+def sett(p: geo<points>, yaw: field<f32>, y: f32, tone: f32, mode: int, rng: rng, sc0: f32 = 1.0) -> (out: geo<points>) {
     """Финиш якорей камней: позиции заданы, добавляет @orient (yaw° + джиттеры
-    наклона), верх на y, @scale, @tint, @variant = mode (0 брусчатка серая,
-    1 бордюр тёмный). tone — множитель яркости ряда (узоры медальонов)."""
+    наклона), верх на y, @scale = sc0 · джиттер, @tint, @variant = mode
+    (0 брусчатка серая, 1 бордюр тёмный). tone — множитель яркости ряда,
+    sc0 — базовый масштаб ряда (градиент размера в медальонах/площадках)."""
     jp = random(lo = 0.0 - 1.6, hi = 1.6, rng = split_rng(rng, key = "pitch"), counter = @index)
     jl = random(lo = 0.0 - 1.6, hi = 1.6, rng = split_rng(rng, key = "roll"), counter = @index)
     jy = random(lo = 0.0 - 1.8, hi = 1.8, rng = split_rng(rng, key = "yawj"), counter = @index)
     dy = random(lo = 0.0 - 0.012, hi = 0.012, rng = split_rng(rng, key = "dy"), counter = @index)
-    sc = random(lo = 0.94, hi = 1.03, rng = split_rng(rng, key = "sc"), counter = @index)
+    sc = sc0 * random(lo = 0.94, hi = 1.03, rng = split_rng(rng, key = "sc"), counter = @index)
     u = random(lo = 0.0, hi = 1.0, rng = split_rng(rng, key = "u"), counter = @index)
     warm = random(lo = 0.0, hi = 1.0, rng = split_rng(rng, key = "warm"), counter = @index)
     wet = 0.5 + 0.5 * fbm(scale = 0.35, octaves = 2, rng = split_rng(rng, key = "wet"))
@@ -125,6 +126,49 @@ def border_avenue(alpha: f32, amp: f32, lam: f32, ph: f32, s0: f32, s1: f32, off
     wp = amp * kx * cos(sa)
     p0 = set_position(mesh_line(count = n * 2, length = 0.0), pos = vec3(ss * ux + (w + side * off) * nx, 0, ss * uz + (w + side * off) * nz))
     out = sett(p0, yaw = degrees(atan2(ux + wp * nx, uz + wp * nz)), y = y, tone = 1.0, mode = 1, rng = rng)
+}
+
+def pave_junction(cx: f32, cz: f32, rj: f32, y: f32, rng: rng, n_in: int = 8) -> (out: geo<points>) {
+    """Круглая площадка перекрёстка (вариант по референсу eAWZG): мелкое ядро
+    -> концентрические пояса до обода, камень длинной стороной вдоль дуги.
+    Масштаб ряда sj линейно растёт от s0=0.5 (ядро) к 1.0 за n_in рядов;
+    радиальный шаг ряда = 0.19·sj, поэтому радиус — точная кумулятивная
+    квадратичная формула по j (пояса всегда сомкнуты, шов 3 см). Внешние пояса
+    (rr > rj - 0.75) темнее — обод «каре». Обод-бордюр — border_ring отдельно.
+    Дороги врезаются в площадку: их ряды выкушены по диску rj + margin
+    (cull_discs), дуга обода «съедает» угол стыка. В центре — камень-«замок»."""
+    expect rj > 1.2 & n_in >= 3: "pave_junction: радиус/число рядов ядра"
+    pr = 0.19
+    s0 = 0.5
+    dk = (1.0 - s0) / f32(n_in - 1)
+    rr_ramp = 0.10 + pr * (s0 * f32(n_in) + dk * f32(n_in) * f32(n_in - 1) * 0.5)
+    n_out = max(2, int((rj - 0.13 - rr_ramp) / pr))
+    rings = repeat (empty_points(), iterations = n_in + n_out) |acc| {
+        j = @iteration
+        inner = j < n_in
+        fj = f32(j)
+        sj = inner ? s0 + dk * fj : 1.0
+        rr = inner ? 0.10 + pr * (s0 * fj + dk * fj * (fj - 1.0) * 0.5) + pr * sj * 0.5 : rr_ramp + pr * (fj - f32(n_in)) + pr * 0.5
+        nj = max(6, int(6.2831853 * rr / (0.25 * sj)))
+        stg = f32(j % 2) * 0.5
+        th = 6.2831853 * (f32(@index) + 0.5 + stg) / f32(nj)
+        p0 = set_position(mesh_line(count = nj, length = 0.0), pos = vec3(cx + rr * cos(th), 0, cz + rr * sin(th)))
+        tone = rr > rj - 0.75 ? 0.8 : 1.0
+        row = sett(p0, yaw = 0.0 - degrees(th), y = y, tone = tone, mode = 0, sc0 = sj, rng = split_rng(rng, key = @iteration))
+        acc = merge(acc, row)
+    }
+    cent = sett(transform(mesh_line(count = 1, length = 0.0), translate = vec3(cx, 0, cz)), yaw = 0.0, y = y + 0.005, tone = 0.92, mode = 0, sc0 = 0.62, rng = split_rng(rng, key = "cent"))
+    out = merge(rings, cent)
+}
+
+def border_row(cx: f32, cz: f32, yaw: f32, len: f32, y: f32, rng: rng, pitch: f32 = 0.36) -> (out: geo<points>) {
+    """Прямой ряд поребрика длиной len вокруг (cx, cz); yaw — направление РЯДА
+    (камни вдоль него). Торцы рукавов, короткие отрезки."""
+    n = max(2, int(len / pitch))
+    ar = radians(yaw)
+    d = (0.0 - f32(n) * pitch * 0.5) + (f32(@index) + 0.5) * pitch
+    p0 = set_position(mesh_line(count = n, length = 0.0), pos = vec3(cx + d * sin(ar), 0, cz + d * cos(ar)))
+    out = sett(p0, yaw = yaw, y = y, tone = 1.0, mode = 1, rng = rng)
 }
 
 def jpt(x: f32, z: f32, rj: f32) -> (out: geo<points>) {
