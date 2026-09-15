@@ -21,6 +21,8 @@ tube = sweep(mesh_line(count = 2, length = h, dir = (0, 1, 0)), profile = ring)
 
 Топология поселения — `lib.settlement` (пример `resources/pgg/hamlet.pgg`): `plaza_outline` → `spoke_model` → `spoke_roads`/`cross_paths` (ленты), `plaza_anchors`/`spoke_anchors` (якоря с `@orient/@scale/@variant/@ring/@t` — здания инстансит сцена), `voronoi_ground` (ячейки по сайтам через `repeat`, группы meadow/field/hedge), `hedges`, `tree_sites`. Другая деревня = seed / `n` / радиусы. Согласование «вершина площади ↔ спица ↔ сосед» — через одинаковые `(rng, key, counter)` в поле и в `value(random(...), on = row)`; соседний элемент — `counter = (@index + 1) % n` (+ `alias_rng`).
 
+Мощение — `lib.paving` (примеры `paved_roads.pgg`, `crossroad.pgg`): `pave_annulus` (дуги вразбежку) / `pave_avenue` (ряды поперёк S-оси) / `pave_junction` (круглая площадка с градиентом размера), `border_ring`/`border_avenue`/`border_row` (поребрики), перекрёстки = медальоны + `cull_discs` (выкус по облаку центров с `@jr`). Якоря камней — `sett(...)`: `@orient/@scale/@tint/@variant` (0 рядовой, 1 бордюр), один `instance_on_points` с `variants`; `@tint` запекать в `@Cd` после `realize`, если цвет нужен в OBJ.
+
 ## Грабли
 
 - Вызов — **одна строка**: перевод строки внутри списка аргументов = E100 «extraneous input '\n'»; длинные `merge`/таблицы констант — одной длинной строкой или через промежуточные binding'и. Строчный `#`-комментарий при схлопывании съедает хвост строки — выносить в шапку блока.
