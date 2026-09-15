@@ -1,0 +1,6 @@
+[
+  {"name": "plan", "node": "roads", "orbit": [0, 89], "zoom": 1.0, "ortho": "top", "chrome": "off"},
+  {"name": "aerial", "node": "roads", "orbit": [40, 55], "zoom": 1.0, "chrome": "off"},
+  {"name": "medallion", "node": "roads", "orbit": [30, 42], "zoom": 3.4, "chrome": "off"},
+  {"name": "street", "node": "roads", "orbit": [80, 10], "zoom": 0.5, "chrome": "off"}
+]

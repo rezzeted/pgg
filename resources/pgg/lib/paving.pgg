@@ -1,0 +1,165 @@
+# Мощение камнем: брусчатка рядами вдоль кривых + медальоны перекрёстков.
+#
+# Модель стыковки дорог (см. resources/pgg/paved_roads.pgg): любой перекрёсток
+# — это КРУГЛЫЙ МЕДАЛЬОН концентрической кладки с бордюрным кольцом по ободу.
+# Ряды обеих дорог обрываются на границе диска (cull_discs), поэтому камни
+# разных дорог никогда не пересекаются, а стык читается как городской узел.
+# Тот же приём в масштабе площади: pave_annulus с tone_step — концентрическая
+# площадь; кольцевая дорога — тот же annulus с r_in/r_out по краям проезжей
+# части, так что площадь и первое кольцо стыкуются концентрично без медальона.
+#
+# Якорь камня: @P — центр верхней грани, @orient — yaw вдоль хода (+ джиттеры
+# наклона), @scale — равномерный, @tint — цвет, @variant — 0 брусчатка /
+# 1 бордюр. Инстансинг сцены: instance_on_points(pts, source = sett,
+# variants = [sett, border]).
+#
+# Углы: градусы; yaw — как в lib.settlement (локальный +Z вдоль направления,
+# yaw = atan2(t.x, t.z)). Шаги по умолчанию: 0.25 поперёк / 0.19 вдоль под
+# камень 0.22×0.16 (шов 3 см).
+
+def sett_source(w: f32, h: f32, l: f32, grp: string) -> (out: geo<mesh>) {
+    """Камень-источник: бокс w (X, поперёк) × h (Y) × l (Z, вдоль), опорная
+    точка — середина верхней грани (якорь y = уровень верха мостовой).
+    Cd белый — финальный цвет несёт @tint якоря."""
+    b0 = transform(box(size = vec3(w, h, l)), translate = vec3(0, 0.0 - h * 0.5, 0))
+    b1 = mark(compute_normals(b0, mode = flat), grp, where = true, domain = faces)
+    out = set(b1, "Cd", vec3(1, 1, 1), domain = faces)
+}
+
+def sett(p: geo<points>, yaw: field<f32>, y: f32, tone: f32, mode: int, rng: rng) -> (out: geo<points>) {
+    """Финиш якорей камней: позиции заданы, добавляет @orient (yaw° + джиттеры
+    наклона), верх на y, @scale, @tint, @variant = mode (0 брусчатка серая,
+    1 бордюр тёмный). tone — множитель яркости ряда (узоры медальонов)."""
+    jp = random(lo = 0.0 - 1.6, hi = 1.6, rng = split_rng(rng, key = "pitch"), counter = @index)
+    jl = random(lo = 0.0 - 1.6, hi = 1.6, rng = split_rng(rng, key = "roll"), counter = @index)
+    jy = random(lo = 0.0 - 1.8, hi = 1.8, rng = split_rng(rng, key = "yawj"), counter = @index)
+    dy = random(lo = 0.0 - 0.012, hi = 0.012, rng = split_rng(rng, key = "dy"), counter = @index)
+    sc = random(lo = 0.94, hi = 1.03, rng = split_rng(rng, key = "sc"), counter = @index)
+    u = random(lo = 0.0, hi = 1.0, rng = split_rng(rng, key = "u"), counter = @index)
+    warm = random(lo = 0.0, hi = 1.0, rng = split_rng(rng, key = "warm"), counter = @index)
+    wet = 0.5 + 0.5 * fbm(scale = 0.35, octaves = 2, rng = split_rng(rng, key = "wet"))
+    g0 = mix(vec3(0.36, 0.35, 0.34), vec3(0.55, 0.53, 0.50), u)
+    g1 = warm < 0.10 ? mix(g0, vec3(0.50, 0.38, 0.28), 0.6) : g0
+    g2 = mix(vec3(0.20, 0.20, 0.22), vec3(0.30, 0.29, 0.30), u)
+    col = (mode == 1 ? g2 : g1) * (0.80 + 0.20 * wet) * tone
+    p1 = set(p, "orient", orient_from_euler(vec3(jp, yaw + jy, jl)), domain = points)
+    p2 = set_position(p1, pos = vec3(dot(@P, (1, 0, 0)), y + dy, dot(@P, (0, 0, 1))))
+    p3 = set(p2, "scale", sc, domain = points)
+    p4 = set(p3, "variant", mode, domain = points)
+    out = set(p4, "tint", col, domain = points)
+}
+
+def pave_annulus(cx: f32, cz: f32, r_in: f32, r_out: f32, y: f32, tone_step: f32, rng: rng, pitch_w: f32 = 0.25, pitch_l: f32 = 0.19) -> (out: geo<points>) {
+    """Кольцевая кладка annulus r_in..r_out: концентрические дуги камней
+    вразбежку (чётные ряды сдвинуты на полкамня по дуге), число камней ряда —
+    по длине окружности. tone_step != 0 — чередование яркости рядов
+    (медальоны, площадь); 0 — однотон (кольцевые дороги)."""
+    expect r_out > r_in: "pave_annulus: r_out <= r_in"
+    nrows = max(1, int((r_out - r_in) / pitch_w))
+    out = repeat (empty_points(), iterations = nrows) |acc| {
+        j = @iteration
+        rr = r_in + (f32(j) + 0.5) * pitch_w
+        nj = max(6, int(6.2831853 * rr / pitch_l))
+        stg = f32(j % 2) * 0.5
+        th = 6.2831853 * (f32(@index) + 0.5 + stg) / f32(nj)
+        p0 = set_position(mesh_line(count = nj, length = 0.0), pos = vec3(cx + rr * cos(th), 0, cz + rr * sin(th)))
+        tone = tone_step == 0.0 ? 1.0 : (j % 2 == 0 ? 1.0 + tone_step : 1.0 - tone_step)
+        row = sett(p0, yaw = 0.0 - degrees(th), y = y, tone = tone, mode = 0, rng = split_rng(rng, key = @iteration))
+        acc = merge(acc, row)
+    }
+}
+
+def pave_avenue(alpha: f32, amp: f32, lam: f32, ph: f32, s0: f32, s1: f32, hw: f32, y: f32, rng: rng, pitch_w: f32 = 0.25, pitch_l: f32 = 0.19) -> (out: geo<points>) {
+    """S-проспект: ось под углом alpha° (0 = +X, 90 = +Z), боковая волна
+    amp·sin(2π(s−ph)/lam) на s∈[s0, s1] (s — дуга вдоль оси). Ряды камней
+    поперёк хода (шаг pitch_l по s), поперёк шаг pitch_w, чётные ряды сдвинуты
+    на полкамня вдоль улицы. Крайний камень ряда прижат к кромке (clamp), чтобы
+    под бордюром была ровная линия. Один плоский блок: index = row·nac + col."""
+    expect lam > 4.0 & s1 > s0: "pave_avenue: параметры кривой"
+    ar = radians(alpha)
+    ux = cos(ar)
+    uz = sin(ar)
+    nx = 0.0 - uz
+    nz = ux
+    nac = max(2, int(2.0 * hw / pitch_w + 0.5))
+    nrows = int((s1 - s0) / pitch_l)
+    kx = 6.2831853 / lam
+    row = @index / nac
+    col = @index % nac
+    ss = s0 + (f32(row) + 0.5) * pitch_l
+    stg = f32(row % 2) * 0.5
+    u0 = (0.0 - hw) + (f32(col) + 0.5 + stg) * pitch_w
+    u = clamp(u0, pitch_w * 0.5 - hw, hw - pitch_w * 0.5)
+    sa = kx * (ss - ph)
+    w = amp * sin(sa)
+    wp = amp * kx * cos(sa)
+    p0 = set_position(mesh_line(count = nrows * nac, length = 0.0), pos = vec3(ss * ux + (w + u) * nx, 0, ss * uz + (w + u) * nz))
+    out = sett(p0, yaw = degrees(atan2(ux + wp * nx, uz + wp * nz)), y = y, tone = 1.0, mode = 0, rng = rng)
+}
+
+def border_ring(cx: f32, cz: f32, r: f32, y: f32, rng: rng, pitch: f32 = 0.46) -> (out: geo<points>) {
+    """Поребрик по окружности радиуса r: крупные тёмные камни вдоль дуги."""
+    expect r > 0.5: "border_ring: радиус"
+    n = max(8, int(6.2831853 * r / pitch))
+    th = 6.2831853 * (f32(@index) + 0.5) / f32(n)
+    p0 = set_position(mesh_line(count = n, length = 0.0), pos = vec3(cx + r * cos(th), 0, cz + r * sin(th)))
+    out = sett(p0, yaw = 0.0 - degrees(th), y = y, tone = 1.0, mode = 1, rng = rng)
+}
+
+def border_avenue(alpha: f32, amp: f32, lam: f32, ph: f32, s0: f32, s1: f32, off: f32, y: f32, rng: rng, pitch: f32 = 0.46) -> (out: geo<points>) {
+    """Поребрик вдоль обеих кромок S-проспекта: off — смещение от оси, камни
+    шагом pitch вдоль хода. Один блок: index = row·2 + side."""
+    expect off > 0.0: "border_avenue: off"
+    ar = radians(alpha)
+    ux = cos(ar)
+    uz = sin(ar)
+    nx = 0.0 - uz
+    nz = ux
+    kx = 6.2831853 / lam
+    n = int((s1 - s0) / pitch)
+    side = f32(@index % 2) * 2.0 - 1.0
+    row = @index / 2
+    ss = s0 + (f32(row) + 0.5) * pitch
+    sa = kx * (ss - ph)
+    w = amp * sin(sa)
+    wp = amp * kx * cos(sa)
+    p0 = set_position(mesh_line(count = n * 2, length = 0.0), pos = vec3(ss * ux + (w + side * off) * nx, 0, ss * uz + (w + side * off) * nz))
+    out = sett(p0, yaw = degrees(atan2(ux + wp * nx, uz + wp * nz)), y = y, tone = 1.0, mode = 1, rng = rng)
+}
+
+def jpt(x: f32, z: f32, rj: f32) -> (out: geo<points>) {
+    """Один центр медальона перекрёстка: точка (x, 0, z) с @jr — радиусом диска."""
+    p0 = transform(mesh_line(count = 1, length = 0.0), translate = vec3(x, 0, z))
+    out = set(p0, "jr", rj, domain = points)
+}
+
+def cull_discs(pts: geo<points>, jpts: geo<points>, margin: f32) -> (out: geo<points>) {
+    """Выкус дисков перекрёстков: удаляет якоря, чей центр в горизонтали ближе
+    rj + margin к центру любого медальона. Порядок — по @index медальонов."""
+    out = repeat (pts, iterations = count(jpts)) |acc| {
+        J = value(@P, on = jpts, where = @index == @iteration)
+        rj = value(@jr, on = jpts, where = @index == @iteration)
+        dxz = @P - J
+        dx = dot(dxz, (1, 0, 0))
+        dz = dot(dxz, (0, 0, 1))
+        rc = rj + margin
+        acc = delete(acc, where = dx * dx + dz * dz < rc * rc, domain = points)
+    }
+}
+
+def medallions(jpts: geo<points>, y: f32, rng: rng) -> (out: geo<points>) {
+    """Медальон на каждом центре из jpts: концентрическая кладка 0.12..rj−0.30
+    с чередованием тона рядов + центральный камень + бордюрное кольцо на ободе
+    (r = rj + 0.02) — оно же прикрывает резаный край рядов дорог."""
+    out = repeat (empty_points(), iterations = count(jpts)) |acc| {
+        J = value(@P, on = jpts, where = @index == @iteration)
+        rj = value(@jr, on = jpts, where = @index == @iteration)
+        cx = dot(J, (1, 0, 0))
+        cz = dot(J, (0, 0, 1))
+        rrng = split_rng(rng, key = @iteration)
+        pave = pave_annulus(cx = cx, cz = cz, r_in = 0.12, r_out = rj - 0.30, y = y, tone_step = 0.055, rng = split_rng(rrng, key = "p"))
+        cent = sett(transform(mesh_line(count = 1, length = 0.0), translate = vec3(cx, 0, cz)), yaw = 0.0, y = y + 0.01, tone = 0.9, mode = 0, rng = split_rng(rrng, key = "c"))
+        brim = border_ring(cx = cx, cz = cz, r = rj + 0.02, y = y + 0.05, rng = split_rng(rrng, key = "b"))
+        acc = merge(acc, pave, cent, brim)
+    }
+}

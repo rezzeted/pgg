@@ -1,0 +1,120 @@
+param seed: int = 7
+
+import lib.paving as pv
+
+# Paved roads — мощёная звезда-рондель: три S-проспекта (оси 0°/±60°, боковая
+# волна синусом) сходятся в центральной площади, три кольцевых бульвара
+# (R = 10.5/17.5/24.5) пересекают их под 60–90°.
+#
+# Стыковка брусчатки разных дорог (см. lib/paving.pgg):
+#   * дорога мостится своими рядами (кольца — концентрическими дугами,
+#     проспекты — рядами поперёк хода, вразбежку);
+#   * каждый перекрёсток — круглый медальон концентрической кладки с бордюрным
+#     кольцом по ободу; ряды обеих дорог выкушены по диску медальона
+#     (cull_discs) — камни разных дорог никогда не пересекаются;
+#   * центр — тоже медальон (jpt в начале таблицы): он поглощает встречу трёх
+#     проспектов; площадь между центром и первым кольцом — концентрические
+#     дуги, прорезанные коридорами проспектов (шесть клиньев).
+#
+# Таблица перекрёстков jpts — ВЫЧИСЛЕННЫЕ константы под эту геометрию
+# (пересечения sin-волн с окружностями, угол ≥ 60°, радиус медальона от угла).
+# Меняешь радиусы/проспекты — пересчитай таблицу (сканирование + бисекция
+# корней |P(s)| = R; радиус = W/sin(угла) + 0.35, крышка 4.6).
+
+root_rng = rng_from_seed(seed)
+
+# ---- параметры модели -------------------------------------------------------
+W = 3.5                    # ширина всех дорог
+HW = W * 0.5
+Y_SETT = 0.10              # верх брусчатки
+Y_BORD = 0.15              # верх бордюра
+SPAN = 29.0                # проспекты s ∈ [-SPAN, SPAN]
+R1 = 10.5
+R2 = 17.5
+R3 = 24.5
+
+# проспекты: ось alpha°, волна amp·sin(2π(s−ph)/lam)
+AL_A = 0.0
+AMP_A = 2.8
+LAM_A = 38.0
+PH_A = 5.0
+AL_B = 60.0
+AMP_B = 2.8
+LAM_B = 46.0
+PH_B = 0.0
+AL_C = 0.0 - 60.0
+AMP_C = 2.8
+LAM_C = 46.0
+PH_C = 0.0
+
+# ---- таблица перекрёстков (вычисленные константы) ---------------------------
+# Порядок: центр; далее по проспектам A/B/C, на каждый — пересечения с ring1/2/3
+# (два на кольцо: запад/восток для A, по часовой для B/C). Радиус = W/sin(угла)+0.35.
+# Углы пересечений 60-85 град, все стыкуются медальонами.
+jpts = merge(pv.jpt(0.0, 0.0, 4.30), pv.jpt(-10.381, -1.577, 4.37), pv.jpt(10.279, 2.145, 3.86), pv.jpt(-17.435, 1.506, 4.00), pv.jpt(17.320, 2.501, 4.07), pv.jpt(-24.343, 2.773, 3.91), pv.jpt(24.499, -0.231, 4.19), pv.jpt(-2.684, -10.151, 3.92), pv.jpt(2.684, 10.151, 3.92), pv.jpt(-7.015, -16.032, 4.12), pv.jpt(7.015, 16.032, 4.12), pv.jpt(-12.738, -20.928, 4.06), pv.jpt(12.738, 20.928, 4.06), pv.jpt(-7.449, 7.400, 3.92), pv.jpt(7.449, -7.400, 3.92), pv.jpt(-10.377, 14.091, 4.12), pv.jpt(10.377, -14.091, 4.12), pv.jpt(-11.755, 21.496, 4.06), pv.jpt(11.755, -21.496, 4.06))
+
+# ---- коридоры проспектов (поля расстояния до оси, для резки площади/земли) --
+KA = 6.2831853 / LAM_A
+KB = 6.2831853 / LAM_B
+KC = 6.2831853 / LAM_C
+px = dot(@P, (1, 0, 0))
+pz = dot(@P, (0, 0, 1))
+# A: alpha = 0   -> s = x, t = z
+wpA = AMP_A * KA * cos(KA * (px - PH_A))
+dA = abs(pz - AMP_A * sin(KA * (px - PH_A))) / sqrt(1.0 + wpA * wpA)
+# B: alpha = 60  -> s = 0.5x + 0.866z, t = -0.866x + 0.5z
+sB = px * 0.5 + pz * 0.8660254
+tB = px * (0.0 - 0.8660254) + pz * 0.5
+wpB = AMP_B * KB * cos(KB * (sB - PH_B))
+dB = abs(tB - AMP_B * sin(KB * (sB - PH_B))) / sqrt(1.0 + wpB * wpB)
+# C: alpha = -60 -> s = 0.5x - 0.866z, t = 0.866x + 0.5z
+sC = px * 0.5 + pz * (0.0 - 0.8660254)
+tC = px * 0.8660254 + pz * 0.5
+wpC = AMP_C * KC * cos(KC * (sC - PH_C))
+dC = abs(tC - AMP_C * sin(KC * (sC - PH_C))) / sqrt(1.0 + wpC * wpC)
+corridor = (dA < HW + 0.30) | (dB < HW + 0.30) | (dC < HW + 0.30)
+
+# ---- мощение ----------------------------------------------------------------
+# Площадь: концентрические дуги между центральным медальоном и первым кольцом,
+# прорезанные коридорами проспектов; диски перекрёстков выкушены везде.
+plaza0 = pv.pave_annulus(cx = 0.0, cz = 0.0, r_in = 4.62, r_out = 8.35, y = Y_SETT, tone_step = 0.05, rng = split_rng(root_rng, key = "plaza"))
+plaza1 = delete(plaza0, where = corridor, domain = points)
+plaza = pv.cull_discs(pts = plaza1, jpts = jpts, margin = 0.16)
+
+ring1 = pv.cull_discs(pts = pv.pave_annulus(cx = 0.0, cz = 0.0, r_in = R1 - HW, r_out = R1 + HW, y = Y_SETT, tone_step = 0.0, rng = split_rng(root_rng, key = "r1")), jpts = jpts, margin = 0.16)
+ring2 = pv.cull_discs(pts = pv.pave_annulus(cx = 0.0, cz = 0.0, r_in = R2 - HW, r_out = R2 + HW, y = Y_SETT, tone_step = 0.0, rng = split_rng(root_rng, key = "r2")), jpts = jpts, margin = 0.16)
+ring3 = pv.cull_discs(pts = pv.pave_annulus(cx = 0.0, cz = 0.0, r_in = R3 - HW, r_out = R3 + HW, y = Y_SETT, tone_step = 0.0, rng = split_rng(root_rng, key = "r3")), jpts = jpts, margin = 0.16)
+
+avA = pv.cull_discs(pts = pv.pave_avenue(alpha = AL_A, amp = AMP_A, lam = LAM_A, ph = PH_A, s0 = 0.0 - SPAN, s1 = SPAN, hw = HW, y = Y_SETT, rng = split_rng(root_rng, key = "avA")), jpts = jpts, margin = 0.16)
+avB = pv.cull_discs(pts = pv.pave_avenue(alpha = AL_B, amp = AMP_B, lam = LAM_B, ph = PH_B, s0 = 0.0 - SPAN, s1 = SPAN, hw = HW, y = Y_SETT, rng = split_rng(root_rng, key = "avB")), jpts = jpts, margin = 0.16)
+avC = pv.cull_discs(pts = pv.pave_avenue(alpha = AL_C, amp = AMP_C, lam = LAM_C, ph = PH_C, s0 = 0.0 - SPAN, s1 = SPAN, hw = HW, y = Y_SETT, rng = split_rng(root_rng, key = "avC")), jpts = jpts, margin = 0.16)
+
+med = pv.medallions(jpts = jpts, y = Y_SETT, rng = split_rng(root_rng, key = "med"))
+
+# Поребрики: обод площади (он же внутренний край ring1), кромки ring2/ring3,
+# кромки проспектов. Всё выкушено дисками перекрёстков.
+brd = merge(pv.cull_discs(pts = pv.border_ring(cx = 0.0, cz = 0.0, r = 8.55, y = Y_BORD, rng = split_rng(root_rng, key = "b0")), jpts = jpts, margin = 0.14), pv.cull_discs(pts = pv.border_ring(cx = 0.0, cz = 0.0, r = R1 + HW + 0.10, y = Y_BORD, rng = split_rng(root_rng, key = "b1o")), jpts = jpts, margin = 0.14), pv.cull_discs(pts = pv.border_ring(cx = 0.0, cz = 0.0, r = R2 - HW - 0.10, y = Y_BORD, rng = split_rng(root_rng, key = "b2i")), jpts = jpts, margin = 0.14), pv.cull_discs(pts = pv.border_ring(cx = 0.0, cz = 0.0, r = R2 + HW + 0.10, y = Y_BORD, rng = split_rng(root_rng, key = "b2o")), jpts = jpts, margin = 0.14), pv.cull_discs(pts = pv.border_ring(cx = 0.0, cz = 0.0, r = R3 - HW - 0.10, y = Y_BORD, rng = split_rng(root_rng, key = "b3i")), jpts = jpts, margin = 0.14), pv.cull_discs(pts = pv.border_ring(cx = 0.0, cz = 0.0, r = R3 + HW + 0.10, y = Y_BORD, rng = split_rng(root_rng, key = "b3o")), jpts = jpts, margin = 0.14), pv.cull_discs(pts = pv.border_avenue(alpha = AL_A, amp = AMP_A, lam = LAM_A, ph = PH_A, s0 = 0.0 - SPAN, s1 = SPAN, off = HW + 0.10, y = Y_BORD, rng = split_rng(root_rng, key = "bA")), jpts = jpts, margin = 0.14), pv.cull_discs(pts = pv.border_avenue(alpha = AL_B, amp = AMP_B, lam = LAM_B, ph = PH_B, s0 = 0.0 - SPAN, s1 = SPAN, off = HW + 0.10, y = Y_BORD, rng = split_rng(root_rng, key = "bB")), jpts = jpts, margin = 0.14), pv.cull_discs(pts = pv.border_avenue(alpha = AL_C, amp = AMP_C, lam = LAM_C, ph = PH_C, s0 = 0.0 - SPAN, s1 = SPAN, off = HW + 0.10, y = Y_BORD, rng = split_rng(root_rng, key = "bC")), jpts = jpts, margin = 0.14))
+
+# ---- земля ------------------------------------------------------------------
+rr = length(@P)
+band = (abs(rr - R1) < HW + 0.7) | (abs(rr - R2) < HW + 0.7) | (abs(rr - R3) < HW + 0.7) | (rr < 8.9)
+near = (dA < HW + 0.7) | (dB < HW + 0.7) | (dC < HW + 0.7)
+g0 = grid(size = vec2(58.0, 58.0), res = vec2(58.0, 58.0))
+g1 = set(g0, "d_j", distance_to(target = jpts), domain = points)
+soil = mix(vec3(0.30, 0.24, 0.17), vec3(0.43, 0.36, 0.26), 0.5 + 0.5 * fbm(scale = 0.15, octaves = 3, rng = split_rng(root_rng, key = "soil")))
+moss = mix(soil, vec3(0.24, 0.32, 0.14), 0.55)
+glade = fbm(scale = 0.08, octaves = 2, rng = split_rng(root_rng, key = "moss")) > 0.15 ? moss : soil
+ground0 = set(g1, "Cd", (band | near | (@d_j < 4.7) ? glade * 0.55 : glade), domain = faces)
+ground = remove_attr(ground0, "d_j")
+
+# ---- инстансинг и сборка -----------------------------------------------------
+src_sett = pv.sett_source(w = 0.22, h = 0.12, l = 0.16, grp = "sett")
+src_bord = pv.sett_source(w = 0.24, h = 0.20, l = 0.42, grp = "border")
+all_pts = merge(plaza, ring1, ring2, ring3, avA, avB, avC, med, brd)
+paved0 = realize(instance_on_points(all_pts, source = src_sett, variants = [src_sett, src_bord]))
+# tint запекаем в Cd в самой сцене: читатели без поддержки @tint видят цвет.
+paved1 = set(paved0, "Cd", @Cd * @tint, domain = faces)
+paved = remove_attr(remove_attr(remove_attr(remove_attr(paved1, "tint"), "orient"), "scale"), "variant")
+
+roads = merge(ground, paved)
+output roads
