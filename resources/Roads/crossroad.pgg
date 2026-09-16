@@ -1,6 +1,6 @@
 param seed: int = 21
 
-import lib.paving as pv
+import paving as pv
 
 # Crossroad — одиночный X-перекрёсток по референсу eAWZG: две равные улицы
 # под 90°, узел оформлен маленькой круглой площадкой ШИРЕ дорог (pave_junction):
