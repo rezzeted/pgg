@@ -32,16 +32,9 @@ rim = pv.border_ring(cx = 0.0, cz = 0.0, r = RJ + 0.02, y = Y_BORD, rng = split_
 # Поребрики рукавов (обрываются у обода тем же выкусом) + торцы рукавов.
 brd = merge(pv.cull_discs(pts = pv.border_avenue(alpha = 0.0, amp = 0.0, lam = 40.0, ph = 0.0, s0 = 0.0 - SPAN, s1 = SPAN, off = HW + 0.10, y = Y_BORD, rng = split_rng(root_rng, key = "bE"), pitch = 0.36), jpts = jpts, margin = 0.14), pv.cull_discs(pts = pv.border_avenue(alpha = 90.0, amp = 0.0, lam = 40.0, ph = 0.0, s0 = 0.0 - SPAN, s1 = SPAN, off = HW + 0.10, y = Y_BORD, rng = split_rng(root_rng, key = "bN"), pitch = 0.36), jpts = jpts, margin = 0.14), pv.border_row(cx = SPAN, cz = 0.0, yaw = 0.0, len = W + 0.44, y = Y_BORD, rng = split_rng(root_rng, key = "teE")), pv.border_row(cx = 0.0 - SPAN, cz = 0.0, yaw = 0.0, len = W + 0.44, y = Y_BORD, rng = split_rng(root_rng, key = "teW")), pv.border_row(cx = 0.0, cz = SPAN, yaw = 90.0, len = W + 0.44, y = Y_BORD, rng = split_rng(root_rng, key = "teN")), pv.border_row(cx = 0.0, cz = 0.0 - SPAN, yaw = 90.0, len = W + 0.44, y = Y_BORD, rng = split_rng(root_rng, key = "teS")))
 
-# Земля: тёмная утоптанная полоса под мостовой.
-px = dot(@P, (1, 0, 0))
-pz = dot(@P, (0, 0, 1))
-rr = length(@P)
-under = (abs(pz) < HW + 0.45) | (abs(px) < HW + 0.45) | (rr < RJ + 0.4)
+# Земля: однотонная нейтральная подложка без раскраски.
 g0 = grid(size = vec2(36.0, 36.0), res = vec2(36.0, 36.0))
-soil = mix(vec3(0.30, 0.24, 0.17), vec3(0.43, 0.36, 0.26), 0.5 + 0.5 * fbm(scale = 0.15, octaves = 3, rng = split_rng(root_rng, key = "soil")))
-moss = mix(soil, vec3(0.24, 0.32, 0.14), 0.55)
-glade = fbm(scale = 0.08, octaves = 2, rng = split_rng(root_rng, key = "moss")) > 0.15 ? moss : soil
-ground = set(g0, "Cd", under ? glade * 0.72 : glade, domain = faces)
+ground = set(g0, "Cd", vec3(0.45, 0.45, 0.45), domain = faces)
 
 # Инстансинг: камень рядов 0.16 x 0.22 (длинная сторона вдоль хода/дуги),
 # бордюр округлый 0.26 x 0.30.
