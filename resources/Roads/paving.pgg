@@ -223,6 +223,35 @@ def pave_cross_patch(hw: f32, off: f32, rc: f32, y: f32, rng: rng, pitch: f32 = 
     out = sett(p1, yaw = 0.0, y = y, tone = 1.0, mode = 2, rng = rng)
 }
 
+def pave_realize(pts: geo<points>, s_sett: geo<mesh>, s_bord: geo<mesh>, s_sq: geo<mesh>) -> (out: geo<mesh>) {
+    """Инстансинг якорей (variants = [sett, bord, sq]) + запекание @tint в @Cd
+    и снятие стампов. Делать ДО клипов: крышки срезов clip наследуют @Cd
+    резаной грани."""
+    m0 = realize(instance_on_points(pts, source = s_sett, variants = [s_sett, s_bord, s_sq]))
+    m1 = set(m0, "Cd", @Cd * @tint, domain = faces)
+    out = remove_attr(remove_attr(remove_attr(remove_attr(m1, "tint"), "orient"), "scale"), "variant")
+}
+
+def clip_arc_cut(g: geo<mesh>, cx: f32, cz: f32, r: f32, segments: int = 4) -> (out: geo<mesh>) {
+    """Выкус четверти круга радиуса r вокруг (cx, cz) из мостовой: камни,
+    залезшие за дугу (на грань поребрика и за неё), срезаны полигональной
+    дугой из segments секторов (биссектрисные касательные, сагитта ~0.03);
+    крышки срезов — группа "cut". Вся геометрия g должна лежать в конусе
+    четверти от (cx, cz) — у мостовой перекрёстка так и есть (|x|,|z| < c0)."""
+    expect r > 0.5: "clip_arc_cut: r"
+    thm = atan2(0.0 - cz, 0.0 - cx)
+    seg = 1.5707963 / f32(segments)
+    out = repeat (empty_mesh(), iterations = segments) |acc| {
+        a0 = thm - 0.7853982 + f32(@iteration) * seg
+        a1 = a0 + seg
+        am = (a0 + a1) * 0.5
+        s1 = clip(g, origin = vec3(cx, 0, cz), normal = vec3(0.0 - sin(a0), 0, cos(a0)))
+        s2 = clip(s1, origin = vec3(cx, 0, cz), normal = vec3(sin(a1), 0, 0.0 - cos(a1)))
+        piece = clip(s2, origin = vec3(cx + r * cos(am), 0, cz + r * sin(am)), normal = vec3(cos(am), 0, sin(am)), cap_group = "cut")
+        acc = merge(acc, piece)
+    }
+}
+
 def jpt(x: f32, z: f32, rj: f32) -> (out: geo<points>) {
     """Один центр медальона перекрёстка: точка (x, 0, z) с @jr — радиусом диска."""
     p0 = transform(mesh_line(count = 1, length = 0.0), translate = vec3(x, 0, z))
