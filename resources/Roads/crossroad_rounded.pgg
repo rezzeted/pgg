@@ -1,0 +1,51 @@
+param seed: int = 21
+param corner_r: f32 = 1.6
+
+import paving as pv
+
+# Crossroad rounded — X-перекрёсток с закруглёнными углами (третий тип
+# стыковки, развитие crossroad.pgg). Опоясывающего кольца и диска-площадки
+# нет: поребрик идёт вдоль рукавов и на углах поворачивает ЧЕТВЕРТЬЮ
+# окружности, загнутой В ЦЕНТР перекрёстка (border_corner, касательная к
+# линиям обеих дорог; рукава обрезаны по точкам касания). Полотно сплошное:
+# рукава пересекаются без диска, коробка перекрёстка и угловые клинья до дуг
+# вымощены квадратной сеткой-заплаткой (pave_cross_patch, шаг 0.25 в фазе
+# рядов рукавов). Земля — однотонная подложка.
+
+root_rng = rng_from_seed(seed)
+
+W = 3.5                    # ширина улиц
+HW = W * 0.5
+OFF = HW + 0.10            # линия поребрика от оси
+Y_SETT = 0.10
+Y_BORD = 0.15
+SPAN = 16.0                # рукава s ∈ [-SPAN, SPAN]
+
+# Рукава: прямые (amp = 0) проспекты под 0° и 90°; камень 0.16 поперёк x 0.22
+# вдоль (питчи 0.19 / 0.25); из коробки перекрёстка оба выкушены — там заплатка.
+avE = pv.cull_box(pts = pv.pave_avenue(alpha = 0.0, amp = 0.0, lam = 40.0, ph = 0.0, s0 = 0.0 - SPAN, s1 = SPAN, hw = HW, y = Y_SETT, rng = split_rng(root_rng, key = "avE"), pitch_w = 0.19, pitch_l = 0.25), hx = HW, hz = HW)
+avN = pv.cull_box(pts = pv.pave_avenue(alpha = 90.0, amp = 0.0, lam = 40.0, ph = 0.0, s0 = 0.0 - SPAN, s1 = SPAN, hw = HW, y = Y_SETT, rng = split_rng(root_rng, key = "avN"), pitch_w = 0.19, pitch_l = 0.25), hx = HW, hz = HW)
+
+# Заплатка: коробка + угловые клинья до дуг, квадратные камни (variant 2).
+patch = pv.pave_cross_patch(hw = HW, off = OFF, rc = corner_r, y = Y_SETT, rng = split_rng(root_rng, key = "patch"))
+
+# Поребрик: рукава обрезаны по точкам касания закруглений, углы — дуги,
+# торцы рукавов — прямые ряды.
+brd = merge(pv.cull_box(pts = pv.border_avenue(alpha = 0.0, amp = 0.0, lam = 40.0, ph = 0.0, s0 = 0.0 - SPAN, s1 = SPAN, off = OFF, y = Y_BORD, rng = split_rng(root_rng, key = "bE"), pitch = 0.36), hx = OFF + corner_r, hz = HW + 0.5), pv.cull_box(pts = pv.border_avenue(alpha = 90.0, amp = 0.0, lam = 40.0, ph = 0.0, s0 = 0.0 - SPAN, s1 = SPAN, off = OFF, y = Y_BORD, rng = split_rng(root_rng, key = "bN"), pitch = 0.36), hx = HW + 0.5, hz = OFF + corner_r), pv.border_corner(off = OFF, rc = corner_r, y = Y_BORD, rng = split_rng(root_rng, key = "corn"), pitch = 0.36), pv.border_row(cx = SPAN, cz = 0.0, yaw = 0.0, len = W + 0.44, y = Y_BORD, rng = split_rng(root_rng, key = "teE")), pv.border_row(cx = 0.0 - SPAN, cz = 0.0, yaw = 0.0, len = W + 0.44, y = Y_BORD, rng = split_rng(root_rng, key = "teW")), pv.border_row(cx = 0.0, cz = SPAN, yaw = 90.0, len = W + 0.44, y = Y_BORD, rng = split_rng(root_rng, key = "teN")), pv.border_row(cx = 0.0, cz = 0.0 - SPAN, yaw = 90.0, len = W + 0.44, y = Y_BORD, rng = split_rng(root_rng, key = "teS")))
+
+# Земля: однотонная нейтральная подложка без раскраски.
+g0 = grid(size = vec2(36.0, 36.0), res = vec2(36.0, 36.0))
+ground = set(g0, "Cd", vec3(0.45, 0.45, 0.45), domain = faces)
+
+# Инстансинг: камень рядов 0.16 x 0.22 (длинная сторона вдоль хода), бордюр
+# округлый 0.26 x 0.30, заплатка квадратная 0.22 x 0.22 (variant 2).
+src_sett = pv.sett_source(w = 0.16, h = 0.12, l = 0.22, grp = "sett")
+src_bord = pv.sett_source(w = 0.26, h = 0.20, l = 0.30, grp = "border")
+src_sq = pv.sett_source(w = 0.22, h = 0.12, l = 0.22, grp = "sett")
+all_pts = merge(avE, avN, patch, brd)
+paved0 = realize(instance_on_points(all_pts, source = src_sett, variants = [src_sett, src_bord, src_sq]))
+paved1 = set(paved0, "Cd", @Cd * @tint, domain = faces)
+paved = remove_attr(remove_attr(remove_attr(remove_attr(paved1, "tint"), "orient"), "scale"), "variant")
+
+crossroad_rounded = merge(ground, paved)
+output crossroad_rounded

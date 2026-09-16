@@ -171,6 +171,58 @@ def border_row(cx: f32, cz: f32, yaw: f32, len: f32, y: f32, rng: rng, pitch: f3
     out = sett(p0, yaw = yaw, y = y, tone = 1.0, mode = 1, rng = rng)
 }
 
+def cull_box(pts: geo<points>, hx: f32, hz: f32) -> (out: geo<points>) {
+    """Выкус прямоугольника: удаляет якоря, чей центр в горизонтали имеет
+    |x| < hx и |z| < hz. Коробка перекрёстка, торцы рукавов у закруглений."""
+    px = dot(@P, (1, 0, 0))
+    pz = dot(@P, (0, 0, 1))
+    out = delete(pts, where = abs(px) < hx & abs(pz) < hz, domain = points)
+}
+
+def border_corner(off: f32, rc: f32, y: f32, rng: rng, pitch: f32 = 0.36) -> (out: geo<points>) {
+    """Закругление поребрика на углах перекрёстка: четыре ЧЕТВЕРТИ окружности
+    радиуса rc, каждая касательна к линиям поребрика обеих дорог (|x| = off и
+    |z| = off) и загнута В ЦЕНТР перекрёстка (центр дуги — в угловой зоне
+    (±(off+rc), ±(off+rc)), дуга выпукла к середине). Рукава обрезаются по
+    точкам касания (cull_box с hx/hz = off + rc), стык — по касательной."""
+    expect off > 0.0 & rc > 0.2: "border_corner: off/rc"
+    n = max(3, int(1.5707963 * rc / pitch))
+    out = repeat (empty_points(), iterations = 4) |acc| {
+        q = @iteration
+        sx = (q == 0 | q == 3) ? 1.0 : 0.0 - 1.0
+        sz = q < 2 ? 1.0 : 0.0 - 1.0
+        cx = sx * (off + rc)
+        cz = sz * (off + rc)
+        thm = atan2(0.0 - sz, 0.0 - sx)
+        th = thm - 0.7853982 + (f32(@index) + 0.5) * 1.5707963 / f32(n)
+        p0 = set_position(mesh_line(count = n, length = 0.0), pos = vec3(cx + rc * cos(th), 0, cz + rc * sin(th)))
+        arc = sett(p0, yaw = 0.0 - degrees(th), y = y, tone = 1.0, mode = 1, rng = split_rng(rng, key = q))
+        acc = merge(acc, arc)
+    }
+}
+
+def pave_cross_patch(hw: f32, off: f32, rc: f32, y: f32, rng: rng, pitch: f32 = 0.25) -> (out: geo<points>) {
+    """Заплатка перекрёстка под закруглённые углы: квадратная сетка камней
+    (шаг pitch по обеим осям, фаза полшага — совпадает с шагом рядов рукавов).
+    Покрывает коробку |x|,|z| < hw (из неё рукава выкушены) и угловые клинья
+    hw..off+rc до дуг border_corner (срез по угловым окружностям с заходом
+    0.12 под бордюр). Коридоры рукавов не дублирует. Камни квадратные,
+    @variant = 2 — третий источник в variants сцены."""
+    expect hw > 0.5 & rc > 0.2: "pave_cross_patch: hw/rc"
+    n = 2 * (int((off + rc) / pitch) + 1)
+    px = (f32(@index % n) - f32(n) * 0.5 + 0.5) * pitch
+    pz = (f32(@index / n) - f32(n) * 0.5 + 0.5) * pitch
+    p0 = set_position(mesh_line(count = n * n, length = 0.0), pos = vec3(px, 0, pz))
+    ax = abs(px)
+    az = abs(pz)
+    rcm = rc - 0.12
+    dx = ax - off - rc
+    dz = az - off - rc
+    d2 = dx * dx + dz * dz
+    p1 = delete(p0, where = (ax >= hw | az >= hw) & (ax < hw | az < hw | d2 < rcm * rcm), domain = points)
+    out = sett(p1, yaw = 0.0, y = y, tone = 1.0, mode = 2, rng = rng)
+}
+
 def jpt(x: f32, z: f32, rj: f32) -> (out: geo<points>) {
     """Один центр медальона перекрёстка: точка (x, 0, z) с @jr — радиусом диска."""
     p0 = transform(mesh_line(count = 1, length = 0.0), translate = vec3(x, 0, z))
