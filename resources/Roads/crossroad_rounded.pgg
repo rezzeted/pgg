@@ -37,15 +37,25 @@ brd = merge(pv.cull_box(pts = pv.border_avenue(alpha = 0.0, amp = 0.0, lam = 40.
 g0 = grid(size = vec2(36.0, 36.0), res = vec2(36.0, 36.0))
 ground = set(g0, "Cd", vec3(0.45, 0.45, 0.45), domain = faces)
 
-# Инстансинг: камень рядов 0.16 x 0.22 (длинная сторона вдоль хода), бордюр
-# округлый 0.26 x 0.30, заплатка квадратная 0.22 x 0.22 (variant 2).
+# Инстансинг по кускам (у каждого свой клип): камень рядов 0.16 x 0.22
+# (длинная сторона вдоль хода), бордюр округлый 0.26 x 0.30, заплатка
+# квадратная 0.22 x 0.22 (variant 2). @tint запекается в @Cd ДО резки —
+# крышки срезов наследуют цвет камня. Полотно рукавов срезано по грани
+# поребрика (плоскости |x|,|z| = F), заплатка — по дугам углов (clip_arc_cut,
+# R = corner_r − 0.134): камни, залезшие на поребрик и за него, подрезаны.
 src_sett = pv.sett_source(w = 0.16, h = 0.12, l = 0.22, grp = "sett")
 src_bord = pv.sett_source(w = 0.26, h = 0.20, l = 0.30, grp = "border")
 src_sq = pv.sett_source(w = 0.22, h = 0.12, l = 0.22, grp = "sett")
-all_pts = merge(avE, avN, patch, brd)
-paved0 = realize(instance_on_points(all_pts, source = src_sett, variants = [src_sett, src_bord, src_sq]))
-paved1 = set(paved0, "Cd", @Cd * @tint, domain = faces)
-paved = remove_attr(remove_attr(remove_attr(remove_attr(paved1, "tint"), "orient"), "scale"), "variant")
+F = OFF - 0.134
+R_ARC = corner_r - 0.134
+mE = clip(clip(pv.pave_realize(pts = avE, s_sett = src_sett, s_bord = src_bord, s_sq = src_sq), origin = vec3(0, 0, F), normal = vec3(0, 0, 0.0 - 1), cap_group = "cut"), origin = vec3(0, 0, 0.0 - F), normal = vec3(0, 0, 1), cap_group = "cut")
+mN = clip(clip(pv.pave_realize(pts = avN, s_sett = src_sett, s_bord = src_bord, s_sq = src_sq), origin = vec3(F, 0, 0), normal = vec3(0.0 - 1, 0, 0), cap_group = "cut"), origin = vec3(0.0 - F, 0, 0), normal = vec3(1, 0, 0), cap_group = "cut")
+mP1 = pv.clip_arc_cut(g = pv.pave_realize(pts = patch, s_sett = src_sett, s_bord = src_bord, s_sq = src_sq), cx = OFF + corner_r, cz = OFF + corner_r, r = R_ARC)
+mP2 = pv.clip_arc_cut(g = mP1, cx = 0.0 - (OFF + corner_r), cz = OFF + corner_r, r = R_ARC)
+mP3 = pv.clip_arc_cut(g = mP2, cx = 0.0 - (OFF + corner_r), cz = 0.0 - (OFF + corner_r), r = R_ARC)
+mP4 = pv.clip_arc_cut(g = mP3, cx = OFF + corner_r, cz = 0.0 - (OFF + corner_r), r = R_ARC)
+mCurb = pv.pave_realize(pts = brd, s_sett = src_sett, s_bord = src_bord, s_sq = src_sq)
+paved = compute_normals(merge(mE, mN, mP4, mCurb), mode = flat)
 
 crossroad_rounded = merge(ground, paved)
 output crossroad_rounded
