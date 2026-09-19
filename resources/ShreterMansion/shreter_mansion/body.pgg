@@ -1,0 +1,89 @@
+# Тело особняка: штукатурный цоколь, два кирпичных этажа со срезанным углом
+# (эркер-башенка на углу Мойки и Писарева), лопатки из терракотового кирпича,
+# межэтажные тяги и венчающий карниз с аркатурным поясом.
+# Окна и портал — накладные (openings.pgg / portal.pgg), стены сплошные.
+
+import lib.parts
+import shreter_mansion.common as common
+
+def chamfer_clip(g: geo<mesh>, w: f32, d: f32, c: f32) -> (out: geo<mesh>) {
+    """Срез угла (+X,+Z) плоскостью через (w/2−c, d/2) и (w/2, d/2−c), 45°."""
+    out = clip(g, origin = vec3(w * 0.5, 0, d * 0.5 - c), normal = vec3(0.0 - 1.0, 0, 0.0 - 1.0))
+}
+
+def veneer_wall(len: f32, h: f32, y0: f32, at: vec3, yaw: f32, rng: rng) -> (out: geo<mesh>) {
+    """Плоская панель мелкой кладки len×h, низ на y0, центр at, yaw 0 = лицо +Z."""
+    rows = common.brick_rows(len = len, h = h)
+    raw = common.brick_from_rows(rows, rng = rng)
+    out = parts.place(g = raw, yaw_deg = yaw, at = at)
+}
+
+def floor_veneer(w: f32, d: f32, c: f32, y0: f32, h: f32, rng: rng) -> (out: geo<mesh>) {
+    """Облицовка этажа: четыре стены + диагональная грань эркера (сплошные поля)."""
+    hw = w * 0.5
+    hd = d * 0.5
+    wall_f = veneer_wall(len = w - c, h = h, y0 = y0, at = vec3(0.0 - c * 0.5, y0, hd), yaw = 0.0, rng = split_rng(rng, key = "f"))
+    wall_b = veneer_wall(len = w, h = h, y0 = y0, at = vec3(0, y0, 0.0 - hd), yaw = 180.0, rng = split_rng(rng, key = "b"))
+    wall_r = veneer_wall(len = d - c, h = h, y0 = y0, at = vec3(hw, y0, 0.0 - c * 0.5), yaw = 90.0, rng = split_rng(rng, key = "r"))
+    wall_l = veneer_wall(len = d, h = h, y0 = y0, at = vec3(0.0 - hw, y0, 0), yaw = 270.0, rng = split_rng(rng, key = "l"))
+    bay = veneer_wall(len = c * 1.41421356, h = h, y0 = y0, at = vec3(hw - c * 0.5, y0, hd - c * 0.5), yaw = 45.0, rng = split_rng(rng, key = "bay"))
+    out = merge(wall_f, wall_b, wall_r, wall_l, bay)
+}
+
+def frieze_wall(len: f32, y: f32, at: vec3, yaw: f32) -> (out: geo<mesh>) {
+    """Панель аркатурного пояса длины len, низ на y, центр at, yaw 0 = лицо +Z."""
+    row = common.arcade_row(len = len, y = 0.0, pitch = 0.44, grp = "deco")
+    out = parts.place(g = row, yaw_deg = yaw, at = at)
+}
+
+def floor_frieze(w: f32, d: f32, c: f32, y: f32) -> (out: geo<mesh>) {
+    """Аркатурный пояс по всему периметру (5 граней, как floor_veneer)."""
+    hw = w * 0.5
+    hd = d * 0.5
+    f_f = frieze_wall(len = w - c, y = y, at = vec3(0.0 - c * 0.5, y, hd + 0.02), yaw = 0.0)
+    f_b = frieze_wall(len = w, y = y, at = vec3(0, y, 0.0 - hd - 0.02), yaw = 180.0)
+    f_r = frieze_wall(len = d - c, y = y, at = vec3(hw + 0.02, y, 0.0 - c * 0.5), yaw = 90.0)
+    f_l = frieze_wall(len = d, y = y, at = vec3(0.0 - hw - 0.02, y, 0), yaw = 270.0)
+    f_bay = frieze_wall(len = c * 1.41421356, y = y, at = vec3(hw - c * 0.5, y, hd - c * 0.5), yaw = 45.0)
+    out = merge(f_f, f_b, f_r, f_l, f_bay)
+}
+
+def corner_strips(w: f32, d: f32, c: f32, y0: f32, y1: f32) -> (out: geo<mesh>) {
+    """Терракотовые лопатки на глухих углах и рёбрах эркера: квадратные тяги
+    0.42×0.42 от цоколя до карниза, центр на ребре."""
+    h = y1 - y0
+    hw = w * 0.5
+    hd = d * 0.5
+    yc = (y0 + y1) * 0.5
+    s_fl = common.slab(size = vec3(0.42, h, 0.42), pos = vec3(0.0 - hw, yc, hd), grp = "deco")
+    s_bl = common.slab(size = vec3(0.42, h, 0.42), pos = vec3(0.0 - hw, yc, 0.0 - hd), grp = "deco")
+    s_br = common.slab(size = vec3(0.42, h, 0.42), pos = vec3(hw, yc, 0.0 - hd), grp = "deco")
+    s_bay_f = common.slab(size = vec3(0.40, h, 0.40), pos = vec3(hw - c, yc, hd), grp = "deco")
+    s_bay_r = common.slab(size = vec3(0.40, h, 0.40), pos = vec3(hw, yc, hd - c), grp = "deco")
+    out = merge(s_fl, s_bl, s_br, s_bay_f, s_bay_r)
+}
+
+def body(w: f32, d: f32, c: f32, plinth_h: f32, floor1_h: f32, belt_h: f32, floor2_h: f32, crown_h: f32, detail: int, rng: rng) -> (out: geo<mesh>) {
+    """Тело особняка: цоколь + два этажа + тяги + венчающий карниз с аркатурой.
+    detail = 0 — без облицовки и фриза (быстрый прогон массы)."""
+    f1_top = plinth_h + floor1_h
+    b1_top = f1_top + belt_h
+    f2_top = b1_top + floor2_h
+    # Цоколь: массив + крышка-отлив (со срезом угла)
+    p_base = chamfer_clip(g = common.slab(size = vec3(w + 0.20, plinth_h - 0.10, d + 0.20), pos = vec3(0, (plinth_h - 0.10) * 0.5, 0), grp = "plinth"), w = w + 0.20, d = d + 0.20, c = c + 0.10)
+    p_cap = chamfer_clip(g = common.slab(size = vec3(w + 0.34, 0.16, d + 0.34), pos = vec3(0, plinth_h - 0.06, 0), grp = "plinth"), w = w + 0.34, d = d + 0.34, c = c + 0.17)
+    # Сердцевина стен до карниза (сплошная, окна — накладные)
+    core = chamfer_clip(g = common.brick_prism(w = w, d = d, h = f2_top - plinth_h, y0 = plinth_h), w = w, d = d, c = c)
+    # Облицовка двух этажей (detail)
+    ven1 = floor_veneer(w = w, d = d, c = c, y0 = plinth_h, h = floor1_h, rng = split_rng(rng, key = "v1"))
+    ven2 = floor_veneer(w = w, d = d, c = c, y0 = b1_top, h = floor2_h, rng = split_rng(rng, key = "v2"))
+    ven = select(detail > 0, a = merge(ven1, ven2), b = empty_mesh())
+    # Лопатки и тяги
+    strips = corner_strips(w = w, d = d, c = c, y0 = plinth_h, y1 = f2_top)
+    belt1 = chamfer_clip(g = common.belt(w = w, d = d, y = f1_top, h = belt_h, grp = "deco", over_lo = 0.14, over_hi = 0.22), w = w + 0.44, d = d + 0.44, c = c + 0.22)
+    # Венец: опорный пояс + аркатурный фриз + крышка карниза
+    cr_base = chamfer_clip(g = common.belt(w = w, d = d, y = f2_top, h = 0.26, grp = "deco", over_lo = 0.10, over_hi = 0.18), w = w + 0.36, d = d + 0.36, c = c + 0.18)
+    frz = select(detail > 0, a = floor_frieze(w = w, d = d, c = c, y = f2_top + 0.26), b = empty_mesh())
+    cr_cap = chamfer_clip(g = common.slab(size = vec3(w + 0.56, 0.12, d + 0.56), pos = vec3(0, f2_top + 0.60, 0), grp = "deco"), w = w + 0.56, d = d + 0.56, c = c + 0.28)
+    out = merge(p_base, p_cap, core, ven, strips, belt1, cr_base, frz, cr_cap)
+}
