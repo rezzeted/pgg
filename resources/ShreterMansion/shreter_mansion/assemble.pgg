@@ -1,0 +1,28 @@
+# Общая сборка и окраска особняка Шретера: тело, кровля, башня, проёмы, портал.
+# Материалы — группы faces: brick (жёлтый облицовочный), deco (терракота),
+# mortar, plinth (штукатуренный цоколь), roof (серая фальцевая кровля),
+# spire (чешуя шатра), glass, iron, wood.
+
+def assemble(body_all: geo<mesh>, roof_all: geo<mesh>, tower_all: geo<mesh>, openings_all: geo<mesh>, portal_all: geo<mesh>, root_rng: rng) -> (out: geo<mesh>) {
+    """Собирает компоненты особняка, красит @Cd по группам faces с fbm-шумом
+    и запекает ambient occlusion."""
+    raw = merge(body_all, roof_all, tower_all, openings_all, portal_all)
+    paint_rng = split_rng(root_rng, key = "paint")
+    brick_col = mix(vec3(0.58, 0.445, 0.265), vec3(0.41, 0.305, 0.175), fbm(scale = 1.6, octaves = 3, rng = split_rng(paint_rng, key = "brick"))) * @tint
+    deco_col = mix(vec3(0.50, 0.215, 0.095), vec3(0.345, 0.13, 0.06), fbm(scale = 1.9, octaves = 3, rng = split_rng(paint_rng, key = "deco"))) * @tint
+    mortar_col = mix(vec3(0.13, 0.125, 0.115), vec3(0.085, 0.08, 0.075), fbm(scale = 3.0, octaves = 2, rng = split_rng(paint_rng, key = "mortar")))
+    plinth_col = mix(vec3(0.17, 0.155, 0.14), vec3(0.105, 0.095, 0.09), fbm(scale = 1.7, octaves = 3, rng = split_rng(paint_rng, key = "plinth")))
+    roof_col = mix(vec3(0.21, 0.23, 0.26), vec3(0.13, 0.15, 0.175), fbm(scale = 2.4, octaves = 3, rng = split_rng(paint_rng, key = "roof"))) * @tint
+    spire_col = mix(vec3(0.255, 0.135, 0.09), vec3(0.155, 0.085, 0.06), fbm(scale = 2.8, octaves = 3, rng = split_rng(paint_rng, key = "spire"))) * @tint
+    c1 = ingroup("brick") ? brick_col : vec3(1.0, 0.0, 1.0)
+    c2 = ingroup("deco") ? deco_col : c1
+    c3 = ingroup("mortar") ? mortar_col : c2
+    c4 = ingroup("plinth") ? plinth_col : c3
+    c5 = ingroup("roof") ? roof_col : c4
+    c6 = ingroup("spire") ? spire_col : c5
+    c7 = ingroup("glass") ? vec3(0.05, 0.06, 0.075) : c6
+    c8 = ingroup("iron") ? vec3(0.038, 0.038, 0.042) : c7
+    c9 = ingroup("wood") ? vec3(0.145, 0.10, 0.06) * @tint : c8
+    house_col = set(raw, "Cd", c9, domain = faces)
+    out = bake_ao(house_col, rays = 12, distance = 1.2, rng = split_rng(root_rng, key = "ao"), domain = points)
+}

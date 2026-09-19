@@ -1,0 +1,10 @@
+[
+  {"name": "hero", "node": "house", "orbit": [38, 10], "zoom": 0.85, "chrome": "off"},
+  {"name": "front", "node": "house", "orbit": [0, 10], "zoom": 0.9, "ortho": "front", "chrome": "off"},
+  {"name": "side", "node": "house", "orbit": [90, 10], "zoom": 0.9, "ortho": "side", "chrome": "off"},
+  {"name": "bay_corner", "node": "house", "target": "binding:tower_all", "orbit": [45, 8], "zoom": 0.45, "chrome": "off"},
+  {"name": "tower_top", "node": "house", "target": "binding:tower_all", "orbit": [35, 25], "zoom": 0.35, "chrome": "off"},
+  {"name": "gable_front", "node": "house", "target": "-6.8, 10.1, 7.9", "orbit": [0, 10], "zoom": 0.35, "chrome": "off"},
+  {"name": "portal", "node": "house", "target": "9.55, 4.2, 2.9", "orbit": [70, 8], "zoom": 0.4, "chrome": "off"},
+  {"name": "roof_top", "node": "house", "orbit": [30, 55], "zoom": 0.8, "chrome": "off"}
+]
