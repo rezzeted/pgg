@@ -1653,14 +1653,16 @@ private:
     // a valid literal is recorded for the engine's enum-literal reading.
     // Returns true when the node reads as an enum literal (a miss is consumed
     // too — the recovery type is string); false when it is not a literal
-    // candidate at all (a defined binding is a computed string).
-    bool checkEnumValue(const Expr* v, const std::vector<std::string>& values, const std::string& what) {
+    // candidate at all (a defined binding is a computed string). forceIdent
+    // skips the binding guard: the caller already decided the literal reading
+    // (a non-String binding cannot typecheck against the enum anyway).
+    bool checkEnumValue(const Expr* v, const std::vector<std::string>& values, const std::string& what, bool forceIdent = false) {
         v = unwrapParens(v);
         if (!v) return false;
         std::string name;
         if (v->kind == NodeKind::EnumLit) {
             name = static_cast<const EnumLit*>(v)->name;
-        } else if (v->kind == NodeKind::Ident && !env_.count(static_cast<const Ident*>(v)->name)) {
+        } else if (v->kind == NodeKind::Ident && (forceIdent || !env_.count(static_cast<const Ident*>(v)->name))) {
             name = static_cast<const Ident*>(v)->name;
         } else {
             return false;
@@ -1685,26 +1687,37 @@ private:
     }
 
     // Enum literal in a == / != comparison: when one operand has a declared
-    // enum type and the other is an ident that does NOT name a defined
-    // binding, the ident reads as an enum literal (E206 on a foreign value).
+    // enum type and the other is an ident, the ident reads as an enum literal
+    // (E206 on a foreign value). A defined binding with the same name wins only
+    // when it is String-typed (enum values are strings at runtime); a binding
+    // of any other type cannot compare against the enum, so the literal is the
+    // only working reading (v1.28: scenes may bind `gable`/`mansard` as geo).
     // Returns true when the comparison was typed here (out = its type).
     bool inferEnumComparison(const Binary* b, Type& out) {
         const Expr* lit = nullptr;
         const Expr* other = nullptr;
         const std::vector<std::string>* values = nullptr;
-        if (const std::vector<std::string>* v = enumValuesOf(b->rhs); v && unresolvedIdent(b->lhs)) {
-            lit = b->lhs;
-            other = b->rhs;
+        bool forceIdent = false;
+        for (int side = 0; side < 2 && !lit; ++side) {
+            const Expr* o = side == 0 ? b->rhs : b->lhs;
+            const std::vector<std::string>* v = enumValuesOf(o);
+            if (!v) continue;
+            const Expr* u = unwrapParens(side == 0 ? b->lhs : b->rhs);
+            if (!u || u->kind != NodeKind::Ident) continue;
+            const std::string& name = static_cast<const Ident*>(u)->name;
+            if (env_.count(name)) {
+                if (std::find(v->begin(), v->end(), name) == v->end()) continue;
+                if (infer(u).base == ScalarType::String) continue;
+                forceIdent = true;
+            }
+            lit = u;
+            other = o;
             values = v;
-        } else if (const std::vector<std::string>* v2 = enumValuesOf(b->lhs); v2 && unresolvedIdent(b->rhs)) {
-            lit = b->rhs;
-            other = b->lhs;
-            values = v2;
         }
         if (!lit) return false;
         const Type ot = infer(other);
         checkEnumValue(lit, *values,
-                       "the enum of '" + static_cast<const Ident*>(unwrapParens(other))->name + "'");
+                       "the enum of '" + static_cast<const Ident*>(unwrapParens(other))->name + "'", forceIdent);
         if (ot.base == ScalarType::None) return true;  // out stays none: already reported
         out = Type{ScalarType::Bool, ot.isField, GeoKind::Any};
         return true;
@@ -1907,13 +1920,17 @@ private:
 
     void checkEnumArg(const ParamSig& p, const CallArg* arg) {
         // Bare idents are type-driven enum literals (spec §13, E0 note): an
-        // ident that names an enum value IS the literal; an ident that names
-        // a defined binding is a computed string (membership checked at bind).
+        // ident that names an enum value IS the literal — it is recorded so
+        // the engine reads the name string even when a same-named binding
+        // shadows it (a `gable = <mesh>` binding must not shadow `kind = gable`).
         if (arg->value->kind == NodeKind::EnumLit || arg->value->kind == NodeKind::Ident) {
             const std::string& v = arg->value->kind == NodeKind::EnumLit
                                        ? static_cast<const EnumLit*>(arg->value)->name
                                        : static_cast<const Ident*>(arg->value)->name;
-            if (std::find(p.enumValues.begin(), p.enumValues.end(), v) != p.enumValues.end()) return;
+            if (std::find(p.enumValues.begin(), p.enumValues.end(), v) != p.enumValues.end()) {
+                if (arg->value->kind == NodeKind::Ident && enumLiterals_) enumLiterals_->insert(arg->value);
+                return;
+            }
             const bool definedIdent = arg->value->kind == NodeKind::Ident && env_.count(v) > 0;
             if (!definedIdent) {
                 std::string values;

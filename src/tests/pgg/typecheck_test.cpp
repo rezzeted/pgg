@@ -284,6 +284,30 @@ TEST(Typecheck, EnumLiteralRuleKeepsDefinedBindings) {
     EXPECT_EQ(countCode(bad, "E103"), 1);
 }
 
+TEST(Typecheck, EnumLiteralBeatsNonStringBinding) {
+    // A binding whose name spells an enum value but whose type cannot compare
+    // against the enum (geo, int, …) does not shadow the literal — otherwise
+    // scenes with `gable`/`mansard` meshes cannot dispatch kinds at all.
+    const std::string src =
+        "gable = box(size = vec3(1, 1, 1))\n"
+        "param roof_kind: enum {hip, gable} = hip\n"
+        "n = roof_kind == gable ? 5 : 0\n"
+        "output n\n"
+        "output gable\n";
+    pgg::RunResult r = runSrc(src);
+    EXPECT_EQ(countCode(r, "E206"), 0);
+    ASSERT_FALSE(r.hasErrors());
+    EXPECT_EQ(pgg::asInt(r.outputs[0].value), 0);  // hip != gable
+    // A String binding with the same name still wins (computed string rule).
+    pgg::RunResult str = runSrc(
+        "gable = \"hip\"\n"
+        "param roof_kind: enum {hip, gable} = gable\n"
+        "n = roof_kind == gable ? 5 : 0\n"
+        "output n\n");
+    ASSERT_FALSE(str.hasErrors());
+    EXPECT_EQ(pgg::asInt(str.outputs[0].value), 0);  // binding "hip" != literal gable
+}
+
 TEST(Typecheck, EnumComparisonInsideForeachBody) {
     // Enum dispatch survives expansion into a zone body: the free-name scan
     // of the parallel piece loop skips the literal (no E103), any lane count.
