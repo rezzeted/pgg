@@ -8,12 +8,12 @@ import inn_hotel.common as common
 
 def cu(g: geo<mesh>) -> (out: geo<mesh>) {
     """Точёная деталь ironwork приходит в группе iron — перекрасить в медь."""
-    out = common.to_group(g, src = "iron", dst = "copper")
+    out = parts.to_group(g, src = "iron", dst = "copper")
 }
 
 def br(g: geo<mesh>) -> (out: geo<mesh>) {
     """Точёная деталь ironwork в латунь."""
-    out = common.to_group(g, src = "iron", dst = "brass")
+    out = parts.to_group(g, src = "iron", dst = "brass")
 }
 
 def still(y0: f32, r: f32) -> (out: geo<mesh>) {

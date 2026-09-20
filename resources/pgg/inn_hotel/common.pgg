@@ -3,11 +3,6 @@
 import lib.parts
 import lib.plan as plan
 
-def to_group(g: geo<mesh>, src: string, dst: string) -> (out: geo<mesh>) {
-    """Переметить грани из группы src в dst (ingroup-маска, затем снять src) —
-    точёные и дощатые детали из библиотек приходят в своих группах."""
-    out = unmark(mark(g, dst, where = ingroup(src), domain = faces), src)
-}
 
 def band(w: f32, d: f32, r: f32, y: f32, h: f32, grp: string = "trim") -> (out: geo<mesh>) {
     """Межэтажный поясок-«скоростная линия»: круглый валик по всему периметру, низ на y.

@@ -5,75 +5,76 @@
 import lib.parts
 import lib.ironwork
 import lib.fixtures
+import lib.arch.terminals_victorian as victorian
 import church.common as common
 
 def lancet(w: f32, h: f32) -> (out: geo<mesh>) {
     """Стрельчатое окно: кирпичная рамка, тёмная ниша впереди, средник, подоконник.
     Лицо +Z, низ рамы на y = 0."""
-    frame = common.pointed_panel(w = w + 0.42, h = h + 0.18, t = 0.24, grp = "brick")
-    infill = transform(common.pointed_panel(w = w, h = h, t = 0.06, grp = "glass"), translate = vec3(0, 0.05, 0.11))
+    frame = victorian.pointed_panel(w = w + 0.42, h = h + 0.18, t = 0.24, grp = "brick")
+    infill = transform(victorian.pointed_panel(w = w, h = h, t = 0.06, grp = "glass"), translate = vec3(0, 0.05, 0.11))
     straight = h - w * 0.72
-    mull = common.slab(size = vec3(0.06, straight * 0.90, 0.08), pos = vec3(0, straight * 0.48, 0.13), grp = "brick")
-    sill = common.slab(size = vec3(w + 0.58, 0.12, 0.32), pos = vec3(0, -0.02, 0.08), grp = "brick")
+    mull = parts.slab(size = vec3(0.06, straight * 0.90, 0.08), pos = vec3(0, straight * 0.48, 0.13), grp = "brick")
+    sill = parts.slab(size = vec3(w + 0.58, 0.12, 0.32), pos = vec3(0, -0.02, 0.08), grp = "brick")
     out = merge(frame, infill, mull, sill)
 }
 
 def louver(w: f32, h: f32) -> (out: geo<mesh>) {
     """Ярус звона: кирпичная стрельчатая рама и горизонтальные деревянные жалюзи."""
-    frame = common.pointed_panel(w = w + 0.34, h = h + 0.14, t = 0.20, grp = "brick")
+    frame = victorian.pointed_panel(w = w + 0.34, h = h + 0.14, t = 0.20, grp = "brick")
     n = 8
-    slat0 = common.slab(size = vec3(w - 0.06, 0.048, 0.11), pos = vec3(0, 0, 0), grp = "wood")
+    slat0 = parts.slab(size = vec3(w - 0.06, 0.048, 0.11), pos = vec3(0, 0, 0), grp = "wood")
     span = h * 0.78
     pts0 = mesh_line(count = n, length = span, dir = (0, 1, 0))
     pts = transform(pts0, translate = vec3(0, h * 0.10, 0.08))
     slats_raw = mark(realize(instance_on_points(pts, source = slat0)), "wood", where = true, domain = faces)
-    slats = common.pointed_clip(g = slats_raw, w = w + 0.02, h = h, y0 = 0.0)
-    sill = common.slab(size = vec3(w + 0.48, 0.10, 0.26), pos = vec3(0, -0.01, 0.06), grp = "brick")
+    slats = victorian.pointed_clip(g = slats_raw, w = w + 0.02, h = h, y0 = 0.0)
+    sill = parts.slab(size = vec3(w + 0.48, 0.10, 0.26), pos = vec3(0, -0.01, 0.06), grp = "brick")
     out = merge(frame, slats, sill)
 }
 
 def rose(r: f32) -> (out: geo<mesh>) {
     """Роза: тёмный диск, кирпичный обод, восемь средников. Центр в origin, лицо +Z."""
-    disc = common.to_group(g = ironwork.spool(p0 = vec3(0, 0, -0.05), p1 = vec3(0, 0, 0.05), r0 = r, r1 = r, sides = 24), src = "iron", dst = "glass")
-    rim = common.to_group(g = fixtures.ring(center = vec3(0, 0, 0.04), radius = r + 0.08, r = 0.11, yaw_deg = 0.0), src = "iron", dst = "brick")
-    mull0 = common.slab(size = vec3(0.055, r * 2.08, 0.055), pos = vec3(0, 0, 0.08), grp = "brick")
+    disc = parts.to_group(g = ironwork.spool(p0 = vec3(0, 0, -0.05), p1 = vec3(0, 0, 0.05), r0 = r, r1 = r, sides = 24), src = "iron", dst = "glass")
+    rim = parts.to_group(g = fixtures.ring(center = vec3(0, 0, 0.04), radius = r + 0.08, r = 0.11, yaw_deg = 0.0), src = "iron", dst = "brick")
+    mull0 = parts.slab(size = vec3(0.055, r * 2.08, 0.055), pos = vec3(0, 0, 0.08), grp = "brick")
     mulls = repeat (mull0, iterations = 7) |acc| {
         a = (f32(@iteration) + 1.0) * 22.5
         acc = merge(acc, transform(mull0, rotate = vec3(0, 0, a)))
     }
-    hub = common.to_group(g = ironwork.spool(p0 = vec3(0, 0, 0.02), p1 = vec3(0, 0, 0.12), r0 = 0.16, r1 = 0.16, sides = 12), src = "iron", dst = "brick")
+    hub = parts.to_group(g = ironwork.spool(p0 = vec3(0, 0, 0.02), p1 = vec3(0, 0, 0.12), r0 = 0.16, r1 = 0.16, sides = 12), src = "iron", dst = "brick")
     out = merge(disc, rim, mulls, hub)
 }
 
 def portal(w: f32, h: f32, rng: rng) -> (out: geo<mesh>) {
     """Тройной стрельчатый портал: три ордера кирпича, тёмная ниша, две створки."""
-    outer = common.pointed_panel(w = w + 1.05, h = h + 0.50, t = 0.30, grp = "brick")
-    mid = transform(common.pointed_panel(w = w + 0.58, h = h + 0.22, t = 0.22, grp = "brick"), translate = vec3(0, 0.02, 0.16))
-    inner = transform(common.pointed_panel(w = w + 0.18, h = h - 0.04, t = 0.16, grp = "brick"), translate = vec3(0, 0.04, 0.30))
-    dark = transform(common.pointed_panel(w = w, h = h - 0.10, t = 0.06, grp = "glass"), translate = vec3(0, 0.06, 0.36))
+    outer = victorian.pointed_panel(w = w + 1.05, h = h + 0.50, t = 0.30, grp = "brick")
+    mid = transform(victorian.pointed_panel(w = w + 0.58, h = h + 0.22, t = 0.22, grp = "brick"), translate = vec3(0, 0.02, 0.16))
+    inner = transform(victorian.pointed_panel(w = w + 0.18, h = h - 0.04, t = 0.16, grp = "brick"), translate = vec3(0, 0.04, 0.30))
+    dark = transform(victorian.pointed_panel(w = w, h = h - 0.10, t = 0.06, grp = "glass"), translate = vec3(0, 0.06, 0.36))
     leaf_h = h - w * 0.72 - 0.08
     leaf = parts.plank_panel(w = w * 0.46, h = leaf_h, t = 0.07, n = 4, rng = rng)
     l0 = transform(leaf, translate = vec3(0.0 - w * 0.24, leaf_h * 0.5 + 0.08, 0.40))
     l1 = transform(leaf, translate = vec3(w * 0.24, leaf_h * 0.5 + 0.08, 0.40))
-    bar = common.slab(size = vec3(w * 0.96, 0.08, 0.08), pos = vec3(0, leaf_h + 0.14, 0.40), grp = "wood")
+    bar = parts.slab(size = vec3(w * 0.96, 0.08, 0.08), pos = vec3(0, leaf_h + 0.14, 0.40), grp = "wood")
     out = merge(outer, mid, inner, dark, l0, l1, bar)
 }
 
 def steps(w: f32, n: int, rise: f32) -> (out: geo<mesh>) {
     """Каменные ступени в +Z: низ на y = 0, верх на n·rise, верхняя ступень у z = 0."""
     tread = 0.32
-    s0 = common.slab(size = vec3(w, rise, tread), pos = vec3(0, rise * 0.5, tread * (f32(n) - 0.5)), grp = "stone")
+    s0 = parts.slab(size = vec3(w, rise, tread), pos = vec3(0, rise * 0.5, tread * (f32(n) - 0.5)), grp = "stone")
     out = repeat (s0, iterations = n - 1) |acc| {
         k = f32(@iteration) + 1.0
-        acc = merge(acc, common.slab(size = vec3(w - k * 0.08, rise, tread), pos = vec3(0, rise * (k + 0.5), tread * (f32(n) - k - 0.5)), grp = "stone"))
+        acc = merge(acc, parts.slab(size = vec3(w - k * 0.08, rise, tread), pos = vec3(0, rise * (k + 0.5), tread * (f32(n) - k - 0.5)), grp = "stone"))
     }
 }
 
 def buttress(h: f32) -> (out: geo<mesh>) {
     """Ступенчатый контрфорс, лицо +Z, низ на y = 0."""
-    lo = common.slab(size = vec3(0.50, h * 0.58, 0.58), pos = vec3(0, h * 0.29, 0.08), grp = "brick")
-    hi = common.slab(size = vec3(0.38, h * 0.48, 0.40), pos = vec3(0, h * 0.72, 0.02), grp = "brick")
-    cap = common.slab(size = vec3(0.58, 0.11, 0.64), pos = vec3(0, h * 0.58, 0.06), grp = "brick")
+    lo = parts.slab(size = vec3(0.50, h * 0.58, 0.58), pos = vec3(0, h * 0.29, 0.08), grp = "brick")
+    hi = parts.slab(size = vec3(0.38, h * 0.48, 0.40), pos = vec3(0, h * 0.72, 0.02), grp = "brick")
+    cap = parts.slab(size = vec3(0.58, 0.11, 0.64), pos = vec3(0, h * 0.58, 0.06), grp = "brick")
     out = merge(lo, hi, cap)
 }
 

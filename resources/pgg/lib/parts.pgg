@@ -41,3 +41,16 @@ def place(g: geo<mesh>, yaw_deg: f32, at: vec3) -> (out: geo<mesh>) {
     r = transform(g, rotate = vec3(0, yaw_deg, 0))
     out = transform(r, translate = at)
 }
+
+def slab(size: vec3, pos: vec3, grp: string) -> (out: geo<mesh>) {
+    """Прямой бокс без фаски (крупные объёмы: cbox загибает грани), центр в pos,
+    все грани в группе grp. Контракт: плоские нормали, без группы "edge"."""
+    body = compute_normals(box(size = size), mode = flat)
+    out = mark(transform(body, translate = pos), grp, where = true, domain = faces)
+}
+
+def to_group(g: geo<mesh>, src: string, dst: string) -> (out: geo<mesh>) {
+    """Переметить грани из группы src в dst (ingroup-маска, затем снять src).
+    Контракт: прочие группы и геометрия не меняются; src без граней — g как есть."""
+    out = unmark(mark(g, dst, where = ingroup(src), domain = faces), src)
+}
