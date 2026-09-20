@@ -1,14 +1,10 @@
 # Общие вспомогательные элементы и геометрические примитивы для spire_house:
-# карнизы, дентикулы, ступенчатый корбель, восьмигранные тела, люкарны шпиля и решётки.
+# карнизы, дентикулы, восьмигранные тела, люкарны шпиля и решётки.
 import lib.parts
 import lib.blockwork
 import lib.shapes as shapes
 import lib.masonry as masonry
 
-def to_group(g: geo<mesh>, src: string, dst: string) -> (out: geo<mesh>) {
-    """Переметить грани из группы src в dst (ingroup-маска, затем снять src)."""
-    out = unmark(mark(g, dst, where = ingroup(src), domain = faces), src)
-}
 
 def brick_prism(w: f32, d: f32, h: f32, y0: f32) -> (out: geo<mesh>) {
     """Прямой объём w×d высотой h, низ на y0 — обёртка blockwork.core_prism."""
@@ -139,26 +135,6 @@ def dentils(w: f32, d: f32, y: f32) -> (out: geo<mesh>) {
     out = realize(instance_on_points(all_pts, source = dent))
 }
 
-def corbel(w: f32, d: f32, h: f32, steps: int = 5) -> (out: geo<mesh>) {
-    """Ступенчатый каменный консольный сход под эркером: n ступеней сверху вниз,
-    каждая следующая уже и ближе к стене. Верх консоли на y = h, низ на y = 0."""
-    st_h = h / f32(steps)
-    st0_frac = 1.0
-    st0_w = w * st0_frac
-    st0_d = d * st0_frac
-    st0_y = h - st_h * 0.5
-    st0_z = d * 0.5 - (d - st0_d) * 0.5
-    b0 = parts.piece(size = vec3(st0_w, st_h * 0.95, st0_d), pos = vec3(0, st0_y, st0_z), grp = "stone")
-    out = repeat (b0, iterations = steps - 1) |acc| {
-        k = f32(@iteration) + 1.0
-        frac = 1.0 - k * (0.62 / f32(steps))
-        sw = w * frac
-        sd = d * frac
-        sy = h - (k + 0.5) * st_h
-        sz = d * 0.5 - (d - sd) * 0.5
-        acc = merge(acc, parts.piece(size = vec3(sw, st_h * 0.95, sd), pos = vec3(0, sy, sz), grp = "stone"))
-    }
-}
 
 def octa_frustum(y0: f32, y1: f32, r0: f32, r1: f32, grp: string) -> (out: geo<mesh>) {
     """Правильная восьмигранная усечённая пирамида: r0/r1 — апофемы."""

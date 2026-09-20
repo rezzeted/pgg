@@ -2,6 +2,7 @@
 # +Z запад (фасад), +X юг. Центр плана в origin.
 
 import church.common as common
+import lib.parts
 import church.towers as twr
 
 def plinths(nave_w: f32, nave_len: f32, tower_w: f32, aisle_w: f32, plinth_h: f32) -> (out: geo<mesh>) {
@@ -13,11 +14,11 @@ def plinths(nave_w: f32, nave_len: f32, tower_w: f32, aisle_w: f32, plinth_h: f3
     tcx = nave_w * 0.5 + tower_w * 0.5
     tcz = facade_z - tower_w * 0.5
     o = 0.14
-    nave = common.slab(size = vec3(nave_w + 0.16, plinth_h, total_d + 0.12), pos = vec3(0, plinth_h * 0.5, 0), grp = "plinth")
-    as_s = common.slab(size = vec3(aisle_w + 0.16, plinth_h, nave_len + 0.10), pos = vec3(nave_w * 0.5 + aisle_w * 0.5, plinth_h * 0.5, aisle_cz), grp = "plinth")
-    as_n = common.slab(size = vec3(aisle_w + 0.16, plinth_h, nave_len + 0.10), pos = vec3(0.0 - (nave_w * 0.5 + aisle_w * 0.5), plinth_h * 0.5, aisle_cz), grp = "plinth")
-    ts = common.slab(size = vec3(tower_w + o, plinth_h, tower_w + o), pos = vec3(tcx, plinth_h * 0.5, tcz), grp = "plinth")
-    tn = common.slab(size = vec3(tower_w + o, plinth_h, tower_w + o), pos = vec3(0.0 - tcx, plinth_h * 0.5, tcz), grp = "plinth")
+    nave = parts.slab(size = vec3(nave_w + 0.16, plinth_h, total_d + 0.12), pos = vec3(0, plinth_h * 0.5, 0), grp = "plinth")
+    as_s = parts.slab(size = vec3(aisle_w + 0.16, plinth_h, nave_len + 0.10), pos = vec3(nave_w * 0.5 + aisle_w * 0.5, plinth_h * 0.5, aisle_cz), grp = "plinth")
+    as_n = parts.slab(size = vec3(aisle_w + 0.16, plinth_h, nave_len + 0.10), pos = vec3(0.0 - (nave_w * 0.5 + aisle_w * 0.5), plinth_h * 0.5, aisle_cz), grp = "plinth")
+    ts = parts.slab(size = vec3(tower_w + o, plinth_h, tower_w + o), pos = vec3(tcx, plinth_h * 0.5, tcz), grp = "plinth")
+    tn = parts.slab(size = vec3(tower_w + o, plinth_h, tower_w + o), pos = vec3(0.0 - tcx, plinth_h * 0.5, tcz), grp = "plinth")
     out = merge(nave, as_s, as_n, ts, tn)
 }
 
@@ -26,9 +27,9 @@ def walls(nave_w: f32, nave_len: f32, tower_w: f32, aisle_w: f32, nave_h: f32, a
     total_d = tower_w + nave_len
     east_z = 0.0 - total_d * 0.5
     aisle_cz = east_z + nave_len * 0.5
-    nave = common.slab(size = vec3(nave_w, nave_h, total_d), pos = vec3(0, nave_h * 0.5, 0), grp = "stucco")
-    as_s = common.slab(size = vec3(aisle_w, aisle_h, nave_len), pos = vec3(nave_w * 0.5 + aisle_w * 0.5, aisle_h * 0.5, aisle_cz), grp = "stucco")
-    as_n = common.slab(size = vec3(aisle_w, aisle_h, nave_len), pos = vec3(0.0 - (nave_w * 0.5 + aisle_w * 0.5), aisle_h * 0.5, aisle_cz), grp = "stucco")
+    nave = parts.slab(size = vec3(nave_w, nave_h, total_d), pos = vec3(0, nave_h * 0.5, 0), grp = "stucco")
+    as_s = parts.slab(size = vec3(aisle_w, aisle_h, nave_len), pos = vec3(nave_w * 0.5 + aisle_w * 0.5, aisle_h * 0.5, aisle_cz), grp = "stucco")
+    as_n = parts.slab(size = vec3(aisle_w, aisle_h, nave_len), pos = vec3(0.0 - (nave_w * 0.5 + aisle_w * 0.5), aisle_h * 0.5, aisle_cz), grp = "stucco")
     out = merge(nave, as_s, as_n)
 }
 

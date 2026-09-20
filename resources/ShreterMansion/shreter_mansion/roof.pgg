@@ -3,6 +3,7 @@
 # кирпичные трубы, полукруглые кованые балкончики мансардных окон.
 
 import lib.parts
+import lib.arch.terminals_victorian as victorian
 import lib.plan as plan
 import lib.ironwork
 import shreter_mansion.common as common
@@ -19,7 +20,7 @@ def mansard(w: f32, d: f32, y0: f32, low_h: f32, low_run: f32, up_h: f32, up_run
     w1 = w + 0.6 - low_run * 2.0
     d1 = d + 0.6 - low_run * 2.0
     up = common.hip_band(w0 = w1, d0 = d1, w1 = w1 - up_run * 2.0, d1 = d1 - up_run * 2.0, y0 = y0 + low_h, y1 = y0 + low_h + up_h, grp = "roof")
-    deck = common.slab(size = vec3(w1 - up_run * 2.0 + 0.2, 0.10, d1 - up_run * 2.0 + 0.2), pos = vec3(0, y0 + low_h + up_h + 0.05, 0), grp = "roof")
+    deck = parts.slab(size = vec3(w1 - up_run * 2.0 + 0.2, 0.10, d1 - up_run * 2.0 + 0.2), pos = vec3(0, y0 + low_h + up_h + 0.05, 0), grp = "roof")
     out = merge(low, up, deck)
 }
 
@@ -27,18 +28,18 @@ def gable_prism(w: f32, y0: f32, t: f32) -> (out: geo<mesh>) {
     """Остроконечный щипец (стена-треугольник): ширина w, низ на y0, толщина t.
     Поле — кирпич, ветровые тяги и ступенчатые зубцы по скатам — терракота."""
     rise = w * 0.72 + 0.30
-    body_raw = common.slab(size = vec3(w, rise, t), pos = vec3(0, y0 + rise * 0.5, 0), grp = "brick")
-    body = common.pointed_clip(g = body_raw, w = w, h = rise, y0 = y0)
+    body_raw = parts.slab(size = vec3(w, rise, t), pos = vec3(0, y0 + rise * 0.5, 0), grp = "brick")
+    body = victorian.pointed_clip(g = body_raw, w = w, h = rise, y0 = y0)
     # Ветровые тяги по скатам: от пружин (±w/2, y0+0.30) к вершине (0, y0+rise)
     sl = length(vec3(w * 0.5, w * 0.72, 0))
     ang = degrees(atan2(w * 0.72, w * 0.5))
-    bar0 = common.slab(size = vec3(sl + 0.10, 0.16, 0.10), pos = vec3(0, 0, 0), grp = "deco")
+    bar0 = parts.slab(size = vec3(sl + 0.10, 0.16, 0.10), pos = vec3(0, 0, 0), grp = "deco")
     bar_l = transform(bar0, rotate = vec3(0, 0, ang), translate = vec3(0.0 - w * 0.25, y0 + w * 0.36 + 0.30, t * 0.5))
     bar_r = transform(bar0, rotate = vec3(0, 0, 180.0 - ang), translate = vec3(w * 0.25, y0 + w * 0.36 + 0.30, t * 0.5))
     bars = merge(bar_l, bar_r, transform(bar_l, translate = vec3(0, 0, 0.0 - t)), transform(bar_r, translate = vec3(0, 0, 0.0 - t)))
     # Ступенчатые зубцы под ветровыми тягами (оба ската, обе стороны)
     n_st = 6
-    tooth0 = common.slab(size = vec3(0.30, 0.14, 0.14), pos = vec3(0, 0, 0), grp = "deco")
+    tooth0 = parts.slab(size = vec3(0.30, 0.14, 0.14), pos = vec3(0, 0, 0), grp = "deco")
     teeth_lr = repeat (tooth0, iterations = n_st) |acc| {
         k = f32(@iteration)
         tx = (k + 0.5) * (w * 0.5 / f32(n_st))
@@ -59,26 +60,26 @@ def attic_balcony(r: f32) -> (out: geo<mesh>) {
     кованая дуга ограждения, консоль по центру. Низ на y = 0."""
     plate = plan.arc_shell(cx = 0.0, cz = 0.0, r_in = 0.03, r_out = r, a0 = 0.0 - 90.0, a1 = 90.0, y0 = 0.0, y1 = 0.12, grp = "deco", n = 18)
     rail = common.rail_arc(r = r - 0.03, a0 = 0.0 - 88.0, a1 = 88.0, h = 0.85)
-    corb = transform(common.corbel(w = 0.30, d = r * 0.8, h = 0.5, grp = "deco", steps = 3), translate = vec3(0, 0.0 - 0.5, r * 0.15))
+    corb = transform(victorian.corbel(w = 0.30, d = r * 0.8, h = 0.5, grp = "deco", steps = 3), translate = vec3(0, 0.0 - 0.5, r * 0.15))
     out = merge(plate, rail, corb)
 }
 
 def dormer(w: f32, h: f32, dep: f32) -> (out: geo<mesh>) {
     """Слуховое окно на скате: коробка (лицо +Z, низ y = 0), стрельчатое окошко,
     свой четырёхскатный козырёк. Тело — roof, рамка — deco."""
-    body = common.slab(size = vec3(w, h, dep), pos = vec3(0, h * 0.5, 0), grp = "roof")
+    body = parts.slab(size = vec3(w, h, dep), pos = vec3(0, h * 0.5, 0), grp = "roof")
     cap = common.hip_band(w0 = w + 0.24, d0 = dep + 0.24, w1 = 0.06, d1 = dep * 0.4, y0 = h, y1 = h + w * 0.42, grp = "roof")
-    frame = transform(common.pointed_panel(w = w * 0.5 + 0.24, h = h * 0.62 + 0.14, t = 0.10, grp = "deco"), translate = vec3(0, h * 0.11, dep * 0.5 - 0.02))
-    glass = transform(common.pointed_panel(w = w * 0.5, h = h * 0.62, t = 0.05, grp = "glass"), translate = vec3(0, h * 0.16, dep * 0.5 + 0.04))
+    frame = transform(victorian.pointed_panel(w = w * 0.5 + 0.24, h = h * 0.62 + 0.14, t = 0.10, grp = "deco"), translate = vec3(0, h * 0.11, dep * 0.5 - 0.02))
+    glass = transform(victorian.pointed_panel(w = w * 0.5, h = h * 0.62, t = 0.05, grp = "glass"), translate = vec3(0, h * 0.16, dep * 0.5 + 0.04))
     out = merge(body, cap, frame, glass)
 }
 
 def chimney(w: f32, d: f32, h: f32) -> (out: geo<mesh>) {
     """Высокая труба из красного кирпича (deco): ствол, два напускных пояса, крышка."""
-    shaft = common.slab(size = vec3(w, h, d), pos = vec3(0, h * 0.5, 0), grp = "deco")
-    b1 = common.slab(size = vec3(w + 0.18, 0.16, d + 0.18), pos = vec3(0, h - 0.62, 0), grp = "deco")
-    b2 = common.slab(size = vec3(w + 0.30, 0.16, d + 0.30), pos = vec3(0, h - 0.34, 0), grp = "deco")
-    cap = common.slab(size = vec3(w + 0.42, 0.12, d + 0.42), pos = vec3(0, h - 0.06, 0), grp = "deco")
+    shaft = parts.slab(size = vec3(w, h, d), pos = vec3(0, h * 0.5, 0), grp = "deco")
+    b1 = parts.slab(size = vec3(w + 0.18, 0.16, d + 0.18), pos = vec3(0, h - 0.62, 0), grp = "deco")
+    b2 = parts.slab(size = vec3(w + 0.30, 0.16, d + 0.30), pos = vec3(0, h - 0.34, 0), grp = "deco")
+    cap = parts.slab(size = vec3(w + 0.42, 0.12, d + 0.42), pos = vec3(0, h - 0.06, 0), grp = "deco")
     out = merge(shaft, b1, b2, cap)
 }
 

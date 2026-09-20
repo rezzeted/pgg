@@ -3,13 +3,14 @@
 # ставится translate в (cx, 0, cz).
 
 import lib.roofing
+import lib.parts
 import lib.shapes as shapes
 import church.common as common
 
 def tower_body(w: f32, low_h: f32, belfry_h: f32, cornice_h: f32) -> (out: geo<mesh>) {
     """Ствол + поясок на low_h + карниз под шпилем. Низ на y = 0."""
     body_h = low_h + belfry_h + cornice_h
-    shaft = common.slab(size = vec3(w, body_h, w), pos = vec3(0, body_h * 0.5, 0), grp = "stucco")
+    shaft = parts.slab(size = vec3(w, body_h, w), pos = vec3(0, body_h * 0.5, 0), grp = "stucco")
     belt = common.belt_box(w = w, d = w, y = low_h, h = 0.22, over = 0.08, grp = "brick")
     corn = common.belt_box(w = w, d = w, y = body_h - cornice_h * 0.5, h = cornice_h, over = 0.16, grp = "brick")
     out = merge(shaft, belt, corn)
@@ -22,13 +23,13 @@ def quoin_corner(h: f32, x: f32, z: f32, sx: f32, sz: f32) -> (out: geo<mesh>) {
     L = 0.26
     t = 0.095
     y0 = ch * 0.5
-    bz = common.slab(size = vec3(L, ch * 0.86, t), pos = vec3(x - sx * L * 0.5, y0, z + sz * t * 0.5), grp = "brick")
-    bx = common.slab(size = vec3(t, ch * 0.86, L), pos = vec3(x + sx * t * 0.5, y0, z - sz * L * 0.5), grp = "brick")
+    bz = parts.slab(size = vec3(L, ch * 0.86, t), pos = vec3(x - sx * L * 0.5, y0, z + sz * t * 0.5), grp = "brick")
+    bx = parts.slab(size = vec3(t, ch * 0.86, L), pos = vec3(x + sx * t * 0.5, y0, z - sz * L * 0.5), grp = "brick")
     row0 = merge(bz, bx)
     out = repeat (row0, iterations = n - 1) |acc| {
         k = f32(@iteration) + 1.0
         y = y0 + k * ch
-        acc = merge(acc, common.slab(size = vec3(L, ch * 0.86, t), pos = vec3(x - sx * L * 0.5, y, z + sz * t * 0.5), grp = "brick"), common.slab(size = vec3(t, ch * 0.86, L), pos = vec3(x + sx * t * 0.5, y, z - sz * L * 0.5), grp = "brick"))
+        acc = merge(acc, parts.slab(size = vec3(L, ch * 0.86, t), pos = vec3(x - sx * L * 0.5, y, z + sz * t * 0.5), grp = "brick"), parts.slab(size = vec3(t, ch * 0.86, L), pos = vec3(x + sx * t * 0.5, y, z - sz * L * 0.5), grp = "brick"))
     }
 }
 

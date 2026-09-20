@@ -1,5 +1,6 @@
-# Общий словарь особняка Шретера: плиты без фаски, четырёхскатные призмы,
-# сегментные и стрельчатые арки, кирпичная облицовка, кованые ограждения.
+# Общий словарь особняка Шретера: четырёхскатные призмы, сегментные арки,
+# кирпичная облицовка, кованые ограждения. Плиты — parts.slab, стрельчатые
+# силуэты и консоли — lib.arch.terminals_victorian.
 # Лицо деталей +Z, низ на y = 0, если не сказано иначе.
 
 import lib.parts
@@ -9,16 +10,7 @@ import lib.ironwork
 import lib.shapes as shapes
 import lib.plan as plan
 
-def to_group(g: geo<mesh>, src: string, dst: string) -> (out: geo<mesh>) {
-    """Переметить грани src → dst."""
-    out = unmark(mark(g, dst, where = ingroup(src), domain = faces), src)
-}
 
-def slab(size: vec3, pos: vec3, grp: string) -> (out: geo<mesh>) {
-    """Прямой бокс без фаски (крупные объёмы: cbox загибает грани)."""
-    body = compute_normals(box(size = size), mode = flat)
-    out = mark(transform(body, translate = pos), grp, where = true, domain = faces)
-}
 
 def hip_band(w0: f32, d0: f32, w1: f32, d1: f32, y0: f32, y1: f32, grp: string) -> (out: geo<mesh>) {
     """Четырёхскатная призма: концентрическое сечение w0×d0 на y0 → w1×d1 на y1
@@ -27,7 +19,7 @@ def hip_band(w0: f32, d0: f32, w1: f32, d1: f32, y0: f32, y1: f32, grp: string) 
     h = y1 - y0
     run_w = (w0 - w1) * 0.5
     run_d = (d0 - d1) * 0.5
-    body = slab(size = vec3(w0, h, d0), pos = vec3(0, (y0 + y1) * 0.5, 0), grp = grp)
+    body = parts.slab(size = vec3(w0, h, d0), pos = vec3(0, (y0 + y1) * 0.5, 0), grp = grp)
     c1 = select(run_d > 0.001, a = clip(body, origin = vec3(0, y1, d1 * 0.5), normal = vec3(0, 0.0 - run_d, 0.0 - h)), b = body)
     c2 = select(run_d > 0.001, a = clip(c1, origin = vec3(0, y1, 0.0 - d1 * 0.5), normal = vec3(0, 0.0 - run_d, h)), b = c1)
     c3 = select(run_w > 0.001, a = clip(c2, origin = vec3(w1 * 0.5, y1, 0), normal = vec3(0.0 - run_w, 0.0 - h, 0)), b = c2)
@@ -52,8 +44,8 @@ def brick_from_rows(rows: geo<points>, rng: rng) -> (out: geo<mesh>) {
 def belt(w: f32, d: f32, y: f32, h: f32, grp: string, over_lo: f32 = 0.16, over_hi: f32 = 0.24) -> (out: geo<mesh>) {
     """Двухступенчатый поясной карниз по периметру w×d, низ на y: нижняя ступень
     уже и толще, верхняя шире и тоньше. Вынос каждой ступени от стены на сторону."""
-    lo = slab(size = vec3(w + over_lo * 2.0, h * 0.55, d + over_lo * 2.0), pos = vec3(0, y + h * 0.275, 0), grp = grp)
-    hi = slab(size = vec3(w + over_hi * 2.0, h * 0.45, d + over_hi * 2.0), pos = vec3(0, y + h * 0.775, 0), grp = grp)
+    lo = parts.slab(size = vec3(w + over_lo * 2.0, h * 0.55, d + over_lo * 2.0), pos = vec3(0, y + h * 0.275, 0), grp = grp)
+    hi = parts.slab(size = vec3(w + over_hi * 2.0, h * 0.45, d + over_hi * 2.0), pos = vec3(0, y + h * 0.775, 0), grp = grp)
     out = merge(lo, hi)
 }
 
@@ -69,7 +61,7 @@ def seg_arch(w: f32, rise: f32, band: f32, t: f32, grp: string) -> (out: geo<mes
     ring0 = fixtures.ring(center = vec3(0, yc, 0), radius = Rc, r = band * 0.5, yaw_deg = 0.0)
     c1 = clip(ring0, origin = vec3(0, yc, 0), normal = vec3(0.0 - cos(radians(half_a)), sin(radians(half_a)), 0))
     c2 = clip(c1, origin = vec3(0, yc, 0), normal = vec3(cos(radians(half_a)), sin(radians(half_a)), 0))
-    banded = to_group(g = c2, src = "iron", dst = grp)
+    banded = parts.to_group(g = c2, src = "iron", dst = grp)
     y_spring = yc + (Rc - band * 0.5) * cos(radians(half_a))
     out = transform(banded, translate = vec3(0, 0.0 - y_spring, band * 0.5))
 }
@@ -84,48 +76,21 @@ def seg_disc(w: f32, rise: f32, t: f32, grp: string) -> (out: geo<mesh>) {
     disc0 = ironwork.spool(p0 = vec3(0, yc, 0.0 - t * 0.5), p1 = vec3(0, yc, t * 0.5), r0 = Rc, r1 = Rc, sides = 24)
     c1 = clip(disc0, origin = vec3(0, yc, 0), normal = vec3(0.0 - cos(radians(half_a)), sin(radians(half_a)), 0))
     c2 = clip(c1, origin = vec3(0, yc, 0), normal = vec3(cos(radians(half_a)), sin(radians(half_a)), 0))
-    banded = to_group(g = c2, src = "iron", dst = grp)
+    banded = parts.to_group(g = c2, src = "iron", dst = grp)
     y_spring = yc + Rc * cos(radians(half_a))
     out = transform(banded, translate = vec3(0, 0.0 - y_spring, t * 0.5))
 }
 
-def pointed_clip(g: geo<mesh>, w: f32, h: f32, y0: f32) -> (out: geo<mesh>) {
-    """Стрельчатый силуэт в XY: вершина (0, y0+h), пружины (±w/2, y0+h − 0.72·w).
-    clip держит сторону нормали — оставляем тело под скатами."""
-    rise = w * 0.72
-    apex = vec3(0, y0 + h, 0)
-    n_l = vec3(rise, 0.0 - w * 0.5, 0)
-    n_r = vec3(0.0 - rise, 0.0 - w * 0.5, 0)
-    c0 = clip(g, origin = apex, normal = n_l)
-    out = clip(c0, origin = apex, normal = n_r)
-}
 
-def pointed_panel(w: f32, h: f32, t: f32, grp: string) -> (out: geo<mesh>) {
-    """Стрельчатая плита: ширина w, высота h, толщина t, низ y = 0, центр x/z = 0."""
-    expect h > w * 0.72 + 0.25: "pointed_panel: высота меньше стрельчатой головки"
-    raw = slab(size = vec3(w, h, t), pos = vec3(0, h * 0.5, 0), grp = grp)
-    out = pointed_clip(g = raw, w = w, h = h, y0 = 0.0)
-}
 
-def corbel(w: f32, d: f32, h: f32, grp: string, steps: int = 4) -> (out: geo<mesh>) {
-    """Ступенчатая консоль: n ступеней сверху вниз, каждая следующая уже и ближе
-    к стене. Верх на y = h, низ на y = 0, лицо на +Z (вынос в +Z)."""
-    st_h = h / f32(steps)
-    b0 = slab(size = vec3(w, st_h * 0.95, d), pos = vec3(0, h - st_h * 0.5, d * 0.5), grp = grp)
-    out = repeat (b0, iterations = steps - 1) |acc| {
-        k = f32(@iteration) + 1.0
-        frac = 1.0 - k * (0.62 / f32(steps))
-        acc = merge(acc, slab(size = vec3(w * frac, st_h * 0.95, d * frac), pos = vec3(0, h - (k + 0.5) * st_h, d * frac * 0.5), grp = grp))
-    }
-}
 
 def rail_run(len: f32, h: f32) -> (out: geo<mesh>) {
     """Кованое ограждение длины len вдоль X: два пояска и частые пики."""
-    top_r = slab(size = vec3(len, 0.045, 0.045), pos = vec3(0, h, 0), grp = "iron")
-    bot_r = slab(size = vec3(len, 0.04, 0.04), pos = vec3(0, 0.10, 0), grp = "iron")
+    top_r = parts.slab(size = vec3(len, 0.045, 0.045), pos = vec3(0, h, 0), grp = "iron")
+    bot_r = parts.slab(size = vec3(len, 0.04, 0.04), pos = vec3(0, 0.10, 0), grp = "iron")
     n_p = max(int(len / 0.30), 2)
     pts = transform(mesh_line(count = n_p, length = f32(n_p - 1) * 0.30, dir = (1, 0, 0)), translate = vec3(0.0 - f32(n_p - 1) * 0.30 * 0.5, 0, 0))
-    picket = slab(size = vec3(0.025, h - 0.10, 0.025), pos = vec3(0, (h + 0.10) * 0.5, 0), grp = "iron")
+    picket = parts.slab(size = vec3(0.025, h - 0.10, 0.025), pos = vec3(0, (h + 0.10) * 0.5, 0), grp = "iron")
     pickets = realize(instance_on_points(pts, source = picket))
     out = merge(top_r, bot_r, pickets)
 }
@@ -137,7 +102,7 @@ def rail_arc(r: f32, a0: f32, a1: f32, h: f32) -> (out: geo<mesh>) {
     bot_r = plan.arc_shell(cx = 0.0, cz = 0.0, r_in = r - 0.020, r_out = r + 0.020, a0 = a0, a1 = a1, y0 = 0.08, y1 = 0.12, grp = "iron", n = 24)
     n_p = max(int((a1 - a0) / 14.0), 3)
     pts = set_position(mesh_line(count = n_p, length = 0.0), pos = vec3(r * sin(radians(a0 + (a1 - a0) * f32(@index) / f32(n_p - 1))), 0.0, r * cos(radians(a0 + (a1 - a0) * f32(@index) / f32(n_p - 1)))))
-    picket = slab(size = vec3(0.025, h - 0.10, 0.025), pos = vec3(0, (h + 0.10) * 0.5, 0), grp = "iron")
+    picket = parts.slab(size = vec3(0.025, h - 0.10, 0.025), pos = vec3(0, (h + 0.10) * 0.5, 0), grp = "iron")
     pickets = realize(instance_on_points(pts, source = picket))
     out = merge(top_r, bot_r, pickets)
 }
@@ -148,7 +113,7 @@ def arcade_row(len: f32, y: f32, pitch: f32, grp: string) -> (out: geo<mesh>) {
     step = len / f32(n)
     pts = transform(mesh_line(count = n, length = len - step, dir = (1, 0, 0)), translate = vec3(0.0 - (len - step) * 0.5, y, 0))
     archlet = seg_arch(w = step * 0.72, rise = step * 0.30, band = step * 0.20, t = 0.07, grp = grp)
-    body = slab(size = vec3(step * 0.72, step * 0.34, 0.07), pos = vec3(0, step * 0.17, 0.035), grp = grp)
+    body = parts.slab(size = vec3(step * 0.72, step * 0.34, 0.07), pos = vec3(0, step * 0.17, 0.035), grp = grp)
     piece_one = merge(archlet, body)
     out = realize(instance_on_points(pts, source = piece_one))
 }
