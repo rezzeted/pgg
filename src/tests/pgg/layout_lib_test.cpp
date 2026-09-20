@@ -140,13 +140,15 @@ TEST(LayoutLib, SplitFixedFlexRepeatBandsRotated) {
     expectCol(f32Col(*rep, "t"), {0.1f, 0.25f, 0.3166667f, 0.4333333f, 0.5833333f, 0.65f, 0.7666667f, 0.9166667f, 0.9833333f});
 
     // axis Y: plinth 1.0, floor band takes the 4.8 leftover, crown 0.6.
+    // Child @P is the band BOTTOM (the низ-центр scope contract, fixed in A2:
+    // used to be the band center).
     pgg::GeoPtr bands = geoOutput(r, "bands");
     ASSERT_TRUE(bands != nullptr);
     expectCol(f32Col(*bands, "h"), {1.0f, 4.8f, 0.6f});
     ASSERT_EQ(bands->pointCount(), 3u);
-    expectF32Near((*bands->positions)[0].y, 0.5f, 1e-4f);
-    expectF32Near((*bands->positions)[1].y, 3.4f, 1e-4f);
-    expectF32Near((*bands->positions)[2].y, 6.1f, 1e-4f);
+    expectF32Near((*bands->positions)[0].y, 0.0f, 1e-4f);
+    expectF32Near((*bands->positions)[1].y, 1.0f, 1e-4f);
+    expectF32Near((*bands->positions)[2].y, 5.8f, 1e-4f);
 
     // rotated parent (yaw 90): the local +X maps to world -Z.
     pgg::GeoPtr rot = geoOutput(r, "rot");
@@ -156,6 +158,13 @@ TEST(LayoutLib, SplitFixedFlexRepeatBandsRotated) {
     expectF32Near((*rot->positions)[0].z, 2.5f, 1e-4f);
     expectF32Near((*rot->positions)[1].z, 1.0f, 1e-4f);
     expectF32Near((*rot->positions)[2].z, -0.5f, 1e-4f);
+
+    // pattern_row: 3 slots of 1.0 at pitch 2.5 from x0=-2.5; margins become walls.
+    pgg::GeoPtr rowed = geoOutput(r, "rowed");
+    ASSERT_TRUE(rowed != nullptr);
+    expectCol(intCol(*rowed, "kind"), {0, 2, 0, 2, 0, 2, 0});
+    expectCol(f32Col(*rowed, "w"), {2.0f, 1.0f, 1.5f, 1.0f, 1.5f, 1.0f, 2.0f});
+    expectXs(*rowed, {-4.0f, -2.5f, -1.25f, 0.0f, 1.25f, 2.5f, 4.0f});
 
     // stage merge: split children of two stages share the closed scope schema.
     pgg::GeoPtr merged = geoOutput(r, "merged");

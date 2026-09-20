@@ -24,6 +24,9 @@ bands = lsp.split(sb, pb, axis = 1)
 sr = ls.scope(at = vec3(10, 0, 0), yaw = 90.0, size = vec3(6.0, 3.0, 0.4), kind = 0)
 rot = lsp.split(sr, pf)
 
+rw = lsp.pattern_row(n = 3, pitch = 2.5, size = 1.0, kind = 2, x0 = 0.0 - 2.5, len = 10.0)
+rowed = lsp.split(s, rw)
+
 merged = merge(fixed, bands)
 
 output fixed
@@ -31,4 +34,5 @@ output flexed
 output rep
 output bands
 output rot
+output rowed
 output merged

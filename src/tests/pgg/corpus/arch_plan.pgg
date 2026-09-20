@@ -1,0 +1,29 @@
+# A2 (docs/pgg/architecture_library_plan.md): планы arch/plan — шесть строителей,
+# аннотации @edge_len/@edge_yaw/@convex, inside, corners. Точные проверки значений —
+# в arch_lib_test.cpp.
+import lib.arch.plan as ap
+
+rect = ap.plan_rect(w = 8.0, d = 5.0)
+chamfer = ap.plan_chamfer_rect(w = 19.0, d = 15.0, c = 2.8)
+ell = ap.plan_l(w = 9.0, d = 6.5, cut_w = 3.0, cut_d = 2.5)
+yu = ap.plan_u(w = 10.0, d = 7.0, notch_w = 3.0, notch_d = 2.0)
+tee = ap.plan_t(w = 10.0, d = 8.0, stem_w = 4.0, bar_d = 3.0)
+cross = ap.plan_cross(w = 12.0, d = 10.0, arm_w = 4.0, arm_d = 3.0)
+
+corners_l = ap.corners(plan = ell, h = 7.2)
+
+p0 = set_position(mesh_line(count = 1, length = 0.0), pos = vec3(0.0, 0.0, 0.0))
+i0 = set(p0, "in_center", ap.inside(plan = ell, p = vec3(0.0, 0.0, 0.0)), domain = points)
+i1 = set(i0, "in_cut", ap.inside(plan = ell, p = vec3(3.5, 0.0, 2.5)), domain = points)
+i2 = set(i1, "in_far", ap.inside(plan = ell, p = vec3(20.0, 0.0, 0.0)), domain = points)
+i3 = set(i2, "in_cross_arm", ap.inside(plan = cross, p = vec3(5.0, 0.0, 0.0)), domain = points)
+flags = set(i3, "in_cross_notch", ap.inside(plan = cross, p = vec3(4.0, 0.0, 3.0)), domain = points)
+
+output rect
+output chamfer
+output ell
+output yu
+output tee
+output cross
+output corners_l
+output flags

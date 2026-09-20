@@ -1,0 +1,150 @@
+# lib/arch/plan.pgg — план здания: замкнутый контур пятна, CCW вид сверху
+# (docs/pgg/architecture_library_plan.md §6.3). План — единый вход стен (facade.pgg)
+# и крыши (A3). Контур — geo<points>, точка на вершину: @P (y = 0), @edge_len
+# (исходящее ребро), @edge_yaw (азимут НАРУЖНОЙ нормали исходящего ребра, 0 = +Z),
+# @convex (вершина выпуклая: квойны/вальмы — только на выпуклых, ендовы — на вогнутых).
+# Порядок вершин: CCW при взгляде с +Y (знаковая площадь в (x,z) отрицательна) —
+# наружная нормаль ребра = (−dir.z, 0, dir.x), plan_finish это проверяет (ensure).
+
+import lib.layout.scope as ls
+import lib.arch.kinds as k
+
+def plan_finish(pts: geo<points>) -> (out: geo<points>) {
+    """Аннотировать контур вершинными данными (внутренность строителей, напрямую не вызывать).
+    Инвариант §6.8: контур CCW вид сверху — знаковая площадь в (x,z) < 0."""
+    expect count(pts) >= 3: "plan: контуру нужно >= 3 вершин"
+    n = count(pts)
+    ann = foreach v in pts {
+        nxt = delete(pts, where = @index != (@piece_index + 1) % n)
+        prv = delete(pts, where = @index != (@piece_index + n - 1) % n)
+        v = plan_vertex(v = v, nxt = nxt, prv = prv)
+    }
+    ensure sum_of(@area2, on = ann) < 0.0: "plan: контур не CCW (вид сверху) — разверните порядок вершин"
+    out = remove_attr(ann, "area2")
+}
+
+def plan_vertex(v: geo<points>, nxt: geo<points>, prv: geo<points>) -> (out: geo<points>) {
+    """Одна вершина контура: ребро v→nxt, выпуклость по входящему prv→v. Внутренность plan_finish."""
+    p0 = value(@P, on = v)
+    p1 = value(@P, on = nxt)
+    pp = value(@P, on = prv)
+    e2x = dot(p1, (1, 0, 0)) - dot(p0, (1, 0, 0))
+    e2z = dot(p1, (0, 0, 1)) - dot(p0, (0, 0, 1))
+    e1x = dot(p0, (1, 0, 0)) - dot(pp, (1, 0, 0))
+    e1z = dot(p0, (0, 0, 1)) - dot(pp, (0, 0, 1))
+    a0 = set(v, "edge_len", sqrt(e2x * e2x + e2z * e2z), domain = points)
+    a1 = set(a0, "edge_yaw", degrees(atan2(0.0 - e2z, e2x)), domain = points)
+    a2 = set(a1, "convex", (e1x * e2z - e1z * e2x) < 0.0, domain = points)
+    out = set(a2, "area2", dot(p0, (1, 0, 0)) * dot(p1, (0, 0, 1)) - dot(p1, (1, 0, 0)) * dot(p0, (0, 0, 1)), domain = points)
+}
+
+def plan_rect(w: f32, d: f32) -> (out: geo<points>) {
+    """Прямоугольный план w×d, центр в origin. Вершины от (−w/2, −d/2), CCW вид сверху."""
+    expect w > 0.0 & d > 0.0: "plan_rect: габариты положительные, в метрах"
+    hw = w * 0.5
+    hd = d * 0.5
+    pts = set_position(mesh_line(count = 4, length = 0.0), pos = vec3(@index >= 2 ? hw : 0.0 - hw, 0.0, ((@index == 1) | (@index == 2)) ? hd : 0.0 - hd))
+    out = plan_finish(pts = pts)
+}
+
+def plan_chamfer_rect(w: f32, d: f32, c: f32) -> (out: geo<points>) {
+    """Прямоугольник w×d со срезанным углом (+X, +Z) катетом c (5 вершин, центр в origin).
+    Срез — выпуклая диагональная грань (эркер/уголковая башенка)."""
+    expect w > 0.0 & d > 0.0 & c > 0.0: "plan_chamfer_rect: габариты и катет среза положительные"
+    expect c < w * 0.5 & c < d * 0.5: "plan_chamfer_rect: катет среза меньше половины габарита"
+    hw = w * 0.5
+    hd = d * 0.5
+    pts = set_position(mesh_line(count = 5, length = 0.0), pos = vec3(@index <= 1 ? 0.0 - hw : (@index == 2 ? hw - c : hw), 0.0, ((@index == 1) | (@index == 2)) ? hd : (@index == 3 ? hd - c : 0.0 - hd)))
+    out = plan_finish(pts = pts)
+}
+
+def plan_l(w: f32, d: f32, cut_w: f32, cut_d: f32) -> (out: geo<points>) {
+    """Г-образный план: прямоугольник w×d с вырезом cut_w×cut_d в углу (+X, +Z),
+    6 вершин, центр описанного прямоугольника в origin. Угол выреза — вогнутый (ендова)."""
+    expect cut_w > 0.0 & cut_d > 0.0: "plan_l: габариты выреза положительные"
+    expect cut_w < w & cut_d < d: "plan_l: вырез меньше габарита плана"
+    hw = w * 0.5
+    hd = d * 0.5
+    pts = set_position(mesh_line(count = 6, length = 0.0), pos = vec3(@index <= 1 ? 0.0 - hw : (@index <= 3 ? hw - cut_w : hw), 0.0, ((@index == 1) | (@index == 2)) ? hd : ((@index == 3) | (@index == 4) ? hd - cut_d : 0.0 - hd)))
+    out = plan_finish(pts = pts)
+}
+
+def plan_u(w: f32, d: f32, notch_w: f32, notch_d: f32) -> (out: geo<points>) {
+    """П-образный план: прямоугольник w×d с нишей notch_w×notch_d, входящей с фронта (+Z)
+    по центру, 8 вершин, центр описанного прямоугольника в origin. Углы ниши вогнутые."""
+    expect notch_w > 0.0 & notch_d > 0.0: "plan_u: габариты ниши положительные"
+    expect notch_w < w & notch_d < d: "plan_u: ниша меньше габарита плана"
+    hw = w * 0.5
+    hd = d * 0.5
+    nw = notch_w * 0.5
+    pts = set_position(mesh_line(count = 8, length = 0.0), pos = vec3(@index <= 1 ? 0.0 - hw : (@index <= 3 ? 0.0 - nw : (@index <= 5 ? nw : hw)), 0.0, ((@index == 3) | (@index == 4)) ? hd - notch_d : ((@index == 0) | (@index == 7) ? 0.0 - hd : hd)))
+    out = plan_finish(pts = pts)
+}
+
+def plan_t(w: f32, d: f32, stem_w: f32, bar_d: f32) -> (out: geo<points>) {
+    """Т-образный план: поперечная балка w×bar_d у фронта (+Z) + стебель stem_w по центру,
+    8 вершин, центр описанного прямоугольника в origin. Плечи стебля — вогнутые углы."""
+    expect stem_w > 0.0 & bar_d > 0.0: "plan_t: габариты стебля/балки положительные"
+    expect stem_w < w & bar_d < d: "plan_t: стебель уже плана, балка тоньше глубины"
+    hw = w * 0.5
+    hd = d * 0.5
+    sw = stem_w * 0.5
+    pts = set_position(mesh_line(count = 8, length = 0.0), pos = vec3(@index <= 1 ? 0.0 - hw : (@index <= 3 ? 0.0 - sw : (@index <= 5 ? sw : hw)), 0.0, ((@index == 3) | (@index == 4)) ? hd : ((@index == 0) | (@index == 7) ? 0.0 - hd : hd - bar_d)))
+    out = plan_finish(pts = pts)
+}
+
+def plan_cross(w: f32, d: f32, arm_w: f32, arm_d: f32) -> (out: geo<points>) {
+    """Крестовый план: вертикальная балка arm_w×d + горизонтальная w×arm_d, центры в origin,
+    12 вершин. Восемь вогнутых углов (стыки крыш — ендовы)."""
+    expect arm_w > 0.0 & arm_d > 0.0: "plan_cross: сечения балок положительные"
+    expect arm_w < w & arm_d < d: "plan_cross: балка уже/тоньше пересекаемой"
+    hw = w * 0.5
+    hd = d * 0.5
+    aw = arm_w * 0.5
+    ad = arm_d * 0.5
+    pts = set_position(mesh_line(count = 12, length = 0.0), pos = vec3(((@index <= 1) | ((@index >= 4) & (@index <= 5))) ? 0.0 - aw : ((@index <= 3) ? 0.0 - hw : (((@index >= 8) & (@index <= 9)) ? hw : aw)), 0.0, ((@index == 0) | (@index == 11)) ? 0.0 - hd : ((((@index >= 1) & (@index <= 2)) | ((@index >= 9) & (@index <= 10))) ? 0.0 - ad : (((@index >= 5) & (@index <= 6)) ? hd : ad))))
+    out = plan_finish(pts = pts)
+}
+
+def corners(plan: geo<points>, h: f32 = 0.0) -> (out: geo<points>) {
+    """Scope на каждую вершину плана: слот K_CORNER, @convex вершины, @facade = индекс вершины,
+    @yaw — наружная нормаль исходящего ребра. Квойны/пилястры ставить только на выпуклых:
+    delete(corners(plan), where = !@convex). Высота рамки h (0 — потребитель ставит сам)."""
+    out = foreach v in plan {
+        v = corner_of(v = v, i = @piece_index, h = h)
+    }
+}
+
+def corner_of(v: geo<points>, i: int, h: f32) -> (out: geo<points>) {
+    """Один corner-scope по вершине v (внутренность corners; i — @piece_index цикла:
+    value(@index) на виртуальной колонке в этом контексте даёт 0)."""
+    s = ls.scope(at = value(@P, on = v), yaw = value(@edge_yaw, on = v), size = vec3(0.0, h, 0.0), kind = k.K_CORNER())
+    s0 = set(s, "convex", value(@convex, on = v), domain = points)
+    s1 = set(s0, "is_corner", true, domain = points)
+    out = set(s1, "facade", i, domain = points)
+}
+
+def inside(plan: geo<points>, p: vec3) -> (out: bool) {
+    """Точка p (y игнорируется) внутри контура? Луч +X, чётность пересечений;
+    граница считается снаружи. Горизонтальные рёбра пересечений не дают (IEEE: x/0 → ±inf,
+    конъюнкт с признаком стороны ложен — формула корректна без особых случаев)."""
+    expect count(plan) >= 3: "inside: контуру нужно >= 3 вершин"
+    n = count(plan)
+    px = dot(p, (1, 0, 0))
+    pz = dot(p, (0, 0, 1))
+    ann = foreach v in plan {
+        nxt = delete(plan, where = @index != (@piece_index + 1) % n)
+        v = inside_hit(v = v, nxt = nxt, px = px, pz = pz)
+    }
+    out = (int(sum_of(@hit, on = ann)) % 2) == 1
+}
+
+def inside_hit(v: geo<points>, nxt: geo<points>, px: f32, pz: f32) -> (out: geo<points>) {
+    """Пересечение луча +X из (px, pz) с ребром v→nxt (0/1). Внутренность inside."""
+    ax = dot(value(@P, on = v), (1, 0, 0))
+    az = dot(value(@P, on = v), (0, 0, 1))
+    bx = dot(value(@P, on = nxt), (1, 0, 0))
+    bz = dot(value(@P, on = nxt), (0, 0, 1))
+    hit = ((az > pz) != (bz > pz)) & (px < ax + (pz - az) * (bx - ax) / (bz - az))
+    out = set(v, "hit", hit ? 1 : 0, domain = points)
+}
