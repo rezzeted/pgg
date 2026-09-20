@@ -127,10 +127,12 @@ class Engine {
 
 public:
     Engine(const FlatProgram& flat, const RunParams& params, RunResult& result,
-           const std::vector<size_t>& runtimeContracts)
+           const std::vector<size_t>& runtimeContracts,
+           const std::unordered_set<const Expr*>& enumLiterals)
         : flat_(flat), params_(params), result_(result),
           fps_(*flat_.file, params_.values, numericProfileId()) {
         run_.diagnostics = &result_.diagnostics;
+        run_.enumLiteralIdents = &enumLiterals;
         run_.threads = resolveThreadCount(params_.threads);
         for (const Node* item : flat_.file->items) {
             switch (item->kind) {
@@ -1281,6 +1283,7 @@ private:
                 RunContext pieceRun;
                 pieceRun.diagnostics = &outs[pi].diagnostics;
                 pieceRun.threads = run.threads;
+                pieceRun.enumLiteralIdents = run.enumLiteralIdents;
                 pieceRun.zoneConstants.emplace_back("piece_index", Value(static_cast<int64_t>(pi)));
                 EnvMap localEnv;
                 localEnv.emplace(z->item, TypedValue{kItem, nullptr, Value(pieces[pi])});
@@ -1349,6 +1352,9 @@ private:
         if (!e) return;
         switch (e->kind) {
             case NodeKind::Ident: {
+                // Enum literals (v1.28) are name strings, not binding reads —
+                // the static typecheck marked them; nothing to pre-evaluate.
+                if (run_.enumLiteralIdents && run_.enumLiteralIdents->count(e)) return;
                 const std::string& n = static_cast<const Ident*>(e)->name;
                 if (!defined.count(n) && seen.insert(n).second) resolve(n, e->span);
                 return;
@@ -1520,10 +1526,11 @@ RunResult run(const Document& doc, const RunParams& params, const std::vector<st
     std::vector<std::string> boundNames;
     for (const auto& [name, v] : params.values) boundNames.push_back(name);
     std::vector<size_t> runtimeContracts;
-    typecheckFlat(flat, boundNames, result.diagnostics, runtimeContracts);
+    std::unordered_set<const Expr*> enumLiterals;
+    typecheckFlat(flat, boundNames, result.diagnostics, runtimeContracts, &enumLiterals);
     if (hasErrors(result.diagnostics)) return result;
 
-    Engine eng(flat, params, result, runtimeContracts);
+    Engine eng(flat, params, result, runtimeContracts, enumLiterals);
     eng.run(outputs);
     return result;
 }

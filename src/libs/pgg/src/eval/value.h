@@ -182,6 +182,10 @@ inline Type typeFromRef(const TypeRef& ref) {
     else if (b == "vec3") t.base = ScalarType::Vec3;
     else if (b == "vec4") t.base = ScalarType::Vec4;
     else if (b == "string") t.base = ScalarType::String;
+    // Enum values are strings at runtime (spec §13): the literal `tile`
+    // binds as the string "tile"; membership is checked statically (E206)
+    // against TypeRef::enumValues.
+    else if (b == "enum") t.base = ScalarType::String;
     else if (b == "rng") t.base = ScalarType::Rng;
     else if (b == "sdf") t.base = ScalarType::Sdf;
     else if (b == "geo") {

@@ -16,13 +16,21 @@
 #include "../ast.h"
 #include "expand.h"
 
+#include <unordered_set>
+
 namespace pgg {
 
 // boundParams: names of params the launcher binds this run (E604 input).
 // runtimeContracts: output — indices into flat.contracts that could not be
 // decided statically (open schema / non-constant condition); the engine
 // checks them at run time.
+// enumLiterals: optional output — expression nodes the pass verified as enum
+// literals (an ident, not naming a defined binding, in a == / != comparison
+// against an enum-typed operand, or an enum-typed interface binding's
+// literal value; spec §13 v1.28). The engine reads them as their name
+// string instead of resolving them.
 void typecheckFlat(const FlatProgram& flat, const std::vector<std::string>& boundParams,
-                   std::vector<Diagnostic>& diagnostics, std::vector<size_t>& runtimeContracts);
+                   std::vector<Diagnostic>& diagnostics, std::vector<size_t>& runtimeContracts,
+                   std::unordered_set<const Expr*>* enumLiterals = nullptr);
 
 }  // namespace pgg

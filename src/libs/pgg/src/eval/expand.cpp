@@ -662,6 +662,14 @@ private:
 
     // --- instantiation -------------------------------------------------------------
 
+    // Interface type of a def param/output binding (E204 input); enum
+    // declarations additionally record their values so the typecheck can
+    // read bare idents as enum literals at this binding (spec §13 v1.28).
+    void recordInterfaceType(const std::string& flat, const TypeRef* t) {
+        out_.declaredTypes[flat] = typeFromRef(*t);
+        if (t && t->base == "enum" && !t->enumValues.empty()) out_.declaredEnumValues[flat] = t->enumValues;
+    }
+
     // Inlines one def call: parameters become bindings of the caller's
     // (already expanded) argument expressions, body bindings are renamed to
     // `def[k].local` (`k` is the next index of this unqualified name) and
@@ -740,7 +748,7 @@ private:
                 continue;
             }
             sink.push_back(assign(call.span, flat, value));
-            out_.declaredTypes[flat] = typeFromRef(*p.type);
+            recordInterfaceType(flat, p.type);
             out_.instanceOfBinding[flat] = instIdx;
         }
 
@@ -774,7 +782,7 @@ private:
 
         for (const OutDecl& o : def->outputs) {
             const std::string flat = iname + "." + o.name;
-            out_.declaredTypes[flat] = typeFromRef(*o.type);
+            recordInterfaceType(flat, o.type);
             // Index, not a held reference: nested instantiations above may
             // have reallocated the instances vector.
             out_.instances[instIdx].outputs.push_back(flat);

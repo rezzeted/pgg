@@ -11,6 +11,7 @@
 
 #include <functional>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "value.h"
 
@@ -87,6 +88,14 @@ struct RunContext {
     // evaluation. report() appends " [at <name>]" to the codes that can fire
     // deep inside an inlined def or zone body (E204/E302/E606).
     std::vector<std::string> bindingStack;
+
+    // Enum literals (v1.28, spec §13): expression nodes the static typecheck
+    // verified as enum literals (a bare ident in a == / != comparison against
+    // an enum-typed operand, an enum-typed interface binding's literal
+    // value). The expression compiler reads them as their name string
+    // instead of resolving/reporting them. Owned by the caller (the engine);
+    // null in contexts without a preceding static pass.
+    const std::unordered_set<const Expr*>* enumLiteralIdents = nullptr;
 
     FieldNode* newNode();
     void report(const std::string& code, Span span, std::string message, std::string hint = {});

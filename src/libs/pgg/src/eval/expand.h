@@ -69,6 +69,11 @@ struct FlatProgram {
     bool expanded = false;
     // Declared interface types (def params/outputs) per flat binding — E204 input.
     std::unordered_map<std::string, Type> declaredTypes;
+    // Enum values of the def interface bindings declared `enum {...}` (same
+    // sites as declaredTypes) — the typecheck reads bare idents in their
+    // binding values and in == / != comparisons against them as enum
+    // literals (E206, spec §13 v1.28).
+    std::unordered_map<std::string, std::vector<std::string>> declaredEnumValues;
     std::unordered_map<std::string, size_t> instanceOfBinding;
     std::vector<FlatInstance> instances;
     std::vector<FlatContract> contracts;
