@@ -260,7 +260,7 @@ TEST(ArchLib, RoofRectKinds) {
     // oriented frames (orient quaternion present).
     pgg::GeoPtr anchors = geoOutput(r, "anchors");
     ASSERT_TRUE(anchors != nullptr);
-    ASSERT_EQ(anchors->pointCount(), 688u);
+    ASSERT_EQ(anchors->pointCount(), 739u);
     const std::vector<int64_t>* vars = intCol(*anchors, "variant");
     ASSERT_TRUE(vars != nullptr);
     for (int64_t v : *vars) EXPECT_EQ(v, 0);

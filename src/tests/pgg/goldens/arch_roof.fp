@@ -7,8 +7,8 @@ fingerprint man_s: 91177ddd64c70f55
 fingerprint lc_s: 7e5b61efb397317d
 fingerprint lc_e: 34fc24f932b4e364
 fingerprint cr_s: 199fd8bb0dbc8313
-fingerprint cr_e: b1dacb90dab773a5
-fingerprint anchors: c88a0abfc34161e0
+fingerprint cr_e: 9ae8b28363a00888
+fingerprint anchors: c680228a79250598
 fingerprint ridges: 4769489e8cd8283f
 fingerprint hips: d3452af12aabb720
 fingerprint valleys: 1e729dce9f7866f1

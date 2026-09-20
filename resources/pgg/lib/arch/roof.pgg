@@ -158,7 +158,7 @@ def roof_rect(w: f32, d: f32, kind: enum {flat, gable, hip, pyramid, mansard} = 
     двускатная; hip — вальмовая; pyramid — шатёр (w == d); mansard — два яруса (нижний
     крутой pitch_lo высотой break_h, верхний вальмовый pitch на обрезанном контуре).
     Диспетчер строит все виды и фильтрует по коду rk (панели/рёбра/плоскости дёшевы)."""
-    expect w >= d: "roof_rect: w >= d — конёк вдоль длинной стороны (для d > w поверните план)"
+    expect (kind != mansard) | (w >= d): "roof_rect: mansard требует w >= d (конёк вдоль длинной стороны); hip/gable/flat работают на любом аспекте"
     expect d > 0.0: "roof_rect: габариты положительные"
     expect pitch > 0.0 & pitch < 90.0: "roof_rect: уклон 0..90 градусов"
     ehw = w * 0.5 + overhang
@@ -170,14 +170,20 @@ def roof_rect(w: f32, d: f32, kind: enum {flat, gable, hip, pyramid, mansard} = 
     gable_panels = merge(tag_slope(g = gf, slope_id = 1, pitch = pitch, eave_yaw = 0.0, island = 1, rk = 1), tag_slope(g = gb, slope_id = 3, pitch = pitch, eave_yaw = 180.0, island = 3, rk = 1))
     gable_eds = tag_edges(e = gable_edges(hw_e = ehw, hd_e = ehd, y0 = y0, pitch = pitch), rk = 1)
     gable_pl = gable_planes(hw_e = ehw, hd_e = ehd, y0 = y0, pitch = pitch, rk = 1, isl0 = 1)
-    # hip (rk 2) и pyramid (rk 3): панели те же, у пирамиды конёк вырождается в точку
-    hf, hb, hl, hr = hip_panels(hw_e = ehw, hd_e = ehd, y0 = y0, pitch = pitch)
-    hip_p = merge(tag_slope(g = hf, slope_id = 1, pitch = pitch, eave_yaw = 0.0, island = 1, rk = 2), tag_slope(g = hb, slope_id = 3, pitch = pitch, eave_yaw = 180.0, island = 3, rk = 2), tag_slope(g = hl, slope_id = 0, pitch = pitch, eave_yaw = 0.0 - 90.0, island = 0, rk = 2), tag_slope(g = hr, slope_id = 2, pitch = pitch, eave_yaw = 90.0, island = 2, rk = 2))
-    hip_eds = tag_edges(e = hip_edges(hw_e = ehw, hd_e = ehd, y0 = y0, pitch = pitch), rk = 2)
-    hip_pl = hip_planes(hw_e = ehw, hd_e = ehd, y0 = y0, pitch = pitch, rk = 2)
-    pyr_p = merge(tag_slope(g = hf, slope_id = 1, pitch = pitch, eave_yaw = 0.0, island = 1, rk = 3), tag_slope(g = hb, slope_id = 3, pitch = pitch, eave_yaw = 180.0, island = 3, rk = 3), tag_slope(g = hl, slope_id = 0, pitch = pitch, eave_yaw = 0.0 - 90.0, island = 0, rk = 3), tag_slope(g = hr, slope_id = 2, pitch = pitch, eave_yaw = 90.0, island = 2, rk = 3))
-    pyr_eds = tag_edges(e = hip_edges(hw_e = ehw, hd_e = ehd, y0 = y0, pitch = pitch), rk = 3)
-    pyr_pl = hip_planes(hw_e = ehw, hd_e = ehd, y0 = y0, pitch = pitch, rk = 3)
+    # hip (rk 2) и pyramid (rk 3): конёк вдоль длинной стороны (при d > w — рамка
+    # повёрнута на ryaw = 90°); у пирамиды конёк вырождается в точку
+    chw = ehw >= ehd ? ehw : ehd
+    chd = ehw >= ehd ? ehd : ehw
+    ryaw = w >= d ? 0.0 : 90.0
+    hf, hb, hl, hr = hip_panels(hw_e = chw, hd_e = chd, y0 = y0, pitch = pitch)
+    hip0 = merge(tag_slope(g = hf, slope_id = ryaw == 0.0 ? 1 : 2, pitch = pitch, eave_yaw = ryaw, island = 1, rk = 2), tag_slope(g = hb, slope_id = ryaw == 0.0 ? 3 : 0, pitch = pitch, eave_yaw = ryaw + 180.0, island = 3, rk = 2), tag_slope(g = hl, slope_id = ryaw == 0.0 ? 0 : 1, pitch = pitch, eave_yaw = ryaw - 90.0, island = 0, rk = 2), tag_slope(g = hr, slope_id = ryaw == 0.0 ? 2 : 3, pitch = pitch, eave_yaw = ryaw + 90.0, island = 2, rk = 2))
+    hip_p = transform(hip0, rotate = vec3(0, ryaw, 0))
+    hip_eds = tag_edges(e = hip_edges(hw_e = chw, hd_e = chd, y0 = y0, pitch = pitch, yaw = ryaw), rk = 2)
+    hip_pl = hip_planes(hw_e = chw, hd_e = chd, y0 = y0, pitch = pitch, rk = 2, yaw = ryaw)
+    pyr0 = merge(tag_slope(g = hf, slope_id = ryaw == 0.0 ? 1 : 2, pitch = pitch, eave_yaw = ryaw, island = 1, rk = 3), tag_slope(g = hb, slope_id = ryaw == 0.0 ? 3 : 0, pitch = pitch, eave_yaw = ryaw + 180.0, island = 3, rk = 3), tag_slope(g = hl, slope_id = ryaw == 0.0 ? 0 : 1, pitch = pitch, eave_yaw = ryaw - 90.0, island = 0, rk = 3), tag_slope(g = hr, slope_id = ryaw == 0.0 ? 2 : 3, pitch = pitch, eave_yaw = ryaw + 90.0, island = 2, rk = 3))
+    pyr_p = transform(pyr0, rotate = vec3(0, ryaw, 0))
+    pyr_eds = tag_edges(e = hip_edges(hw_e = chw, hd_e = chd, y0 = y0, pitch = pitch, yaw = ryaw), rk = 3)
+    pyr_pl = hip_planes(hw_e = chw, hd_e = chd, y0 = y0, pitch = pitch, rk = 3, yaw = ryaw)
     # flat (rk 0): одна панель + карнизы
     fl = slope_quad(len = 2.0 * ehw, slope_len = 2.0 * ehd, pitch = 0.0, at = vec3(0, y0, ehd), yaw = 0.0)
     flat_p = tag_slope(g = fl, slope_id = 1, pitch = 0.0, eave_yaw = 0.0, island = 1, rk = 0)
@@ -199,7 +205,7 @@ def roof_rect(w: f32, d: f32, kind: enum {flat, gable, hip, pyramid, mansard} = 
     ml_r1 = clip(ml_r0, origin = vec3(ehw, y0, ehd), normal = vec3(1.0, 0, 0.0 - 1.0))
     ml_right = clip(ml_r1, origin = vec3(ehw, y0, 0.0 - ehd), normal = vec3(1.0, 0, 1.0))
     ml_left = transform(ml_right, rotate = vec3(0, 180, 0))
-    uf, ub, ul, ur = hip_panels(hw_e = uhw, hd_e = uhd, y0 = y0 + break_h, pitch = pitch)
+    uf, ub, ul, ur = hip_panels(hw_e = uhw >= uhd ? uhw : uhd, hd_e = uhw >= uhd ? uhd : uhw, y0 = y0 + break_h, pitch = pitch)
     man_p = merge(tag_slope(g = ml_front, slope_id = 1, pitch = pitch_lo, eave_yaw = 0.0, island = 1, rk = 4), tag_slope(g = ml_back, slope_id = 3, pitch = pitch_lo, eave_yaw = 180.0, island = 3, rk = 4), tag_slope(g = ml_left, slope_id = 0, pitch = pitch_lo, eave_yaw = 0.0 - 90.0, island = 0, rk = 4), tag_slope(g = ml_right, slope_id = 2, pitch = pitch_lo, eave_yaw = 90.0, island = 2, rk = 4), tag_slope(g = uf, slope_id = 1, pitch = pitch, eave_yaw = 0.0, island = 11, rk = 4), tag_slope(g = ub, slope_id = 3, pitch = pitch, eave_yaw = 180.0, island = 13, rk = 4), tag_slope(g = ul, slope_id = 0, pitch = pitch, eave_yaw = 0.0 - 90.0, island = 10, rk = 4), tag_slope(g = ur, slope_id = 2, pitch = pitch, eave_yaw = 90.0, island = 12, rk = 4))
     mbe0 = lse.edge(p0 = vec3(0.0 - uhw, y0 + break_h, uhd), p1 = vec3(uhw, y0 + break_h, uhd), role = k.R_FLOOR_TOP(), out_n = vec3(0, 0, 1), pitch = pitch_lo)
     mbe1 = lse.edge(p0 = vec3(uhw, y0 + break_h, uhd), p1 = vec3(uhw, y0 + break_h, 0.0 - uhd), role = k.R_FLOOR_TOP(), out_n = vec3(1, 0, 0), pitch = pitch_lo)
@@ -224,26 +230,28 @@ def roof_rect(w: f32, d: f32, kind: enum {flat, gable, hip, pyramid, mansard} = 
     ensure kind != mansard | uhw > uhd: "roof_rect: mansard — верхний ярус должен остаться вытянутым (uhw > uhd): уменьшите break_h/pitch_lo"
 }
 
-def tile_anchors(slopes: geo<mesh>, planes: geo<points>, row_pitch: f32 = 0.28, col_pitch: f32 = 0.32, lift: f32 = 0.02) -> (out: geo<points>) {
+def tile_anchors(slopes: geo<mesh>, planes: geo<points>, row_pitch: f32 = 0.28, col_pitch: f32 = 0.32, lift: f32 = 0.02, margin: f32 = 0.04, top: f32 = 0.03, eave_over: f32 = 0.02) -> (out: geo<points>) {
     """Якоря покрытия по панелям (§6.5): сетка в рамке ската — колонки col_pitch вдоль
     карниза (вразбежку по нечётным рядам), ряды row_pitch вверх по скату от карниза;
     кандидаты вне граничных плоскостей выколоты (в т.ч. по ендовам — чужие плоскости
-    скатов в островке). @orient — рамка ската (терминал покрытия лежит в XZ с лицом +Y,
-    как tile_plain). Лист графа."""
+    скатов в островке). margin — отступ якорей внутрь от боковых граней (плитка не
+    свисает с вальм/ендов); top — отступ верхнего ряда от конька (его накрывают
+    колпаки); eave_over — допустимый свис за карниз. @orient — рамка ската (терминал
+    покрытия лежит в XZ с лицом +Y, как tile_plain). Лист графа."""
     expect row_pitch > 0.05 & col_pitch > 0.05: "tile_anchors: шаги разумные, в метрах"
     evs = delete(planes, where = @eave == false)
     out = foreach ev in evs {
-        ev = anchors_of_island(ev = ev, slopes = slopes, planes = planes, row_pitch = row_pitch, col_pitch = col_pitch, lift = lift)
+        ev = anchors_of_island(ev = ev, slopes = slopes, planes = planes, row_pitch = row_pitch, col_pitch = col_pitch, lift = lift, margin = margin, top = top, eave_over = eave_over)
     }
 }
 
-def anchors_of_island(ev: geo<points>, slopes: geo<mesh>, planes: geo<points>, row_pitch: f32, col_pitch: f32, lift: f32) -> (out: geo<points>) {
+def anchors_of_island(ev: geo<points>, slopes: geo<mesh>, planes: geo<points>, row_pitch: f32, col_pitch: f32, lift: f32, margin: f32, top: f32, eave_over: f32) -> (out: geo<points>) {
     """Якоря панели одного островка по его eave-плоскости (внутренность tile_anchors)."""
     p = delete(slopes, where = @island_id != value(@island_id, on = ev), domain = faces)
-    out = anchors_of_panel(p = p, planes = planes, row_pitch = row_pitch, col_pitch = col_pitch, lift = lift)
+    out = anchors_of_panel(p = p, planes = planes, row_pitch = row_pitch, col_pitch = col_pitch, lift = lift, margin = margin, top = top, eave_over = eave_over)
 }
 
-def anchors_of_panel(p: geo<mesh>, planes: geo<points>, row_pitch: f32, col_pitch: f32, lift: f32) -> (out: geo<points>) {
+def anchors_of_panel(p: geo<mesh>, planes: geo<points>, row_pitch: f32, col_pitch: f32, lift: f32, margin: f32, top: f32, eave_over: f32) -> (out: geo<points>) {
     """Якоря одной панели (внутренность tile_anchors). Рамка из eave-плоскости островка:
     U вдоль карниза, N — нормаль из @slope_pitch/@eave_yaw, W — вверх по скату."""
     isl = max_of(@island_id, on = p)
@@ -265,22 +273,25 @@ def anchors_of_panel(p: geo<mesh>, planes: geo<points>, row_pitch: f32, col_pitc
     n_cols = max(int(elen / col_pitch), 1)
     cpitch = elen / f32(n_cols)
     a0 = mesh_line(count = n_rows * n_cols, length = 0.0)
-    a3 = set_position(a0, pos = mid + U * ((f32(@index % n_cols) - f32(n_cols - 1) * 0.5 + 0.5 * f32((@index / n_cols) % 2 == 1)) * cpitch) + W * (f32(@index / n_cols) * row_pitch) + N * lift)
-    a4 = set(a3, "orient", orient_from_euler(vec3(pitch, yaw, 0.0)), domain = points)
-    a5 = set(a4, "variant", 0, domain = points)
-    a6 = set(a5, "bad", false, domain = points)
-    a7 = set(a6, "sub", true, domain = points)
-    a8 = set(a7, "hsub", false, domain = points)
+    a1 = set_position(a0, pos = mid + U * ((f32(@index % n_cols) - f32(n_cols - 1) * 0.5 + 0.5 * f32((@index / n_cols) % 2 == 1)) * cpitch) + W * (f32(@index / n_cols) * row_pitch) + N * lift)
+    a2 = set(a1, "orient", orient_from_euler(vec3(pitch, yaw, 0.0)), domain = points)
+    a3 = set(a2, "variant", 0, domain = points)
+    a4 = set(a3, "bad", false, domain = points)
+    a5 = set(a4, "sub", true, domain = points)
+    a6 = set(a5, "hsub", false, domain = points)
     pl = set(pl0, "i", @index, domain = points)
-    a9 = repeat (a8, iterations = count(pl0)) |acc| {
+    a7 = repeat (a6, iterations = count(pl0)) |acc| {
         cur = delete(pl, where = @i != @iteration)
         is_sub = value(@cls, on = cur) == 1
-        outside = dot(@P - value(@o, on = cur), value(@n, on = cur)) > 0.001
+        is_eave = value(@eave, on = cur) == true
+        lim = is_sub ? 0.001 : (is_eave ? eave_over : 0.0 - margin)
+        outside = dot(@P - value(@o, on = cur), value(@n, on = cur)) > lim
         b0 = set(acc, "bad", (@bad == true) | ((is_sub == false) & outside))
         b1 = set(b0, "sub", (@sub == true) & ((is_sub == false) | (outside == false)))
         acc = set(b1, "hsub", (@hsub == true) | is_sub)
     }
-    out = delete(a9, where = (@bad == true) | ((@hsub == true) & (@sub == true)))
+    a8 = delete(a7, where = (@bad == true) | ((@hsub == true) & (@sub == true)))
+    out = delete(a8, where = dot(@P - mid, W) > w_max - top)
 }
 
 # --- Композиция крыльев (Г/П/Т-семейство, крестовые) -------------------------------------
@@ -376,6 +387,13 @@ def retarget(vol: geo<points>, island: int) -> (out: geo<points>) {
     out = set(vol, "island_id", island, domain = points)
 }
 
+def underside(slopes: geo<mesh>, y0: f32, drop: f32) -> (out: geo<mesh>) {
+    """Подшивка кровли: зеркальная копия скатов на drop ниже карниза y0 (зеркалирование
+    обращает winding — лицо вниз). Терминал толщины (§6.5): панели — верх кровли,
+    подшивка — низ; кромки закрывают фасции/ветровые доски. Группа roof наследуется."""
+    out = mirror(slopes, origin = vec3(0.0, y0 - drop * 0.5, 0.0), normal = vec3(0, 1, 0))
+}
+
 def roof_l(w: f32, d: f32, cut_w: f32, cut_d: f32, kind: enum {cross, hip} = cross, pitch: f32 = 45.0, overhang: f32 = 0.4, y0: f32 = 0.0) -> (slopes: geo<mesh>, edges: geo<points>, planes: geo<points>) {
     """Крыша над Г-планом w × d (вырез cut_w × cut_d в углу +X, +Z): два крыла с общим
     карнизом и равным уклоном, ендова — биссектриса 45° от внутреннего угла. kind:
@@ -421,10 +439,10 @@ def roof_l(w: f32, d: f32, cut_w: f32, cut_d: f32, kind: enum {cross, hip} = cro
 }
 
 def roof_cross(w: f32, d: f32, pitch: f32 = 45.0, overhang: f32 = 0.4, y0: f32 = 0.0) -> (slopes: geo<mesh>, edges: geo<points>, planes: geo<points>) {
-    """Крестовая крыша над прямоугольником w × d (w >= d): два двускатных крыла крестом,
-    равный уклон, 4 ендовы от углов карниза до конька низкого крыла (A). Конёк крыла B
-    (высокий) виден весь, его торцы — щипцы."""
-    expect w >= d: "roof_cross: w >= d"
+    """Крестовая крыша над прямоугольником w × d: два двускатных крыла крестом (коньки
+    вдоль X и Z), равный уклон, 4 ендовы от углов карниза до нижнего конька. Конёк
+    высокого крыла виден весь (его торцы — щипцы), низкий обрезан до видимых пролётов."""
+    expect w > 0.0 & d > 0.0: "roof_cross: габариты положительные"
     ga_p, ga_pl, ga_e, ga_v = gable_wing(along = w, across = d, oh = overhang, y0 = y0, pitch = pitch, cx = 0.0, cz = 0.0, yaw = 0.0, isl_f = 1, isl_b = 3)
     gb_p, gb_pl, gb_e, gb_v = gable_wing(along = d, across = w, oh = overhang, y0 = y0, pitch = pitch, cx = 0.0, cz = 0.0, yaw = 90.0, isl_f = 11, isl_b = 13)
     a_p = clip_by_volume(g = ga_p, vol = gb_v)
@@ -434,15 +452,26 @@ def roof_cross(w: f32, d: f32, pitch: f32 = 45.0, overhang: f32 = 0.4, y0: f32 =
     hw = w * 0.5 + overhang
     hd = d * 0.5 + overhang
     y_a = y0 + hd * tan_p
-    cv = hw - hd
-    v0 = lse.edge(p0 = vec3(hw, y0, hd), p1 = vec3(cv, y_a, 0.0), role = k.R_VALLEY(), out_n = vec3(0.70710678, 0, 0.70710678), pitch = pitch)
-    v1 = lse.edge(p0 = vec3(hw, y0, 0.0 - hd), p1 = vec3(cv, y_a, 0.0), role = k.R_VALLEY(), out_n = vec3(0.70710678, 0, 0.0 - 0.70710678), pitch = pitch)
-    v2 = lse.edge(p0 = vec3(0.0 - hw, y0, 0.0 - hd), p1 = vec3(0.0 - cv, y_a, 0.0), role = k.R_VALLEY(), out_n = vec3(0.0 - 0.70710678, 0, 0.0 - 0.70710678), pitch = pitch)
-    v3 = lse.edge(p0 = vec3(0.0 - hw, y0, hd), p1 = vec3(0.0 - cv, y_a, 0.0), role = k.R_VALLEY(), out_n = vec3(0.0 - 0.70710678, 0, 0.70710678), pitch = pitch)
+    y_b = y0 + hw * tan_p
+    cv = abs(hw - hd)
+    a_lower = y_a <= y_b
+    vx = a_lower ? cv : 0.0
+    vz = a_lower ? 0.0 : cv
+    vy = a_lower ? y_a : y_b
+    v0 = lse.edge(p0 = vec3(hw, y0, hd), p1 = vec3(vx, vy, vz), role = k.R_VALLEY(), out_n = vec3(0.70710678, 0, 0.70710678), pitch = pitch)
+    v1 = lse.edge(p0 = vec3(hw, y0, 0.0 - hd), p1 = vec3(vx, vy, 0.0 - vz), role = k.R_VALLEY(), out_n = vec3(0.70710678, 0, 0.0 - 0.70710678), pitch = pitch)
+    v2 = lse.edge(p0 = vec3(0.0 - hw, y0, 0.0 - hd), p1 = vec3(0.0 - vx, vy, 0.0 - vz), role = k.R_VALLEY(), out_n = vec3(0.0 - 0.70710678, 0, 0.0 - 0.70710678), pitch = pitch)
+    v3 = lse.edge(p0 = vec3(0.0 - hw, y0, hd), p1 = vec3(0.0 - vx, vy, vz), role = k.R_VALLEY(), out_n = vec3(0.0 - 0.70710678, 0, 0.70710678), pitch = pitch)
+    ridge_a_full = lse.edge(p0 = vec3(0.0 - hw, y_a, 0.0), p1 = vec3(hw, y_a, 0.0), role = k.R_RIDGE(), out_n = vec3(0, 1, 0), pitch = 0.0)
+    ridge_a_l = lse.edge(p0 = vec3(0.0 - hw, y_a, 0.0), p1 = vec3(0.0 - cv, y_a, 0.0), role = k.R_RIDGE(), out_n = vec3(0, 1, 0), pitch = 0.0)
+    ridge_a_r = lse.edge(p0 = vec3(cv, y_a, 0.0), p1 = vec3(hw, y_a, 0.0), role = k.R_RIDGE(), out_n = vec3(0, 1, 0), pitch = 0.0)
+    ridge_b_full = lse.edge(p0 = vec3(0.0, y_b, 0.0 - hd), p1 = vec3(0.0, y_b, hd), role = k.R_RIDGE(), out_n = vec3(0, 1, 0), pitch = 0.0)
+    ridge_b_n = lse.edge(p0 = vec3(0.0, y_b, 0.0 - hd), p1 = vec3(0.0, y_b, 0.0 - cv), role = k.R_RIDGE(), out_n = vec3(0, 1, 0), pitch = 0.0)
+    ridge_b_s = lse.edge(p0 = vec3(0.0, y_b, cv), p1 = vec3(0.0, y_b, hd), role = k.R_RIDGE(), out_n = vec3(0, 1, 0), pitch = 0.0)
+    ridges = select(a_lower, a = merge(ridge_a_l, ridge_a_r, ridge_b_full), b = merge(ridge_a_full, ridge_b_n, ridge_b_s))
     kr = k.R_RIDGE()
     ga_e_noridge = delete(ga_e, where = @role != kr)
-    ridge_a_r = lse.edge(p0 = vec3(cv, y_a, 0.0), p1 = vec3(hw, y_a, 0.0), role = k.R_RIDGE(), out_n = vec3(0, 1, 0), pitch = 0.0)
-    ridge_a_l = lse.edge(p0 = vec3(0.0 - hw, y_a, 0.0), p1 = vec3(0.0 - cv, y_a, 0.0), role = k.R_RIDGE(), out_n = vec3(0, 1, 0), pitch = 0.0)
-    edges = merge(ga_e_noridge, gb_e, ridge_a_r, ridge_a_l, v0, v1, v2, v3)
+    gb_e_noridge = delete(gb_e, where = @role != kr)
+    edges = merge(ga_e_noridge, gb_e_noridge, ridges, v0, v1, v2, v3)
     planes = merge(ga_pl, gb_pl, retarget(vol = ga_v, island = 11), retarget(vol = ga_v, island = 13), retarget(vol = gb_v, island = 1), retarget(vol = gb_v, island = 3))
 }

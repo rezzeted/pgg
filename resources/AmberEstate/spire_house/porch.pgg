@@ -4,39 +4,11 @@
 import lib.parts
 import lib.fixtures
 import lib.roofing as roofing
-
-def porch_tile_slope(len_bot: f32, len_top: f32, slope_len: f32, rng: rng) -> (out: geo<mesh>) {
-    """Мелкая сланцевая черепица трапециевидного ската крыльца: x поперёк, −Z к
-    коньку. Плитка меньше мансардной; бока режутся clip по рёбрам вальмы."""
-    expect len_bot > 0.4: "porch_tile_slope: eave too short"
-    expect slope_len > 0.3: "porch_tile_slope: slope too short"
-    tw = 0.15
-    tl = 0.18
-    th = 0.026
-    pu = 0.165
-    pv = 0.135
-    lift = 0.012
-    tile = compute_normals(box(size = vec3(tw, th, tl)), mode = flat)
-    n_rows = int(slope_len / pv) + 2
-    n_cols = int(len_bot / pu) + 3
-    empty = mesh_line(count = 0, length = 0.0)
-    anchors_all = repeat (empty, iterations = n_rows) |acc| {
-        k = f32(@iteration)
-        odd = f32(@iteration % 2)
-        vk = k * pv + pv * 0.20
-        row0 = mesh_line(count = n_cols, length = f32(n_cols - 1) * pu, dir = (1, 0, 0))
-        row = transform(row0, translate = vec3(0.0 - f32(n_cols - 1) * pu * 0.5 + odd * pu * 0.5, th * 0.5 + lift, 0.0 - vk))
-        acc = merge(acc, row)
-    }
-    t_jit = set_position(anchors_all, offset = random_vec(lo = vec3(-0.002, -0.001, -0.002), hi = vec3(0.002, 0.001, 0.002), rng = split_rng(rng, key = "jit")))
-    shade = random(lo = 0.80, hi = 1.20, rng = split_rng(rng, key = "tint"))
-    p_tint = set(t_jit, "tint", vec3(shade * 0.97, shade, shade * 1.05))
-    raw = realize(instance_on_points(p_tint, source = tile))
-    c_l = clip(raw, origin = vec3(0.0 - len_bot * 0.5, 0, 0), normal = vec3(slope_len, 0, (len_bot - len_top) * 0.5), cap_group = "roof")
-    c_r = clip(c_l, origin = vec3(len_bot * 0.5, 0, 0), normal = vec3(0.0 - slope_len, 0, (len_bot - len_top) * 0.5), cap_group = "roof")
-    c_top = clip(c_r, origin = vec3(0, 0, 0.03 - slope_len), normal = vec3(0, 0, 1), cap_group = "roof")
-    out = mark(compute_normals(c_top, mode = flat), "roof", where = true, domain = faces)
-}
+import lib.layout.scope as ls
+import lib.layout.edges as lse
+import lib.arch.kinds as k
+import lib.arch.roof as ar
+import lib.arch.terminals_basic as tb
 
 def porch_column(h: f32) -> (out: geo<mesh>) {
     """Квадратная каменная колонна (низ y = 0): плинт, ствол, шейка и двухступенчатая
@@ -87,52 +59,27 @@ def entrance_porch(door_x: f32, facade_z: f32, plinth_h: f32, rng: rng) -> (out:
     ball_l = mark(transform(ico_sphere(subdiv = 1, radius = 0.08), translate = vec3(lx, 0.80, step0_z + 1.15)), "brass", where = true, domain = faces)
     ball_r = mark(transform(ico_sphere(subdiv = 1, radius = 0.08), translate = vec3(rx, 0.80, step0_z + 1.15)), "brass", where = true, domain = faces)
     parapets = merge(par_land_l, par_land_r, par_mid_l, par_mid_r, par_low_l, par_low_r, post_l, post_r, ball_l, ball_r)
-    # 4. Вальмовый навес в мире: +X вширь, +Z на улицу, карниз на y = 0.
-    # Четыре тонких ската к короткому коньку вдоль X (параллельно фасаду), не щипец
-    # и не сплошная пирамида — иначе перекроет дверь. Слэбы подрезаются плоскостями
-    # соседних скатов, иначе прямоугольные тела торчат за рёбрами вальм.
+    # 4. Вальмовый навес: панели + подшивка из arch/roof, черепица по якорям,
+    # конёк/вальмы — терминалы на рёбрах. +X вширь, +Z на улицу, карниз на y = 0.
     eave_y = plinth_h + dh + 0.10
     eave_hw = 0.84
     eave_hd = (landing_d + 0.18) * 0.5
-    top_hd = 0.06
-    run = eave_hd - top_hd
-    top_hw = eave_hw - run
-    rise = 0.50
-    sl = sqrt(run * run + rise * rise)
-    pitch = degrees(atan2(rise, run))
-    s_p = rise / sl
-    c_p = run / sl
-    roof_t = 0.08
-    body_fb = parts.piece(size = vec3(eave_hw * 2.0, roof_t, sl), pos = vec3(0, 0.0 - roof_t * 0.20, 0.0 - sl * 0.5), grp = "stone")
-    body_lr = parts.piece(size = vec3(eave_hd * 2.0, roof_t, sl), pos = vec3(0, 0.0 - roof_t * 0.20, 0.0 - sl * 0.5), grp = "stone")
-    deck_f0 = transform(transform(body_fb, rotate = vec3(pitch, 0, 0)), translate = vec3(0, 0.01, eave_hd - 0.01))
-    deck_f = clip(clip(deck_f0, origin = vec3(eave_hw, 0, 0), normal = vec3(0.0 - s_p, 0.0 - c_p, 0), cap_group = "stone"), origin = vec3(0.0 - eave_hw, 0, 0), normal = vec3(s_p, 0.0 - c_p, 0), cap_group = "stone")
-    deck_b0 = transform(deck_f0, rotate = vec3(0, 180, 0))
-    deck_b = clip(clip(deck_b0, origin = vec3(eave_hw, 0, 0), normal = vec3(0.0 - s_p, 0.0 - c_p, 0), cap_group = "stone"), origin = vec3(0.0 - eave_hw, 0, 0), normal = vec3(s_p, 0.0 - c_p, 0), cap_group = "stone")
-    deck_r0 = transform(transform(transform(body_lr, rotate = vec3(pitch, 0, 0)), translate = vec3(0, 0.01, eave_hw - 0.01)), rotate = vec3(0, 90, 0))
-    deck_r = clip(clip(deck_r0, origin = vec3(0, 0, eave_hd), normal = vec3(0, 0.0 - c_p, 0.0 - s_p), cap_group = "stone"), origin = vec3(0, 0, 0.0 - eave_hd), normal = vec3(0, 0.0 - c_p, s_p), cap_group = "stone")
-    deck_l0 = transform(transform(transform(body_lr, rotate = vec3(pitch, 0, 0)), translate = vec3(0, 0.01, eave_hw - 0.01)), rotate = vec3(0, 270, 0))
-    deck_l = clip(clip(deck_l0, origin = vec3(0, 0, eave_hd), normal = vec3(0, 0.0 - c_p, 0.0 - s_p), cap_group = "stone"), origin = vec3(0, 0, 0.0 - eave_hd), normal = vec3(0, 0.0 - c_p, s_p), cap_group = "stone")
-    tiles_f0 = porch_tile_slope(len_bot = eave_hw * 2.0, len_top = top_hw * 2.0, slope_len = sl, rng = split_rng(rng, key = "pf"))
-    tiles_f = transform(transform(tiles_f0, rotate = vec3(pitch, 0, 0)), translate = vec3(0, 0.025, eave_hd - 0.02))
-    tiles_b0 = porch_tile_slope(len_bot = eave_hw * 2.0, len_top = top_hw * 2.0, slope_len = sl, rng = split_rng(rng, key = "pb"))
-    tiles_b = transform(transform(transform(tiles_b0, rotate = vec3(pitch, 0, 0)), translate = vec3(0, 0.025, eave_hd - 0.02)), rotate = vec3(0, 180, 0))
-    tiles_r0 = porch_tile_slope(len_bot = eave_hd * 2.0, len_top = top_hd * 2.0, slope_len = sl, rng = split_rng(rng, key = "pr"))
-    tiles_r = transform(transform(transform(tiles_r0, rotate = vec3(pitch, 0, 0)), translate = vec3(0, 0.025, eave_hw - 0.02)), rotate = vec3(0, 90, 0))
-    tiles_l0 = porch_tile_slope(len_bot = eave_hd * 2.0, len_top = top_hd * 2.0, slope_len = sl, rng = split_rng(rng, key = "pl"))
-    tiles_l = transform(transform(transform(tiles_l0, rotate = vec3(pitch, 0, 0)), translate = vec3(0, 0.025, eave_hw - 0.02)), rotate = vec3(0, 270, 0))
-    hip_fr = roofing.hip_caps(p0 = vec3(eave_hw, 0, eave_hd), p1 = vec3(top_hw, rise, top_hd), rng = split_rng(rng, key = "hf"), half = 40.0, lift = 0.045, cap_w = 0.11, cap_l = 0.14, y_step = 0.005)
-    hip_fl = roofing.hip_caps(p0 = vec3(0.0 - eave_hw, 0, eave_hd), p1 = vec3(0.0 - top_hw, rise, top_hd), rng = split_rng(rng, key = "hl"), half = 40.0, lift = 0.045, cap_w = 0.11, cap_l = 0.14, y_step = 0.005)
-    hip_br = roofing.hip_caps(p0 = vec3(eave_hw, 0, 0.0 - eave_hd), p1 = vec3(top_hw, rise, 0.0 - top_hd), rng = split_rng(rng, key = "hb"), half = 40.0, lift = 0.045, cap_w = 0.11, cap_l = 0.14, y_step = 0.005)
-    hip_bl = roofing.hip_caps(p0 = vec3(0.0 - eave_hw, 0, 0.0 - eave_hd), p1 = vec3(0.0 - top_hw, rise, 0.0 - top_hd), rng = split_rng(rng, key = "hk"), half = 40.0, lift = 0.045, cap_w = 0.11, cap_l = 0.14, y_step = 0.005)
-    ridge_plate = parts.piece(size = vec3(top_hw * 2.0 + 0.10, 0.04, top_hd * 2.0 + 0.10), pos = vec3(0, rise + 0.01, 0), grp = "roof")
-    cap_src = transform(parts.piece(size = vec3(0.18, 0.07, 0.07), pos = (0, 0, 0), grp = "roof"), rotate = vec3(45, 0, 0))
-    n_caps = 3
-    cap_span = f32(n_caps - 1) * 0.16
-    cap_pts = transform(mesh_line(count = n_caps, length = cap_span, dir = (1, 0, 0)), translate = vec3(0.0 - cap_span * 0.5, rise + 0.03, 0))
-    ridge = mark(realize(instance_on_points(cap_pts, source = cap_src)), "roof", where = true, domain = faces)
-    roof_local = merge(deck_f, deck_b, deck_r, deck_l, tiles_f, tiles_b, tiles_r, tiles_l, hip_fr, hip_fl, hip_br, hip_bl, ridge_plate, ridge)
-    canopy = transform(roof_local, translate = vec3(door_x, eave_y, facade_z + eave_hd - 0.04))
+    pitch = degrees(atan2(0.5, eave_hd))
+    sl, ed, pl = ar.roof_rect(w = eave_hw * 2.0, d = eave_hd * 2.0, kind = hip, pitch = pitch, overhang = 0.0, y0 = 0.0)
+    under = parts.to_group(g = ar.underside(slopes = sl, y0 = 0.0, drop = 0.08), src = "roof", dst = "stone")
+    anc0 = ar.tile_anchors(slopes = sl, planes = pl, row_pitch = 0.135, col_pitch = 0.165, lift = 0.012)
+    anc1 = set_position(anc0, offset = random_vec(lo = vec3(-0.002, -0.001, -0.002), hi = vec3(0.002, 0.001, 0.002), rng = split_rng(rng, key = "jit")))
+    shade = random(lo = 0.80, hi = 1.20, rng = split_rng(rng, key = "tint"))
+    anc = set(anc1, "tint", vec3(shade * 0.97, shade, shade * 1.05))
+    tiles = ls.stamp(scopes = anc, source = tb.tile_plain(w = 0.15, l = 0.18, t = 0.026))
+    hips = foreach e in lse.pick_role(edges = ed, role = k.R_HIP()) {
+        e = roofing.hip_caps(p0 = value(@p0, on = e), p1 = value(@p1, on = e), rng = split_rng(rng, key = @piece_index), half = 40.0, lift = 0.045, cap_w = 0.11, cap_l = 0.14, y_step = 0.005)
+    }
+    ridge_plate = parts.piece(size = vec3(0.45, 0.04, 0.22), pos = vec3(0, 0.51, 0), grp = "roof")
+    ridges = foreach e in lse.pick_role(edges = ed, role = k.R_RIDGE()) {
+        e = lse.place_edge(g = tb.ridge_cap(len = lse.edge_len(e) + 0.10, r = 0.05), e = e)
+    }
+    canopy = transform(merge(sl, under, tiles, hips, ridge_plate, ridges), translate = vec3(door_x, eave_y, facade_z + eave_hd - 0.04))
     # 5. Четыре угловые колонны: задние у стены, передние на краю площадки.
     col_h = eave_y - plinth_h
     cx = 0.70
