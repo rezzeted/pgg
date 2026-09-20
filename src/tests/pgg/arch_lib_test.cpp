@@ -208,4 +208,62 @@ TEST(ArchLib, TerminalsBasic) {
         EXPECT_TRUE(row->faceGroups->find(grp) != nullptr) << "group missing: " << grp;
 }
 
+TEST(ArchLib, RoofRectKinds) {
+    pgg::RunResult r = pgg::runFile(corpusPath("arch_roof.pgg"), archParams());
+    expectNoErrors(r);
+    pggtest::expectGolden("arch_roof", r);
+
+    // hip: 4 slope panels (2 trapezoids + 2 triangles), ridge edge of 3.0 at y=5.9.
+    pgg::GeoPtr hip_s = geoOutput(r, "hip_s");
+    ASSERT_TRUE(hip_s != nullptr);
+    EXPECT_EQ(hip_s->faceCount(), 4u);
+    pgg::GeoPtr hip_e = geoOutput(r, "hip_e");
+    ASSERT_TRUE(hip_e != nullptr);
+    EXPECT_EQ(hip_e->pointCount(), 9u);
+    pgg::GeoPtr ridges = geoOutput(r, "ridges");
+    ASSERT_TRUE(ridges != nullptr);
+    ASSERT_EQ(ridges->pointCount(), 1u);
+    expectCol(f32Col(*ridges, "len"), {3.0f});
+
+    // gable: 2 panels, 5 edges (ridge + 2 eaves + 2 rakes).
+    pgg::GeoPtr gable_s = geoOutput(r, "gable_s");
+    ASSERT_TRUE(gable_s != nullptr);
+    EXPECT_EQ(gable_s->faceCount(), 2u);
+    pgg::GeoPtr gable_e = geoOutput(r, "gable_e");
+    ASSERT_TRUE(gable_e != nullptr);
+    EXPECT_EQ(gable_e->pointCount(), 5u);
+
+    // mansard: 4 lower + 4 upper panels.
+    pgg::GeoPtr man_s = geoOutput(r, "man_s");
+    ASSERT_TRUE(man_s != nullptr);
+    EXPECT_EQ(man_s->faceCount(), 8u);
+
+    // roof_l cross: wing A slopes clipped at x=1.8 (wing B eave), one valley edge
+    // of len 3.3*sqrt(3) from the overhang corner to wing B's ridge.
+    pgg::GeoPtr lc_s = geoOutput(r, "lc_s");
+    ASSERT_TRUE(lc_s != nullptr);
+    EXPECT_EQ(lc_s->faceCount(), 12u);
+    pgg::GeoPtr lc_valley = geoOutput(r, "lc_valley");
+    ASSERT_TRUE(lc_valley != nullptr);
+    ASSERT_EQ(lc_valley->pointCount(), 1u);
+    expectCol(f32Col(*lc_valley, "len"), {3.3f * 1.7320508f});
+
+    // roof_cross: 4 valleys, slopes clipped to 8 visible panels.
+    pgg::GeoPtr cr_s = geoOutput(r, "cr_s");
+    ASSERT_TRUE(cr_s != nullptr);
+    EXPECT_EQ(cr_s->faceCount(), 8u);
+    pgg::GeoPtr valleys = geoOutput(r, "valleys");
+    ASSERT_TRUE(valleys != nullptr);
+    EXPECT_EQ(valleys->pointCount(), 4u);
+
+    // anchors cover all 4 hip panels: exact count, all stamped with variant 0 and
+    // oriented frames (orient quaternion present).
+    pgg::GeoPtr anchors = geoOutput(r, "anchors");
+    ASSERT_TRUE(anchors != nullptr);
+    ASSERT_EQ(anchors->pointCount(), 688u);
+    const std::vector<int64_t>* vars = intCol(*anchors, "variant");
+    ASSERT_TRUE(vars != nullptr);
+    for (int64_t v : *vars) EXPECT_EQ(v, 0);
+}
+
 }  // namespace

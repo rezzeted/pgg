@@ -1,0 +1,448 @@
+# lib/arch/roof.pgg — крыша аналитикой (docs/pgg/architecture_library_plan.md §6.5, этап A3).
+# slopes — face-scope'ы скатов (реальные панели в geo<mesh>, атрибуты scope на faces +
+# @island_id для foreach; панель — это и есть deck, группа roof). edges — модель рёбер
+# §5.2 (R_RIDGE/R_HIP/R_VALLEY/R_EAVE/R_RAKE/R_FLOOR_TOP). planes — граничные плоскости
+# панелей (точки с @o/@n/@island_id/@eave/@len/@w_len): рамка ската (eave-плоскость) и
+# выколка якорей tile_anchors, в т.ч. по ендовам Г/П/Т (другие крылья добавляют свои
+# плоскости скатов в тот же островок — обрезанные полигоны не вычисляются).
+# Покрытие — терминал на якорях (tile_anchors + stamp); фурнитура — терминалы на рёбрах
+# (pick_role + place_edge в файле здания). Прямой скелет произвольного контура — A4
+# (roof_wavefront); здесь аналитика: равные уклоны ⇒ вальмы/ендовы — биссектрисы 45°.
+# Контракт: метры; карниз на y0; свес overhang по всем сторонам; уклоны в градусах от
+# горизонтали; конёк вдоль локального X. slope_id: 0 = лево, 1 = фронт, 2 = право, 3 = тыл.
+
+import lib.layout.edges as lse
+import lib.arch.kinds as k
+
+def slope_quad(len: f32, slope_len: f32, pitch: f32, at: vec3, yaw: f32) -> (out: geo<mesh>) {
+    """Квад ската: len вдоль карниза, slope_len по скату, уклон pitch градусов,
+    середина карниза at, азимут наружной нормали yaw (0 = +Z). Один квад, нормали наружу."""
+    expect len > 0.0 & slope_len > 0.0: "slope_quad: размеры положительные"
+    sp = sin(radians(pitch))
+    cp = cos(radians(pitch))
+    sy = sin(radians(yaw))
+    cy = cos(radians(yaw))
+    g = grid(size = vec2(len, slope_len), res = vec2(1.0, 1.0))
+    r0 = transform(g, rotate = vec3(pitch, 0, 0))
+    r1 = transform(r0, rotate = vec3(0, yaw, 0))
+    out = transform(r1, translate = at + vec3(0.0 - cp * sy, sp, 0.0 - cp * cy) * (slope_len * 0.5))
+}
+
+def tag_slope(g: geo<mesh>, slope_id: int, pitch: f32, eave_yaw: f32, island: int, rk: int) -> (out: geo<mesh>) {
+    """Атрибуты face-scope'а ската: слот K_SLOPE, id ребра-источника, уклон, азимут карниза,
+    island для foreach, rk — код вида крыши для диспетчера (у крыльев композиции rk = 0)."""
+    a0 = set(g, "kind", k.K_SLOPE(), domain = faces)
+    a1 = set(a0, "slope_id", slope_id, domain = faces)
+    a2 = set(a1, "slope_pitch", pitch, domain = faces)
+    a3 = set(a2, "eave_yaw", eave_yaw, domain = faces)
+    a4 = set(a3, "island_id", island, domain = faces)
+    a5 = set(a4, "variant", 0, domain = faces)
+    a6 = set(a5, "rk", rk, domain = faces)
+    out = mark(a6, "roof", where = true, domain = faces)
+}
+
+def tag_edges(e: geo<points>, rk: int) -> (out: geo<points>) {
+    """Код вида крыши на модели рёбер (диспетчер roof_rect фильтрует по rk)."""
+    out = set(e, "rk", rk, domain = points)
+}
+
+def plane_of(o: vec3, n: vec3, island: int, eave: bool, len: f32, w_len: f32, rk: int, cls: int = 0) -> (out: geo<points>) {
+    """Одна граничная плоскость панели: o — точка на плоскости, n — нормаль НАРУЖУ от
+    интерьера панели. eave = true — это карнизная плоскость: тогда o — середина карниза,
+    len — длина карниза, w_len — протяжённость ската (рамка для tile_anchors).
+    cls: 0 — boundary (своя граница: якорь снаружи выколот), 1 — subtract (объём чужого
+    крыла: якорь внутри ВСЕХ плоскостей набора выколот — ендовы Г/П/Т)."""
+    p0 = set_position(mesh_line(count = 1, length = 0.0), pos = o)
+    p1 = set(p0, "o", o, domain = points, typeinfo = point)
+    p2 = set(p1, "n", n, domain = points, typeinfo = vector)
+    p3 = set(p2, "island_id", island, domain = points)
+    p4 = set(p3, "eave", eave, domain = points)
+    p5 = set(p4, "len", len, domain = points)
+    p6 = set(p5, "w_len", w_len, domain = points)
+    p7 = set(p6, "rk", rk, domain = points)
+    out = set(p7, "cls", cls, domain = points)
+}
+
+def slope_plane(at: vec3, pitch: f32, yaw: f32, island: int, cls: int = 0) -> (out: geo<points>) {
+    """Плоскость ската: карниз в at, уклон pitch, азимут нормали yaw. Нормаль наружу-вверх."""
+    sp = sin(radians(pitch))
+    cp = cos(radians(pitch))
+    sy = sin(radians(yaw))
+    cy = cos(radians(yaw))
+    out = plane_of(o = at, n = vec3(sp * sy, cp, sp * cy), island = island, eave = false, len = 0.0, w_len = 0.0, rk = 0, cls = cls)
+}
+
+def hip_panels(hw_e: f32, hd_e: f32, y0: f32, pitch: f32) -> (front: geo<mesh>, back: geo<mesh>, left: geo<mesh>, right: geo<mesh>) {
+    """Четыре панели вальмовой крыши над прямоугольником карниза 2·hw_e × 2·hd_e
+    (hw_e >= hd_e): фронт/тыл — трапеции (квад, подрезанный вальмовыми плоскостями 45°),
+    торцы — треугольники. Конёк на y0 + hd_e·tan(pitch), длина 2·(hw_e − hd_e)."""
+    expect hw_e >= hd_e: "hip_panels: hw_e >= hd_e (конёк вдоль X)"
+    sl = hd_e / cos(radians(pitch))
+    qf = slope_quad(len = 2.0 * hw_e, slope_len = sl, pitch = pitch, at = vec3(0, y0, hd_e), yaw = 0.0)
+    f0 = clip(qf, origin = vec3(hw_e, y0, hd_e), normal = vec3(0.0 - 1.0, 0, 1.0))
+    front = clip(f0, origin = vec3(0.0 - hw_e, y0, hd_e), normal = vec3(1.0, 0, 1.0))
+    back = transform(front, rotate = vec3(0, 180, 0))
+    qr = slope_quad(len = 2.0 * hd_e, slope_len = sl, pitch = pitch, at = vec3(hw_e, y0, 0), yaw = 90.0)
+    r0 = clip(qr, origin = vec3(hw_e, y0, hd_e), normal = vec3(1.0, 0, 0.0 - 1.0))
+    right = clip(r0, origin = vec3(hw_e, y0, 0.0 - hd_e), normal = vec3(1.0, 0, 1.0))
+    left = transform(right, rotate = vec3(0, 180, 0))
+}
+
+def hip_edges(hw_e: f32, hd_e: f32, y0: f32, pitch: f32, cx: f32 = 0.0, cz: f32 = 0.0, yaw: f32 = 0.0) -> (out: geo<points>) {
+    """Рёбра вальмовой крыши: конёк (нет при hw_e == hd_e — пирамида), 4 вальмы, 4 карниза.
+    Рамка: центр (cx, cz), поворот yaw."""
+    rise = hd_e * tan(radians(pitch))
+    ry = y0 + rise
+    rh = hw_e - hd_e
+    e0 = lse.edge(p0 = lwv(0.0 - hw_e, y0, hd_e, cx, cz, yaw), p1 = lwv(hw_e, y0, hd_e, cx, cz, yaw), role = k.R_EAVE(), out_n = lnv(0.0, 1.0, yaw), pitch = pitch)
+    e1 = lse.edge(p0 = lwv(hw_e, y0, hd_e, cx, cz, yaw), p1 = lwv(hw_e, y0, 0.0 - hd_e, cx, cz, yaw), role = k.R_EAVE(), out_n = lnv(1.0, 0.0, yaw), pitch = pitch)
+    e2 = lse.edge(p0 = lwv(hw_e, y0, 0.0 - hd_e, cx, cz, yaw), p1 = lwv(0.0 - hw_e, y0, 0.0 - hd_e, cx, cz, yaw), role = k.R_EAVE(), out_n = lnv(0.0, 0.0 - 1.0, yaw), pitch = pitch)
+    e3 = lse.edge(p0 = lwv(0.0 - hw_e, y0, 0.0 - hd_e, cx, cz, yaw), p1 = lwv(0.0 - hw_e, y0, hd_e, cx, cz, yaw), role = k.R_EAVE(), out_n = lnv(0.0 - 1.0, 0.0, yaw), pitch = pitch)
+    h0 = lse.edge(p0 = lwv(hw_e, y0, hd_e, cx, cz, yaw), p1 = lwv(rh, ry, 0.0, cx, cz, yaw), role = k.R_HIP(), out_n = lnv(0.70710678, 0.70710678, yaw), pitch = pitch)
+    h1 = lse.edge(p0 = lwv(hw_e, y0, 0.0 - hd_e, cx, cz, yaw), p1 = lwv(rh, ry, 0.0, cx, cz, yaw), role = k.R_HIP(), out_n = lnv(0.70710678, 0.0 - 0.70710678, yaw), pitch = pitch)
+    h2 = lse.edge(p0 = lwv(0.0 - hw_e, y0, 0.0 - hd_e, cx, cz, yaw), p1 = lwv(0.0 - rh, ry, 0.0, cx, cz, yaw), role = k.R_HIP(), out_n = lnv(0.0 - 0.70710678, 0.0 - 0.70710678, yaw), pitch = pitch)
+    h3 = lse.edge(p0 = lwv(0.0 - hw_e, y0, hd_e, cx, cz, yaw), p1 = lwv(0.0 - rh, ry, 0.0, cx, cz, yaw), role = k.R_HIP(), out_n = lnv(0.0 - 0.70710678, 0.70710678, yaw), pitch = pitch)
+    r0 = lse.edge(p0 = lwv(0.0 - rh, ry, 0.0, cx, cz, yaw), p1 = lwv(rh, ry, 0.0, cx, cz, yaw), role = k.R_RIDGE(), out_n = vec3(0, 1, 0), pitch = 0.0)
+    out = merge(e0, e1, e2, e3, h0, h1, h2, h3, r0)
+}
+
+def gable_edges(hw_e: f32, hd_e: f32, y0: f32, pitch: f32, cx: f32 = 0.0, cz: f32 = 0.0, yaw: f32 = 0.0) -> (out: geo<points>) {
+    """Рёбра двускатной крыши: конёк вдоль локального X, 2 карниза, 2 фронтонных края.
+    Рамка: центр (cx, cz), поворот yaw."""
+    rise = hd_e * tan(radians(pitch))
+    ry = y0 + rise
+    rd = lse.edge(p0 = lwv(0.0 - hw_e, ry, 0.0, cx, cz, yaw), p1 = lwv(hw_e, ry, 0.0, cx, cz, yaw), role = k.R_RIDGE(), out_n = vec3(0, 1, 0), pitch = 0.0)
+    e0 = lse.edge(p0 = lwv(0.0 - hw_e, y0, hd_e, cx, cz, yaw), p1 = lwv(hw_e, y0, hd_e, cx, cz, yaw), role = k.R_EAVE(), out_n = lnv(0.0, 1.0, yaw), pitch = pitch)
+    e1 = lse.edge(p0 = lwv(hw_e, y0, 0.0 - hd_e, cx, cz, yaw), p1 = lwv(0.0 - hw_e, y0, 0.0 - hd_e, cx, cz, yaw), role = k.R_EAVE(), out_n = lnv(0.0, 0.0 - 1.0, yaw), pitch = pitch)
+    r0 = lse.edge(p0 = lwv(hw_e, y0, 0.0 - hd_e, cx, cz, yaw), p1 = lwv(hw_e, ry, 0.0, cx, cz, yaw), role = k.R_RAKE(), out_n = lnv(1.0, 0.0, yaw), pitch = pitch)
+    r1 = lse.edge(p0 = lwv(0.0 - hw_e, y0, hd_e, cx, cz, yaw), p1 = lwv(0.0 - hw_e, ry, 0.0, cx, cz, yaw), role = k.R_RAKE(), out_n = lnv(0.0 - 1.0, 0.0, yaw), pitch = pitch)
+    out = merge(rd, e0, e1, r0, r1)
+}
+
+def hip_planes(hw_e: f32, hd_e: f32, y0: f32, pitch: f32, rk: int, isl0: int = 0, cx: f32 = 0.0, cz: f32 = 0.0, yaw: f32 = 0.0) -> (out: geo<points>) {
+    """Граничные плоскости четырёх панелей вальмовой крыши: карнизы (рамки) + вальмовые 45°.
+    Островки isl0+1 фронт, +3 тыл, +0 лево, +2 право (как slope_id). Рамка: (cx, cz), yaw."""
+    sl = hd_e / cos(radians(pitch))
+    f0 = plane_of(o = lwv(0.0, y0, hd_e, cx, cz, yaw), n = lnv(0.0, 1.0, yaw), island = isl0 + 1, eave = true, len = 2.0 * hw_e, w_len = sl, rk = rk)
+    f1 = plane_of(o = lwv(hw_e, y0, hd_e, cx, cz, yaw), n = lnv(0.70710678, 0.0 - 0.70710678, yaw), island = isl0 + 1, eave = false, len = 0.0, w_len = 0.0, rk = rk)
+    f2 = plane_of(o = lwv(0.0 - hw_e, y0, hd_e, cx, cz, yaw), n = lnv(0.0 - 0.70710678, 0.0 - 0.70710678, yaw), island = isl0 + 1, eave = false, len = 0.0, w_len = 0.0, rk = rk)
+    b0 = plane_of(o = lwv(0.0, y0, 0.0 - hd_e, cx, cz, yaw), n = lnv(0.0, 0.0 - 1.0, yaw), island = isl0 + 3, eave = true, len = 2.0 * hw_e, w_len = sl, rk = rk)
+    b1 = plane_of(o = lwv(hw_e, y0, 0.0 - hd_e, cx, cz, yaw), n = lnv(0.70710678, 0.70710678, yaw), island = isl0 + 3, eave = false, len = 0.0, w_len = 0.0, rk = rk)
+    b2 = plane_of(o = lwv(0.0 - hw_e, y0, 0.0 - hd_e, cx, cz, yaw), n = lnv(0.0 - 0.70710678, 0.70710678, yaw), island = isl0 + 3, eave = false, len = 0.0, w_len = 0.0, rk = rk)
+    r0 = plane_of(o = lwv(hw_e, y0, 0.0, cx, cz, yaw), n = lnv(1.0, 0.0, yaw), island = isl0 + 2, eave = true, len = 2.0 * hd_e, w_len = sl, rk = rk)
+    r1 = plane_of(o = lwv(hw_e, y0, hd_e, cx, cz, yaw), n = lnv(0.0 - 0.70710678, 0.70710678, yaw), island = isl0 + 2, eave = false, len = 0.0, w_len = 0.0, rk = rk)
+    r2 = plane_of(o = lwv(hw_e, y0, 0.0 - hd_e, cx, cz, yaw), n = lnv(0.0 - 0.70710678, 0.0 - 0.70710678, yaw), island = isl0 + 2, eave = false, len = 0.0, w_len = 0.0, rk = rk)
+    l0 = plane_of(o = lwv(0.0 - hw_e, y0, 0.0, cx, cz, yaw), n = lnv(0.0 - 1.0, 0.0, yaw), island = isl0 + 0, eave = true, len = 2.0 * hd_e, w_len = sl, rk = rk)
+    l1 = plane_of(o = lwv(0.0 - hw_e, y0, 0.0 - hd_e, cx, cz, yaw), n = lnv(0.70710678, 0.0 - 0.70710678, yaw), island = isl0 + 0, eave = false, len = 0.0, w_len = 0.0, rk = rk)
+    l2 = plane_of(o = lwv(0.0 - hw_e, y0, hd_e, cx, cz, yaw), n = lnv(0.70710678, 0.70710678, yaw), island = isl0 + 0, eave = false, len = 0.0, w_len = 0.0, rk = rk)
+    out = merge(f0, f1, f2, b0, b1, b2, r0, r1, r2, l0, l1, l2)
+}
+
+def gable_planes(hw_e: f32, hd_e: f32, y0: f32, pitch: f32, rk: int, isl0: int = 1, cx: f32 = 0.0, cz: f32 = 0.0, yaw: f32 = 0.0) -> (out: geo<points>) {
+    """Граничные плоскости двух скатов двускатной крыши: карнизы (рамки) + фронтонные
+    вертикали. Островки isl0+0 фронт, isl0+2 тыл. Рамка: (cx, cz), yaw."""
+    sl = hd_e / cos(radians(pitch))
+    f0 = plane_of(o = lwv(0.0, y0, hd_e, cx, cz, yaw), n = lnv(0.0, 1.0, yaw), island = isl0 + 0, eave = true, len = 2.0 * hw_e, w_len = sl, rk = rk)
+    f1 = plane_of(o = lwv(hw_e, y0, hd_e, cx, cz, yaw), n = lnv(1.0, 0.0, yaw), island = isl0 + 0, eave = false, len = 0.0, w_len = 0.0, rk = rk)
+    f2 = plane_of(o = lwv(0.0 - hw_e, y0, hd_e, cx, cz, yaw), n = lnv(0.0 - 1.0, 0.0, yaw), island = isl0 + 0, eave = false, len = 0.0, w_len = 0.0, rk = rk)
+    b0 = plane_of(o = lwv(0.0, y0, 0.0 - hd_e, cx, cz, yaw), n = lnv(0.0, 0.0 - 1.0, yaw), island = isl0 + 2, eave = true, len = 2.0 * hw_e, w_len = sl, rk = rk)
+    b1 = plane_of(o = lwv(hw_e, y0, 0.0 - hd_e, cx, cz, yaw), n = lnv(1.0, 0.0, yaw), island = isl0 + 2, eave = false, len = 0.0, w_len = 0.0, rk = rk)
+    b2 = plane_of(o = lwv(0.0 - hw_e, y0, 0.0 - hd_e, cx, cz, yaw), n = lnv(0.0 - 1.0, 0.0, yaw), island = isl0 + 2, eave = false, len = 0.0, w_len = 0.0, rk = rk)
+    out = merge(f0, f1, f2, b0, b1, b2)
+}
+
+def roof_rect(w: f32, d: f32, kind: enum {flat, gable, hip, pyramid, mansard} = hip, pitch: f32 = 45.0, overhang: f32 = 0.4, y0: f32 = 0.0, pitch_lo: f32 = 70.0, break_h: f32 = 1.5) -> (slopes: geo<mesh>, edges: geo<points>, planes: geo<points>) {
+    """Крыша над прямоугольным планом w × d (w >= d, конёк вдоль X): slopes — face-scope'ы
+    скатов (deck, группа roof), edges — модель рёбер, planes — граничные плоскости панелей
+    (рамка + выколка для tile_anchors). kind: flat — один горизонтальный скат; gable —
+    двускатная; hip — вальмовая; pyramid — шатёр (w == d); mansard — два яруса (нижний
+    крутой pitch_lo высотой break_h, верхний вальмовый pitch на обрезанном контуре).
+    Диспетчер строит все виды и фильтрует по коду rk (панели/рёбра/плоскости дёшевы)."""
+    expect w >= d: "roof_rect: w >= d — конёк вдоль длинной стороны (для d > w поверните план)"
+    expect d > 0.0: "roof_rect: габариты положительные"
+    expect pitch > 0.0 & pitch < 90.0: "roof_rect: уклон 0..90 градусов"
+    ehw = w * 0.5 + overhang
+    ehd = d * 0.5 + overhang
+    sl = ehd / cos(radians(pitch))
+    # gable (rk 1)
+    gf = slope_quad(len = 2.0 * ehw, slope_len = sl, pitch = pitch, at = vec3(0, y0, ehd), yaw = 0.0)
+    gb = transform(gf, rotate = vec3(0, 180, 0))
+    gable_panels = merge(tag_slope(g = gf, slope_id = 1, pitch = pitch, eave_yaw = 0.0, island = 1, rk = 1), tag_slope(g = gb, slope_id = 3, pitch = pitch, eave_yaw = 180.0, island = 3, rk = 1))
+    gable_eds = tag_edges(e = gable_edges(hw_e = ehw, hd_e = ehd, y0 = y0, pitch = pitch), rk = 1)
+    gable_pl = gable_planes(hw_e = ehw, hd_e = ehd, y0 = y0, pitch = pitch, rk = 1, isl0 = 1)
+    # hip (rk 2) и pyramid (rk 3): панели те же, у пирамиды конёк вырождается в точку
+    hf, hb, hl, hr = hip_panels(hw_e = ehw, hd_e = ehd, y0 = y0, pitch = pitch)
+    hip_p = merge(tag_slope(g = hf, slope_id = 1, pitch = pitch, eave_yaw = 0.0, island = 1, rk = 2), tag_slope(g = hb, slope_id = 3, pitch = pitch, eave_yaw = 180.0, island = 3, rk = 2), tag_slope(g = hl, slope_id = 0, pitch = pitch, eave_yaw = 0.0 - 90.0, island = 0, rk = 2), tag_slope(g = hr, slope_id = 2, pitch = pitch, eave_yaw = 90.0, island = 2, rk = 2))
+    hip_eds = tag_edges(e = hip_edges(hw_e = ehw, hd_e = ehd, y0 = y0, pitch = pitch), rk = 2)
+    hip_pl = hip_planes(hw_e = ehw, hd_e = ehd, y0 = y0, pitch = pitch, rk = 2)
+    pyr_p = merge(tag_slope(g = hf, slope_id = 1, pitch = pitch, eave_yaw = 0.0, island = 1, rk = 3), tag_slope(g = hb, slope_id = 3, pitch = pitch, eave_yaw = 180.0, island = 3, rk = 3), tag_slope(g = hl, slope_id = 0, pitch = pitch, eave_yaw = 0.0 - 90.0, island = 0, rk = 3), tag_slope(g = hr, slope_id = 2, pitch = pitch, eave_yaw = 90.0, island = 2, rk = 3))
+    pyr_eds = tag_edges(e = hip_edges(hw_e = ehw, hd_e = ehd, y0 = y0, pitch = pitch), rk = 3)
+    pyr_pl = hip_planes(hw_e = ehw, hd_e = ehd, y0 = y0, pitch = pitch, rk = 3)
+    # flat (rk 0): одна панель + карнизы
+    fl = slope_quad(len = 2.0 * ehw, slope_len = 2.0 * ehd, pitch = 0.0, at = vec3(0, y0, ehd), yaw = 0.0)
+    flat_p = tag_slope(g = fl, slope_id = 1, pitch = 0.0, eave_yaw = 0.0, island = 1, rk = 0)
+    fle0 = lse.edge(p0 = vec3(0.0 - ehw, y0, ehd), p1 = vec3(ehw, y0, ehd), role = k.R_EAVE(), out_n = vec3(0, 0, 1), pitch = 0.0)
+    fle1 = lse.edge(p0 = vec3(ehw, y0, ehd), p1 = vec3(ehw, y0, 0.0 - ehd), role = k.R_EAVE(), out_n = vec3(1, 0, 0), pitch = 0.0)
+    fle2 = lse.edge(p0 = vec3(ehw, y0, 0.0 - ehd), p1 = vec3(0.0 - ehw, y0, 0.0 - ehd), role = k.R_EAVE(), out_n = vec3(0, 0, 0.0 - 1.0), pitch = 0.0)
+    fle3 = lse.edge(p0 = vec3(0.0 - ehw, y0, 0.0 - ehd), p1 = vec3(0.0 - ehw, y0, ehd), role = k.R_EAVE(), out_n = vec3(0.0 - 1.0, 0, 0), pitch = 0.0)
+    flat_eds = tag_edges(e = merge(fle0, fle1, fle2, fle3), rk = 0)
+    flat_pl = plane_of(o = vec3(0, y0, ehd), n = vec3(0, 0, 1), island = 1, eave = true, len = 2.0 * ehw, w_len = 2.0 * ehd, rk = 0)
+    # mansard (rk 4): нижний крутой ярус + вальмовый верх на обрезанном контуре
+    inset = break_h / tan(radians(pitch_lo))
+    uhw = ehw - inset
+    uhd = ehd - inset
+    ml_f0 = slope_quad(len = 2.0 * ehw, slope_len = break_h / sin(radians(pitch_lo)), pitch = pitch_lo, at = vec3(0, y0, ehd), yaw = 0.0)
+    ml_f1 = clip(ml_f0, origin = vec3(ehw, y0, ehd), normal = vec3(0.0 - 1.0, 0, 1.0))
+    ml_front = clip(ml_f1, origin = vec3(0.0 - ehw, y0, ehd), normal = vec3(1.0, 0, 1.0))
+    ml_back = transform(ml_front, rotate = vec3(0, 180, 0))
+    ml_r0 = slope_quad(len = 2.0 * ehd, slope_len = break_h / sin(radians(pitch_lo)), pitch = pitch_lo, at = vec3(ehw, y0, 0), yaw = 90.0)
+    ml_r1 = clip(ml_r0, origin = vec3(ehw, y0, ehd), normal = vec3(1.0, 0, 0.0 - 1.0))
+    ml_right = clip(ml_r1, origin = vec3(ehw, y0, 0.0 - ehd), normal = vec3(1.0, 0, 1.0))
+    ml_left = transform(ml_right, rotate = vec3(0, 180, 0))
+    uf, ub, ul, ur = hip_panels(hw_e = uhw, hd_e = uhd, y0 = y0 + break_h, pitch = pitch)
+    man_p = merge(tag_slope(g = ml_front, slope_id = 1, pitch = pitch_lo, eave_yaw = 0.0, island = 1, rk = 4), tag_slope(g = ml_back, slope_id = 3, pitch = pitch_lo, eave_yaw = 180.0, island = 3, rk = 4), tag_slope(g = ml_left, slope_id = 0, pitch = pitch_lo, eave_yaw = 0.0 - 90.0, island = 0, rk = 4), tag_slope(g = ml_right, slope_id = 2, pitch = pitch_lo, eave_yaw = 90.0, island = 2, rk = 4), tag_slope(g = uf, slope_id = 1, pitch = pitch, eave_yaw = 0.0, island = 11, rk = 4), tag_slope(g = ub, slope_id = 3, pitch = pitch, eave_yaw = 180.0, island = 13, rk = 4), tag_slope(g = ul, slope_id = 0, pitch = pitch, eave_yaw = 0.0 - 90.0, island = 10, rk = 4), tag_slope(g = ur, slope_id = 2, pitch = pitch, eave_yaw = 90.0, island = 12, rk = 4))
+    mbe0 = lse.edge(p0 = vec3(0.0 - uhw, y0 + break_h, uhd), p1 = vec3(uhw, y0 + break_h, uhd), role = k.R_FLOOR_TOP(), out_n = vec3(0, 0, 1), pitch = pitch_lo)
+    mbe1 = lse.edge(p0 = vec3(uhw, y0 + break_h, uhd), p1 = vec3(uhw, y0 + break_h, 0.0 - uhd), role = k.R_FLOOR_TOP(), out_n = vec3(1, 0, 0), pitch = pitch_lo)
+    mbe2 = lse.edge(p0 = vec3(uhw, y0 + break_h, 0.0 - uhd), p1 = vec3(0.0 - uhw, y0 + break_h, 0.0 - uhd), role = k.R_FLOOR_TOP(), out_n = vec3(0, 0, 0.0 - 1.0), pitch = pitch_lo)
+    mbe3 = lse.edge(p0 = vec3(0.0 - uhw, y0 + break_h, 0.0 - uhd), p1 = vec3(0.0 - uhw, y0 + break_h, uhd), role = k.R_FLOOR_TOP(), out_n = vec3(0.0 - 1.0, 0, 0), pitch = pitch_lo)
+    mhe = tag_edges(e = hip_edges(hw_e = uhw, hd_e = uhd, y0 = y0 + break_h, pitch = pitch), rk = 4)
+    mev0 = lse.edge(p0 = vec3(0.0 - ehw, y0, ehd), p1 = vec3(ehw, y0, ehd), role = k.R_EAVE(), out_n = vec3(0, 0, 1), pitch = pitch_lo)
+    mev1 = lse.edge(p0 = vec3(ehw, y0, ehd), p1 = vec3(ehw, y0, 0.0 - ehd), role = k.R_EAVE(), out_n = vec3(1, 0, 0), pitch = pitch_lo)
+    mev2 = lse.edge(p0 = vec3(ehw, y0, 0.0 - ehd), p1 = vec3(0.0 - ehw, y0, 0.0 - ehd), role = k.R_EAVE(), out_n = vec3(0, 0, 0.0 - 1.0), pitch = pitch_lo)
+    mev3 = lse.edge(p0 = vec3(0.0 - ehw, y0, 0.0 - ehd), p1 = vec3(0.0 - ehw, y0, ehd), role = k.R_EAVE(), out_n = vec3(0.0 - 1.0, 0, 0), pitch = pitch_lo)
+    man_eds = merge(mbe0, mbe1, mbe2, mbe3, mhe, tag_edges(e = merge(mev0, mev1, mev2, mev3), rk = 4))
+    man_pl = merge(hip_planes(hw_e = ehw, hd_e = ehd, y0 = y0, pitch = pitch_lo, rk = 4), hip_planes(hw_e = uhw, hd_e = uhd, y0 = y0 + break_h, pitch = pitch, rk = 4, isl0 = 10))
+    # диспетчер: фильтр по коду вида
+    rk = kind == flat ? 0 : (kind == gable ? 1 : (kind == hip ? 2 : (kind == pyramid ? 3 : 4)))
+    slopes_all = merge(flat_p, gable_panels, hip_p, pyr_p, man_p)
+    edges_all = merge(flat_eds, gable_eds, hip_eds, pyr_eds, man_eds)
+    planes_all = merge(flat_pl, gable_pl, hip_pl, pyr_pl, man_pl)
+    slopes = delete(slopes_all, where = @rk != rk)
+    edges = delete(edges_all, where = @rk != rk)
+    planes = delete(planes_all, where = @rk != rk)
+    ensure kind != pyramid | abs(w - d) < 0.01: "roof_rect: pyramid — шатёр на квадратном плане (w == d)"
+    ensure kind != mansard | uhw > uhd: "roof_rect: mansard — верхний ярус должен остаться вытянутым (uhw > uhd): уменьшите break_h/pitch_lo"
+}
+
+def tile_anchors(slopes: geo<mesh>, planes: geo<points>, row_pitch: f32 = 0.28, col_pitch: f32 = 0.32, lift: f32 = 0.02) -> (out: geo<points>) {
+    """Якоря покрытия по панелям (§6.5): сетка в рамке ската — колонки col_pitch вдоль
+    карниза (вразбежку по нечётным рядам), ряды row_pitch вверх по скату от карниза;
+    кандидаты вне граничных плоскостей выколоты (в т.ч. по ендовам — чужие плоскости
+    скатов в островке). @orient — рамка ската (терминал покрытия лежит в XZ с лицом +Y,
+    как tile_plain). Лист графа."""
+    expect row_pitch > 0.05 & col_pitch > 0.05: "tile_anchors: шаги разумные, в метрах"
+    evs = delete(planes, where = @eave == false)
+    out = foreach ev in evs {
+        ev = anchors_of_island(ev = ev, slopes = slopes, planes = planes, row_pitch = row_pitch, col_pitch = col_pitch, lift = lift)
+    }
+}
+
+def anchors_of_island(ev: geo<points>, slopes: geo<mesh>, planes: geo<points>, row_pitch: f32, col_pitch: f32, lift: f32) -> (out: geo<points>) {
+    """Якоря панели одного островка по его eave-плоскости (внутренность tile_anchors)."""
+    p = delete(slopes, where = @island_id != value(@island_id, on = ev), domain = faces)
+    out = anchors_of_panel(p = p, planes = planes, row_pitch = row_pitch, col_pitch = col_pitch, lift = lift)
+}
+
+def anchors_of_panel(p: geo<mesh>, planes: geo<points>, row_pitch: f32, col_pitch: f32, lift: f32) -> (out: geo<points>) {
+    """Якоря одной панели (внутренность tile_anchors). Рамка из eave-плоскости островка:
+    U вдоль карниза, N — нормаль из @slope_pitch/@eave_yaw, W — вверх по скату."""
+    isl = max_of(@island_id, on = p)
+    pl0 = delete(planes, where = @island_id != isl)
+    ev = delete(pl0, where = @eave == false)
+    mid = value(@o, on = ev)
+    elen = value(@len, on = ev)
+    w_max = value(@w_len, on = ev)
+    pitch = max_of(@slope_pitch, on = p)
+    yaw = max_of(@eave_yaw, on = p)
+    sy = sin(radians(yaw))
+    cy = cos(radians(yaw))
+    sp = sin(radians(pitch))
+    cp = cos(radians(pitch))
+    U = vec3(cy, 0.0, 0.0 - sy)
+    N = vec3(sp * sy, cp, sp * cy)
+    W = cross(N, U)
+    n_rows = max(int(w_max / row_pitch), 1)
+    n_cols = max(int(elen / col_pitch), 1)
+    cpitch = elen / f32(n_cols)
+    a0 = mesh_line(count = n_rows * n_cols, length = 0.0)
+    a3 = set_position(a0, pos = mid + U * ((f32(@index % n_cols) - f32(n_cols - 1) * 0.5 + 0.5 * f32((@index / n_cols) % 2 == 1)) * cpitch) + W * (f32(@index / n_cols) * row_pitch) + N * lift)
+    a4 = set(a3, "orient", orient_from_euler(vec3(pitch, yaw, 0.0)), domain = points)
+    a5 = set(a4, "variant", 0, domain = points)
+    a6 = set(a5, "bad", false, domain = points)
+    a7 = set(a6, "sub", true, domain = points)
+    a8 = set(a7, "hsub", false, domain = points)
+    pl = set(pl0, "i", @index, domain = points)
+    a9 = repeat (a8, iterations = count(pl0)) |acc| {
+        cur = delete(pl, where = @i != @iteration)
+        is_sub = value(@cls, on = cur) == 1
+        outside = dot(@P - value(@o, on = cur), value(@n, on = cur)) > 0.001
+        b0 = set(acc, "bad", (@bad == true) | ((is_sub == false) & outside))
+        b1 = set(b0, "sub", (@sub == true) & ((is_sub == false) | (outside == false)))
+        acc = set(b1, "hsub", (@hsub == true) | is_sub)
+    }
+    out = delete(a9, where = (@bad == true) | ((@hsub == true) & (@sub == true)))
+}
+
+# --- Композиция крыльев (Г/П/Т-семейство, крестовые) -------------------------------------
+# Крыло — отдельная двускатная/вальмовая крыша над прямоугольником со свесами на всех
+# сторонах; равные уклоны и общая высота карниза — плоскости скатов соседних крыльев
+# сходятся по биссектрисам 45°. Панели одного крыла режутся объёмом другого (6/8
+# плоскостей: скаты + фронтонные + карнизные вертикали — вычитание выпуклого объёма
+# клипами); якоря покрытия выкалываются тем же набором (класс subtract в planes).
+
+def lwv(x: f32, y: f32, z: f32, cx: f32, cz: f32, yaw: f32) -> (out: vec3) {
+    """Локальная точка рамки крыла (x, y, z) → мировая (поворот yaw вокруг +Y, затем cx, cz)."""
+    sy = sin(radians(yaw))
+    cy = cos(radians(yaw))
+    out = vec3(cx + x * cy + z * sy, y, cz + (0.0 - x) * sy + z * cy)
+}
+
+def lnv(x: f32, z: f32, yaw: f32) -> (out: vec3) {
+    """Локальное горизонтальное направление (x, z) → мировое (нормали/направления рёбер)."""
+    sy = sin(radians(yaw))
+    cy = cos(radians(yaw))
+    out = vec3(x * cy + z * sy, 0.0, (0.0 - x) * sy + z * cy)
+}
+
+def clip_by_volume(g: geo<mesh>, vol: geo<points>) -> (out: geo<mesh>) {
+    """Вычесть выпуклый объём из панелей: для каждой плоскости vol (@o/@n, колонка @i)
+    кусок «снаружи плоскости», куски объединяются (panel ∩ ∪outside(Hᵢ), идиома
+    masonry.clip_*_hole; последовательные клипы дали бы ∩outside — пусто)."""
+    out = repeat (empty_mesh(), iterations = count(vol)) |acc| {
+        cur = delete(vol, where = @i != @iteration)
+        acc = merge(acc, clip(g, origin = value(@o, on = cur), normal = value(@n, on = cur)))
+    }
+}
+
+
+def volume_planes_gable(hw_e: f32, hd_e: f32, y0: f32, pitch: f32, cx: f32, cz: f32, yaw: f32) -> (out: geo<points>) {
+    """Плоскости объёма двускатного крыла (cls = 1; для вычитания из панелей другого крыла
+    и выколки якорей): 2 ската + 2 фронтонные вертикали + 2 карнизные вертикали.
+    Нижняя плоскость не нужна — панели и якоря всегда выше карниза."""
+    s_f = slope_plane(at = lwv(0.0, y0, hd_e, cx, cz, yaw), pitch = pitch, yaw = yaw, island = 0, cls = 1)
+    s_b = slope_plane(at = lwv(0.0, y0, 0.0 - hd_e, cx, cz, yaw), pitch = pitch, yaw = yaw + 180.0, island = 0, cls = 1)
+    r_r = plane_of(o = lwv(hw_e, y0, 0.0, cx, cz, yaw), n = lnv(1.0, 0.0, yaw), island = 0, eave = false, len = 0.0, w_len = 0.0, rk = 0, cls = 1)
+    r_l = plane_of(o = lwv(0.0 - hw_e, y0, 0.0, cx, cz, yaw), n = lnv(0.0 - 1.0, 0.0, yaw), island = 0, eave = false, len = 0.0, w_len = 0.0, rk = 0, cls = 1)
+    e_f = plane_of(o = lwv(0.0, y0, hd_e, cx, cz, yaw), n = lnv(0.0, 1.0, yaw), island = 0, eave = false, len = 0.0, w_len = 0.0, rk = 0, cls = 1)
+    e_b = plane_of(o = lwv(0.0, y0, 0.0 - hd_e, cx, cz, yaw), n = lnv(0.0, 0.0 - 1.0, yaw), island = 0, eave = false, len = 0.0, w_len = 0.0, rk = 0, cls = 1)
+    out = set(merge(s_f, s_b, r_r, r_l, e_f, e_b), "i", @index, domain = points)
+}
+
+def volume_planes_hip(hw_e: f32, hd_e: f32, y0: f32, pitch: f32, cx: f32, cz: f32, yaw: f32) -> (out: geo<points>) {
+    """Плоскости объёма вальмового крыла (cls = 1): 4 ската + 4 карнизные вертикали."""
+    s_f = slope_plane(at = lwv(0.0, y0, hd_e, cx, cz, yaw), pitch = pitch, yaw = yaw, island = 0, cls = 1)
+    s_b = slope_plane(at = lwv(0.0, y0, 0.0 - hd_e, cx, cz, yaw), pitch = pitch, yaw = yaw + 180.0, island = 0, cls = 1)
+    s_r = slope_plane(at = lwv(hw_e, y0, 0.0, cx, cz, yaw), pitch = pitch, yaw = yaw + 90.0, island = 0, cls = 1)
+    s_l = slope_plane(at = lwv(0.0 - hw_e, y0, 0.0, cx, cz, yaw), pitch = pitch, yaw = yaw + 270.0, island = 0, cls = 1)
+    e_f = plane_of(o = lwv(0.0, y0, hd_e, cx, cz, yaw), n = lnv(0.0, 1.0, yaw), island = 0, eave = false, len = 0.0, w_len = 0.0, rk = 0, cls = 1)
+    e_b = plane_of(o = lwv(0.0, y0, 0.0 - hd_e, cx, cz, yaw), n = lnv(0.0, 0.0 - 1.0, yaw), island = 0, eave = false, len = 0.0, w_len = 0.0, rk = 0, cls = 1)
+    e_r = plane_of(o = lwv(hw_e, y0, 0.0, cx, cz, yaw), n = lnv(1.0, 0.0, yaw), island = 0, eave = false, len = 0.0, w_len = 0.0, rk = 0, cls = 1)
+    e_l = plane_of(o = lwv(0.0 - hw_e, y0, 0.0, cx, cz, yaw), n = lnv(0.0 - 1.0, 0.0, yaw), island = 0, eave = false, len = 0.0, w_len = 0.0, rk = 0, cls = 1)
+    out = set(merge(s_f, s_b, s_r, s_l, e_f, e_b, e_r, e_l), "i", @index, domain = points)
+}
+
+def gable_wing(along: f32, across: f32, oh: f32, y0: f32, pitch: f32, cx: f32, cz: f32, yaw: f32, isl_f: int, isl_b: int) -> (panels: geo<mesh>, planes: geo<points>, edges: geo<points>, vol: geo<points>) {
+    """Двускатное крыло: прямоугольник along (вдоль конька, локальный X) × across (пролёт),
+    свес oh на всех сторонах, центр плана (cx, cz), конёк по азимуту yaw. Панели —
+    островки isl_f (фронт) / isl_b (тыл). vol — плоскости объёма для другого крыла."""
+    expect along > 0.0 & across > 0.0: "gable_wing: габариты положительные"
+    hw_e = along * 0.5 + oh
+    hd_e = across * 0.5 + oh
+    sl = hd_e / cos(radians(pitch))
+    pf = slope_quad(len = 2.0 * hw_e, slope_len = sl, pitch = pitch, at = lwv(0.0, y0, hd_e, cx, cz, yaw), yaw = yaw)
+    pb = slope_quad(len = 2.0 * hw_e, slope_len = sl, pitch = pitch, at = lwv(0.0, y0, 0.0 - hd_e, cx, cz, yaw), yaw = yaw + 180.0)
+    panels = merge(tag_slope(g = pf, slope_id = 1, pitch = pitch, eave_yaw = yaw, island = isl_f, rk = 0), tag_slope(g = pb, slope_id = 3, pitch = pitch, eave_yaw = yaw + 180.0, island = isl_b, rk = 0))
+    planes = gable_planes(hw_e = hw_e, hd_e = hd_e, y0 = y0, pitch = pitch, rk = 0, isl0 = isl_f, cx = cx, cz = cz, yaw = yaw)
+    edges = gable_edges(hw_e = hw_e, hd_e = hd_e, y0 = y0, pitch = pitch, cx = cx, cz = cz, yaw = yaw)
+    vol = volume_planes_gable(hw_e = hw_e, hd_e = hd_e, y0 = y0, pitch = pitch, cx = cx, cz = cz, yaw = yaw)
+}
+
+def hip_wing(w: f32, d: f32, oh: f32, y0: f32, pitch: f32, cx: f32, cz: f32, yaw: f32, isl0: int) -> (panels: geo<mesh>, planes: geo<points>, edges: geo<points>, vol: geo<points>) {
+    """Вальмовое крыло над прямоугольником w × d (w >= d, конёк вдоль локального X),
+    свес oh, центр (cx, cz), поворот yaw. Островки isl0+0..+3 (лево/фронт/право/тыл)."""
+    expect w >= d: "hip_wing: w >= d — конёк вдоль длинной стороны"
+    hw_e = w * 0.5 + oh
+    hd_e = d * 0.5 + oh
+    hf, hb, hl, hr = hip_panels(hw_e = hw_e, hd_e = hd_e, y0 = y0, pitch = pitch)
+    p0 = merge(tag_slope(g = hf, slope_id = 1, pitch = pitch, eave_yaw = yaw, island = isl0 + 1, rk = 0), tag_slope(g = hb, slope_id = 3, pitch = pitch, eave_yaw = yaw + 180.0, island = isl0 + 3, rk = 0), tag_slope(g = hl, slope_id = 0, pitch = pitch, eave_yaw = yaw - 90.0, island = isl0 + 0, rk = 0), tag_slope(g = hr, slope_id = 2, pitch = pitch, eave_yaw = yaw + 90.0, island = isl0 + 2, rk = 0))
+    panels = transform(p0, rotate = vec3(0, yaw, 0), translate = vec3(cx, 0.0, cz))
+    planes = hip_planes(hw_e = hw_e, hd_e = hd_e, y0 = y0, pitch = pitch, rk = 0, isl0 = isl0, cx = cx, cz = cz, yaw = yaw)
+    edges = hip_edges(hw_e = hw_e, hd_e = hd_e, y0 = y0, pitch = pitch, cx = cx, cz = cz, yaw = yaw)
+    vol = volume_planes_hip(hw_e = hw_e, hd_e = hd_e, y0 = y0, pitch = pitch, cx = cx, cz = cz, yaw = yaw)
+}
+
+def retarget(vol: geo<points>, island: int) -> (out: geo<points>) {
+    """Копия плоскостей объёма с island_id чужой панели (выколка её якорей)."""
+    out = set(vol, "island_id", island, domain = points)
+}
+
+def roof_l(w: f32, d: f32, cut_w: f32, cut_d: f32, kind: enum {cross, hip} = cross, pitch: f32 = 45.0, overhang: f32 = 0.4, y0: f32 = 0.0) -> (slopes: geo<mesh>, edges: geo<points>, planes: geo<points>) {
+    """Крыша над Г-планом w × d (вырез cut_w × cut_d в углу +X, +Z): два крыла с общим
+    карнизом и равным уклоном, ендова — биссектриса 45° от внутреннего угла. kind:
+    cross — крестовая (оба крыла двускатные, коньки крестом), hip — вальмовая схема.
+    Ограничение аналитики: пролёт крыла B (w − cut_w) не шире крыла A (d − cut_d)."""
+    expect cut_w > 0.0 & cut_d > 0.0 & cut_w < w & cut_d < d: "roof_l: вырез внутри габарита"
+    expect (w - cut_w) <= (d - cut_d): "roof_l: пролёт крыла B шире крыла A — седловина вне аналитики (ждёт A4 roof_wavefront)"
+    hw = w * 0.5
+    hd = d * 0.5
+    dA = d - cut_d
+    wB = w - cut_w
+    bcx = 0.0 - cut_w * 0.5
+    bcz = hd - cut_d * 0.5
+    # крыло A (конёк вдоль X) и крыло B (конёк вдоль Z), панели режутся объёмами друг друга
+    ga_p, ga_pl, ga_e, ga_v = gable_wing(along = w, across = dA, oh = overhang, y0 = y0, pitch = pitch, cx = 0.0, cz = 0.0 - cut_d * 0.5, yaw = 0.0, isl_f = 1, isl_b = 3)
+    gb_p, gb_pl, gb_e, gb_v = gable_wing(along = cut_d, across = wB, oh = overhang, y0 = y0, pitch = pitch, cx = bcx, cz = bcz, yaw = 90.0, isl_f = 11, isl_b = 13)
+    ha_p, ha_pl, ha_e, ha_v = hip_wing(w = w, d = dA, oh = overhang, y0 = y0, pitch = pitch, cx = 0.0, cz = 0.0 - cut_d * 0.5, yaw = 0.0, isl0 = 0)
+    hbw = wB >= cut_d ? wB : cut_d
+    hbd = wB >= cut_d ? cut_d : wB
+    hby = wB >= cut_d ? 0.0 : 90.0
+    hb_p, hb_pl, hb_e, hb_v = hip_wing(w = hbw, d = hbd, oh = overhang, y0 = y0, pitch = pitch, cx = bcx, cz = bcz, yaw = hby, isl0 = 10)
+    cr_p = clip_by_volume(g = ga_p, vol = gb_v)
+    cr_pb = clip_by_volume(g = gb_p, vol = ga_v)
+    hp_p = clip_by_volume(g = ha_p, vol = hb_v)
+    hp_pb = clip_by_volume(g = hb_p, vol = ha_v)
+    slopes = select(kind == cross, a = merge(cr_p, cr_pb), b = merge(hp_p, hp_pb))
+    # ендова: из угла свеса по биссектрисе до первого конька
+    tan_p = tan(radians(pitch))
+    t_a = hd - cut_d * 0.5 + overhang
+    t_b = hw - cut_w * 0.5 + overhang
+    t_v = t_a < t_b ? t_a : t_b
+    vx0 = hw - cut_w + overhang
+    vz0 = hd - cut_d + overhang
+    valley = lse.edge(p0 = vec3(vx0, y0, vz0), p1 = vec3(vx0 - t_v, y0 + t_v * tan_p, vz0 - t_v), role = k.R_VALLEY(), out_n = vec3(0.70710678, 0, 0.70710678), pitch = pitch)
+    # конёк крыла B (cross): видимый отрезок от южного конца до места, где он ныряет под скат A
+    y_ridge_b = y0 + (wB * 0.5 + overhang) * tan_p
+    kr = k.R_RIDGE()
+    gb_e_noridge = delete(gb_e, where = @role != kr)
+    ridge_b = lse.edge(p0 = vec3(bcx, y_ridge_b, bcz - cut_d * 0.5 - wB * 0.5), p1 = vec3(bcx, y_ridge_b, bcz + cut_d * 0.5 + overhang), role = k.R_RIDGE(), out_n = vec3(0, 1, 0), pitch = 0.0)
+    edges = select(kind == cross, a = merge(ga_e, gb_e_noridge, ridge_b, valley), b = merge(ha_e, hb_e, valley))
+    # плоскости для якорей: свои границы + объёмы чужих крыльев
+    planes = select(kind == cross, a = merge(ga_pl, gb_pl, retarget(vol = ga_v, island = 11), retarget(vol = ga_v, island = 13), retarget(vol = gb_v, island = 1), retarget(vol = gb_v, island = 3)), b = merge(ha_pl, hb_pl, retarget(vol = ha_v, island = 10), retarget(vol = ha_v, island = 11), retarget(vol = ha_v, island = 12), retarget(vol = ha_v, island = 13), retarget(vol = hb_v, island = 0), retarget(vol = hb_v, island = 1), retarget(vol = hb_v, island = 2), retarget(vol = hb_v, island = 3)))
+}
+
+def roof_cross(w: f32, d: f32, pitch: f32 = 45.0, overhang: f32 = 0.4, y0: f32 = 0.0) -> (slopes: geo<mesh>, edges: geo<points>, planes: geo<points>) {
+    """Крестовая крыша над прямоугольником w × d (w >= d): два двускатных крыла крестом,
+    равный уклон, 4 ендовы от углов карниза до конька низкого крыла (A). Конёк крыла B
+    (высокий) виден весь, его торцы — щипцы."""
+    expect w >= d: "roof_cross: w >= d"
+    ga_p, ga_pl, ga_e, ga_v = gable_wing(along = w, across = d, oh = overhang, y0 = y0, pitch = pitch, cx = 0.0, cz = 0.0, yaw = 0.0, isl_f = 1, isl_b = 3)
+    gb_p, gb_pl, gb_e, gb_v = gable_wing(along = d, across = w, oh = overhang, y0 = y0, pitch = pitch, cx = 0.0, cz = 0.0, yaw = 90.0, isl_f = 11, isl_b = 13)
+    a_p = clip_by_volume(g = ga_p, vol = gb_v)
+    b_p = clip_by_volume(g = gb_p, vol = ga_v)
+    slopes = merge(a_p, b_p)
+    tan_p = tan(radians(pitch))
+    hw = w * 0.5 + overhang
+    hd = d * 0.5 + overhang
+    y_a = y0 + hd * tan_p
+    cv = hw - hd
+    v0 = lse.edge(p0 = vec3(hw, y0, hd), p1 = vec3(cv, y_a, 0.0), role = k.R_VALLEY(), out_n = vec3(0.70710678, 0, 0.70710678), pitch = pitch)
+    v1 = lse.edge(p0 = vec3(hw, y0, 0.0 - hd), p1 = vec3(cv, y_a, 0.0), role = k.R_VALLEY(), out_n = vec3(0.70710678, 0, 0.0 - 0.70710678), pitch = pitch)
+    v2 = lse.edge(p0 = vec3(0.0 - hw, y0, 0.0 - hd), p1 = vec3(0.0 - cv, y_a, 0.0), role = k.R_VALLEY(), out_n = vec3(0.0 - 0.70710678, 0, 0.0 - 0.70710678), pitch = pitch)
+    v3 = lse.edge(p0 = vec3(0.0 - hw, y0, hd), p1 = vec3(0.0 - cv, y_a, 0.0), role = k.R_VALLEY(), out_n = vec3(0.0 - 0.70710678, 0, 0.70710678), pitch = pitch)
+    kr = k.R_RIDGE()
+    ga_e_noridge = delete(ga_e, where = @role != kr)
+    ridge_a_r = lse.edge(p0 = vec3(cv, y_a, 0.0), p1 = vec3(hw, y_a, 0.0), role = k.R_RIDGE(), out_n = vec3(0, 1, 0), pitch = 0.0)
+    ridge_a_l = lse.edge(p0 = vec3(0.0 - hw, y_a, 0.0), p1 = vec3(0.0 - cv, y_a, 0.0), role = k.R_RIDGE(), out_n = vec3(0, 1, 0), pitch = 0.0)
+    edges = merge(ga_e_noridge, gb_e, ridge_a_r, ridge_a_l, v0, v1, v2, v3)
+    planes = merge(ga_pl, gb_pl, retarget(vol = ga_v, island = 11), retarget(vol = ga_v, island = 13), retarget(vol = gb_v, island = 1), retarget(vol = gb_v, island = 3))
+}

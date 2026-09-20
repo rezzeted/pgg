@@ -1,0 +1,33 @@
+# A3 (docs/pgg/architecture_library_plan.md): крыша arch/roof — пять видов на
+# прямоугольнике, Г-план в двух схемах, крестовая; рёбра и якоря покрытия.
+# Точные проверки значений — в arch_lib_test.cpp.
+import lib.layout.edges as lse
+import lib.arch.kinds as k
+import lib.arch.roof as ar
+
+hip_s, hip_e, hip_p = ar.roof_rect(w = 8.0, d = 5.0, kind = hip, pitch = 45.0, overhang = 0.4, y0 = 3.0)
+gable_s, gable_e, gable_p = ar.roof_rect(w = 8.0, d = 5.0, kind = gable, pitch = 45.0, overhang = 0.4, y0 = 3.0)
+man_s, man_e, man_p = ar.roof_rect(w = 9.0, d = 5.5, kind = mansard, pitch = 30.0, pitch_lo = 70.0, break_h = 1.5, overhang = 0.3, y0 = 3.0)
+lc_s, lc_e, lc_p = ar.roof_l(w = 9.0, d = 9.0, cut_w = 3.0, cut_d = 2.5, kind = cross, pitch = 45.0, overhang = 0.3, y0 = 3.0)
+cr_s, cr_e, cr_p = ar.roof_cross(w = 9.0, d = 6.0, pitch = 45.0, overhang = 0.3, y0 = 3.0)
+
+anchors = ar.tile_anchors(slopes = hip_s, planes = hip_p)
+ridges = lse.pick_role(edges = hip_e, role = k.R_RIDGE())
+hips = lse.pick_role(edges = cr_e, role = k.R_HIP())
+valleys = lse.pick_role(edges = cr_e, role = k.R_VALLEY())
+lc_valley = lse.pick_role(edges = lc_e, role = k.R_VALLEY())
+
+output hip_s
+output hip_e
+output gable_s
+output gable_e
+output man_s
+output lc_s
+output lc_e
+output cr_s
+output cr_e
+output anchors
+output ridges
+output hips
+output valleys
+output lc_valley
