@@ -1025,6 +1025,10 @@ private:
             }
             run_.bindingStack.pop_back();
             auto eit = env_.find(name);
+            if (inst != kNoInstance && contractState_[inst] == 1) {
+                contractState_[inst] = 2;
+                runContracts(inst, /*ensures=*/true);
+            }
             return eit != env_.end() ? eit->second : TypedValue{};
         }
         if (node->kind != NodeKind::Binding) {
@@ -1159,16 +1163,29 @@ private:
                 }
                 case NodeKind::RepeatZone: {
                     const auto* z = static_cast<const RepeatZone*>(s);
+                    size_t inst = kNoInstance;
+                    if (z->targets.names.size() == 1)
+                        if (auto oi = outputInstance_.find(z->targets.names[0]); oi != outputInstance_.end())
+                            inst = oi->second;
+                    const bool first = inst != kNoInstance && contractsStarted.insert(inst).second;
+                    if (first) runContractsWith(inst, /*ensures=*/false, resolve, run);
                     if (!z->targets.names.empty()) run.bindingStack.push_back(z->targets.names[0]);
                     evalRepeatZone(z, localEnv, resolve, run);
                     if (!z->targets.names.empty()) run.bindingStack.pop_back();
+                    if (first) runContractsWith(inst, /*ensures=*/true, resolve, run);
                     break;
                 }
                 case NodeKind::ForeachZone: {
                     const auto* z = static_cast<const ForeachZone*>(s);
+                    size_t inst = kNoInstance;
+                    if (auto oi = outputInstance_.find(z->target); oi != outputInstance_.end())
+                        inst = oi->second;
+                    const bool first = inst != kNoInstance && contractsStarted.insert(inst).second;
+                    if (first) runContractsWith(inst, /*ensures=*/false, resolve, run);
                     run.bindingStack.push_back(z->target);
                     evalForeachZone(z, localEnv, resolve, run);
                     run.bindingStack.pop_back();
+                    if (first) runContractsWith(inst, /*ensures=*/true, resolve, run);
                     break;
                 }
                 default:

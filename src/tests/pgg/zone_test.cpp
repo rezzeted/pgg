@@ -640,4 +640,46 @@ TEST(ZoneExpand, ContractsOfInstancesInsideZoneBodiesFire) {
     EXPECT_GE(countCode(r, "E303"), 1);
 }
 
+// A def whose output is bound by a zone must still run its ensures: the
+// engine's zone evaluation path returned before the post-pull contract run,
+// silently dropping every ensure of a zone-containing def (found via the
+// lib/layout split fit check, A1 of the architecture library plan).
+TEST(ZoneExpand, EnsuresOfZoneBoundDefFire) {
+    pgg::RunResult r = runSrc(
+        "def pack(n: int) -> (out: geo<points>) {\n"
+        "    \"\"\"pack points\"\"\"\n"
+        "    a = mesh_line(count = n, length = 1.0)\n"
+        "    out = foreach p in a {\n"
+        "        p = merge(p, p)\n"
+        "    }\n"
+        "    ensure count(a) > 100: \"pack: too few input points\"\n"
+        "}\n"
+        "r = pack(n = 3)\n"
+        "output r\n");
+    EXPECT_GE(countCode(r, "E304"), 1);
+    EXPECT_TRUE(hasMessage(r, "E304", "too few input points"));
+}
+
+// The same one level deeper: a zone-bound def output instantiated inside a
+// zone body — execBody's zone cases skipped the contract runs too (this is
+// the lib/layout split -> split_one nesting).
+TEST(ZoneExpand, EnsuresOfZoneBoundDefInsideZoneBodyFire) {
+    pgg::RunResult r = runSrc(
+        "def inner(n: int) -> (out: geo<points>) {\n"
+        "    \"\"\"inner with zone-bound output\"\"\"\n"
+        "    a = mesh_line(count = n, length = 1.0)\n"
+        "    out = foreach p in a {\n"
+        "        p = merge(p, p)\n"
+        "    }\n"
+        "    ensure count(a) > 100: \"inner: too few\"\n"
+        "}\n"
+        "rows = mesh_line(count = 2, length = 1.0)\n"
+        "r = foreach row in rows {\n"
+        "    row = inner(n = 3)\n"
+        "}\n"
+        "output r\n");
+    EXPECT_GE(countCode(r, "E304"), 1);
+    EXPECT_TRUE(hasMessage(r, "E304", "too few"));
+}
+
 }  // namespace
