@@ -312,6 +312,22 @@ private:
         }
     }
 
+    // A bare ident in a == / != comparison operand may be an enum literal
+    // (`kind == tile`, v1.28) — the same type-driven rule as named-arg bare
+    // idents: count as a use when defined, forgive when not (the E206 stage
+    // decides against the other operand's enum type).
+    void comparisonOperand(const Expr* e, const std::string& op, Scope& scope) {
+        if (op == "==" || op == "!=") {
+            const Expr* v = e;
+            while (v && v->kind == NodeKind::Paren) v = static_cast<const Paren*>(v)->inner;
+            if (v && v->kind == NodeKind::Ident) {
+                readNamedArgIdent(scope, static_cast<const Ident*>(v)->name, v->span);
+                return;
+            }
+        }
+        expr(e, scope);
+    }
+
     void expr(const Expr* e, Scope& scope) {
         if (!e) return;
         switch (e->kind) {
@@ -326,8 +342,8 @@ private:
                 break;
             case NodeKind::Binary: {
                 const auto* b = static_cast<const Binary*>(e);
-                expr(b->lhs, scope);
-                expr(b->rhs, scope);
+                comparisonOperand(b->lhs, b->op, scope);
+                comparisonOperand(b->rhs, b->op, scope);
                 break;
             }
             case NodeKind::Ternary: {

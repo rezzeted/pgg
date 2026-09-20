@@ -469,12 +469,19 @@ TypedValue compileExprImpl(const Expr* e, RunContext& run, const IdentResolver& 
             return makeValueResult(Value());
         case NodeKind::EnumLit: {
             const auto* en = static_cast<const EnumLit*>(e);
+            // Verified enum literal (v1.28): binds as its name string.
+            if (run.enumLiteralIdents && run.enumLiteralIdents->count(e))
+                return makeValueResult(Value(en->name));
             run.report("E204", e->span, "enum literal '" + en->name + "' has no target type here",
                        "enum literals are only valid as enum parameter values");
             return {};
         }
         case NodeKind::Ident: {
             const auto* id = static_cast<const Ident*>(e);
+            // Verified enum literal (v1.28, e.g. `kind == tile` against an
+            // enum-typed operand): the name string, not a binding read.
+            if (run.enumLiteralIdents && run.enumLiteralIdents->count(e))
+                return makeValueResult(Value(id->name));
             return resolve(id->name, e->span);
         }
         case NodeKind::AttrRef:

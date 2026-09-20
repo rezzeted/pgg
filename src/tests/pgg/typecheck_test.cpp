@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include "pgg/eval.h"
+#include "test_utils.h"
 
 namespace {
 
@@ -194,6 +195,135 @@ TEST(Typecheck, GeometryArgumentDoesNotLeakItsFieldReads) {
         "output marked\n");
     EXPECT_EQ(countCode(r, "E302"), 0);
     EXPECT_FALSE(r.hasErrors());
+}
+
+// Enum literals in general expressions (v1.28, spec §13): a bare ident that
+// is not a defined binding reads as an enum literal in == / != comparisons
+// against an enum-typed operand, in enum interface binding values and in
+// enum param defaults — with E206 on a foreign value.
+TEST(Typecheck, EnumComparisonInDefBody) {
+    // Call-site literal and signature default both dispatch on the enum.
+    const std::string src =
+        "def f(kind: enum {tile, metal} = tile) -> (out: int) {\n"
+        "    out = kind == tile ? 1 : 2\n"
+        "}\n"
+        "a = f(kind = metal)\n"
+        "b = f()\n"
+        "output a\n"
+        "output b\n";
+    pgg::RunResult r = runSrc(src);
+    EXPECT_EQ(countCode(r, "E103"), 0);
+    EXPECT_EQ(countCode(r, "E206"), 0);
+    ASSERT_FALSE(r.hasErrors());
+    EXPECT_EQ(pgg::asInt(r.outputs[0].value), 2);  // metal != tile
+    EXPECT_EQ(pgg::asInt(r.outputs[1].value), 1);  // default tile
+}
+
+TEST(Typecheck, EnumComparisonTopLevelParam) {
+    const std::string src =
+        "param roof_kind: enum {hip, gable} = hip\n"
+        "n = roof_kind == hip ? 5 : 0\n"
+        "output n\n";
+    pgg::RunResult r = runSrc(src);
+    ASSERT_FALSE(r.hasErrors());
+    EXPECT_EQ(pgg::asInt(r.outputs[0].value), 5);
+    // A string --param binds the enum value (MCP/CLI contract).
+    pgg::RunParams params;
+    params.values.push_back({"roof_kind", pgg::Value(std::string("gable"))});
+    pgg::RunResult bound = pgg::run(src, params);
+    EXPECT_EQ(countCode(bound, "E604"), 0);
+    ASSERT_FALSE(bound.hasErrors());
+    EXPECT_EQ(pgg::asInt(bound.outputs[0].value), 0);
+}
+
+TEST(Typecheck, EnumComparisonForeignValueIsE206) {
+    pgg::RunResult top = runSrc(
+        "param roof_kind: enum {hip, gable} = hip\n"
+        "n = roof_kind == copper ? 1 : 2\n"
+        "output n\n");
+    EXPECT_EQ(countCode(top, "E206"), 1);
+    pgg::RunResult inDef = runSrc(
+        "def f(kind: enum {tile, metal} = tile) -> (out: int) {\n"
+        "    out = kind == copper ? 1 : 2\n"
+        "}\n"
+        "n = f()\n"
+        "output n\n");
+    EXPECT_EQ(countCode(inDef, "E206"), 1);
+    // A bad literal at the def call-site and in a param default is E206 too.
+    pgg::RunResult callSite = runSrc(
+        "def f(kind: enum {tile, metal} = tile) -> (out: int) {\n"
+        "    out = 1\n"
+        "}\n"
+        "n = f(kind = copper)\n"
+        "output n\n");
+    EXPECT_EQ(countCode(callSite, "E206"), 1);
+    pgg::RunResult deflt = runSrc(
+        "param roof_kind: enum {hip, gable} = copper\n"
+        "n = 1\n"
+        "output n\n");
+    EXPECT_EQ(countCode(deflt, "E206"), 1);
+}
+
+TEST(Typecheck, EnumLiteralRuleKeepsDefinedBindings) {
+    // An ident that IS a defined binding is a computed string, never re-read
+    // as an enum literal — even when it is spelled like an enum value.
+    pgg::RunResult r = runSrc(
+        "param kind: enum {tile, metal} = metal\n"
+        "tile = \"metal\"\n"
+        "n = kind == tile ? 1 : 0\n"
+        "output n\n");
+    EXPECT_EQ(countCode(r, "E103"), 0);
+    EXPECT_EQ(countCode(r, "E206"), 0);
+    ASSERT_FALSE(r.hasErrors());
+    EXPECT_EQ(pgg::asInt(r.outputs[0].value), 1);
+    // And an unresolved ident against a non-enum operand is still E103.
+    pgg::RunResult bad = runSrc(
+        "s = \"a\"\n"
+        "n = s == b ? 1 : 2\n"
+        "output n\n");
+    EXPECT_EQ(countCode(bad, "E103"), 1);
+}
+
+TEST(Typecheck, EnumComparisonInsideForeachBody) {
+    // Enum dispatch survives expansion into a zone body: the free-name scan
+    // of the parallel piece loop skips the literal (no E103), any lane count.
+    const std::string src =
+        "def cap(kind: enum {tile, metal} = tile) -> (out: geo) {\n"
+        "    h = kind == tile ? 0.2 : 0.5\n"
+        "    out = box(size = vec3(0.5, 0.5, h))\n"
+        "}\n"
+        "g = foreach piece in distribute_points(grid(size = vec2(2, 2), res = vec2(2, 2)), density = 1.0, rng = rng_from_seed(1)) {\n"
+        "    c = cap(kind = metal)\n"
+        "    piece = transform(c, translate = vec3(@piece_index, 0, 0))\n"
+        "}\n"
+        "output g\n";
+    pgg::RunResult r = runSrc(src);
+    EXPECT_EQ(countCode(r, "E103"), 0);
+    ASSERT_FALSE(r.hasErrors());
+    pgg::RunParams seq;
+    seq.threads = 1;
+    pgg::RunResult r1 = pgg::run(src, seq);
+    ASSERT_FALSE(r1.hasErrors());
+    EXPECT_EQ(pggtest::geoContentHash(pggtest::geoOutput(r, "g")),
+              pggtest::geoContentHash(pggtest::geoOutput(r1, "g")));
+}
+
+TEST(Typecheck, StringEqualityComparison) {
+    // Enum values are strings; with enum -> string typing, string == string
+    // is legal everywhere (mirror of the runtime valueBinary), ordered
+    // comparison of strings stays E204.
+    pgg::RunResult ok = runSrc(
+        "a = \"x\"\n"
+        "b = \"y\"\n"
+        "n = a != b ? 1 : 0\n"
+        "output n\n");
+    ASSERT_FALSE(ok.hasErrors());
+    EXPECT_EQ(pgg::asInt(ok.outputs[0].value), 1);
+    pgg::RunResult ordered = runSrc(
+        "a = \"x\"\n"
+        "n = a < \"y\" ? 1 : 0\n"
+        "output n\n");
+    EXPECT_EQ(countCode(ordered, "E204"), 1);
 }
 
 }  // namespace

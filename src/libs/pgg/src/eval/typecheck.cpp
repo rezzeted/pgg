@@ -32,8 +32,10 @@ struct ExprClosure {
 class Typechecker {
 public:
     Typechecker(const FlatProgram& flat, const std::vector<std::string>& boundParams,
-                std::vector<Diagnostic>& diags, std::vector<size_t>& runtimeContracts)
-        : flat_(flat), boundParams_(boundParams), diags_(diags), runtimeContracts_(runtimeContracts) {}
+                std::vector<Diagnostic>& diags, std::vector<size_t>& runtimeContracts,
+                std::unordered_set<const Expr*>* enumLiterals)
+        : flat_(flat), boundParams_(boundParams), diags_(diags), runtimeContracts_(runtimeContracts),
+          enumLiterals_(enumLiterals) {}
 
     void file(const File* f) {
         if (!f) return;
@@ -47,6 +49,14 @@ public:
                 case NodeKind::ParamDecl: {
                     const auto* p = static_cast<const ParamDecl*>(item);
                     define(p->name, typeFromRef(*p->type));
+                    if (p->type && p->type->base == "enum" && !p->type->enumValues.empty()) {
+                        enumValues_[p->name] = p->type->enumValues;
+                        // The default literal must be a member of the
+                        // declared enum (E206); the engine binds it as its
+                        // name string via enumLiterals_.
+                        if (p->hasDefault && p->def && p->def->kind == NodeKind::EnumLit)
+                            checkEnumValue(p->def, p->type->enumValues, "enum parameter '" + p->name + "'");
+                    }
                     if (!p->hasDefault && !isBound(p->name)) {
                         error("E604", item->span,
                               "param '" + p->name + "' has no default and was not bound at launch",
@@ -80,6 +90,13 @@ private:
     const std::vector<std::string>& boundParams_;
     std::vector<Diagnostic>& diags_;
     std::vector<size_t>& runtimeContracts_;
+    // Output of the pass (may be null): expression nodes verified as enum
+    // literals — the engine reads them as their name string (v1.28, §13).
+    std::unordered_set<const Expr*>* enumLiterals_;
+    // Declared enum values per name (top-level params and def interface
+    // bindings): the type-driven context that lets a bare ident read as an
+    // enum literal in == / != comparisons and interface binding values.
+    std::unordered_map<std::string, std::vector<std::string>> enumValues_;
     std::unordered_set<size_t> zoneInstances_;  // def instances expanded inside zone bodies
     std::unordered_map<std::string, Type> env_;
     std::unordered_map<std::string, GeoSchema> schemas_;
@@ -245,9 +262,25 @@ private:
                 BindingContext ctx(currentBinding_,
                                    b->targets.names.empty() ? std::string{} : b->targets.names[0]);
                 const size_t nTargets = b->targets.names.size();
+                // Enum interface binding (v1.28, §13): the value of a def
+                // parameter/output declared `enum {...}` reads a bare ident
+                // that is not a defined binding (call-site `kind = metal`)
+                // or an EnumLit (signature default) as an enum literal — the
+                // same type-driven rule as named-arg bare idents
+                // (checkEnumArg), E206 on a foreign value.
+                const std::vector<std::string>* ifaceEnum = nullptr;
+                if (nTargets == 1)
+                    if (auto ev = flat_.declaredEnumValues.find(b->targets.names[0]);
+                        ev != flat_.declaredEnumValues.end())
+                        ifaceEnum = &ev->second;
                 lastSig_ = nullptr;
                 allowMulti_ = nTargets > 1;
-                Type t = infer(b->value);
+                Type t;
+                if (ifaceEnum && readEnumBindingValue(b->value, *ifaceEnum, b->targets.names[0])) {
+                    t = scalar(ScalarType::String);
+                } else {
+                    t = infer(b->value);
+                }
                 allowMulti_ = false;
                 if (nTargets > 1) {
                     // Multi-output destructuring (E2): arity and per-target
@@ -265,6 +298,7 @@ private:
                     }
                 } else if (nTargets == 1) {
                     define(b->targets.names[0], t);
+                    if (ifaceEnum) enumValues_[b->targets.names[0]] = *ifaceEnum;
                     // Def-interface types (E5): the binding materializes a def
                     // parameter or output and must match its declaration.
                     if (auto dit = flat_.declaredTypes.find(b->targets.names[0]);
@@ -1592,12 +1626,100 @@ private:
         return t;
     }
 
+    // --- enum literals in general expressions (v1.28, spec §13) ----------------
+
+    static const Expr* unwrapParens(const Expr* e) {
+        while (e && e->kind == NodeKind::Paren) e = static_cast<const Paren*>(e)->inner;
+        return e;
+    }
+
+    // Ident (through parens) that does not name a defined binding.
+    bool unresolvedIdent(const Expr* e) const {
+        e = unwrapParens(e);
+        return e && e->kind == NodeKind::Ident && !env_.count(static_cast<const Ident*>(e)->name);
+    }
+
+    // The declared enum values when the expression names an enum-typed
+    // binding (a top-level param or a def interface binding), else null.
+    const std::vector<std::string>* enumValuesOf(const Expr* e) const {
+        e = unwrapParens(e);
+        if (!e || e->kind != NodeKind::Ident) return nullptr;
+        auto it = enumValues_.find(static_cast<const Ident*>(e)->name);
+        return it == enumValues_.end() ? nullptr : &it->second;
+    }
+
+    // E206 membership check of one literal candidate (an EnumLit or a bare
+    // ident that is not a defined binding) against the declared enum values;
+    // a valid literal is recorded for the engine's enum-literal reading.
+    // Returns true when the node reads as an enum literal (a miss is consumed
+    // too — the recovery type is string); false when it is not a literal
+    // candidate at all (a defined binding is a computed string).
+    bool checkEnumValue(const Expr* v, const std::vector<std::string>& values, const std::string& what) {
+        v = unwrapParens(v);
+        if (!v) return false;
+        std::string name;
+        if (v->kind == NodeKind::EnumLit) {
+            name = static_cast<const EnumLit*>(v)->name;
+        } else if (v->kind == NodeKind::Ident && !env_.count(static_cast<const Ident*>(v)->name)) {
+            name = static_cast<const Ident*>(v)->name;
+        } else {
+            return false;
+        }
+        if (std::find(values.begin(), values.end(), name) == values.end()) {
+            std::string vals;
+            for (size_t i = 0; i < values.size(); ++i) vals += (i ? ", " : "") + values[i];
+            error("E206", v->span, "'" + name + "' is not a valid value of " + what, "one of: " + vals);
+            return true;
+        }
+        if (enumLiterals_) enumLiterals_->insert(v);
+        return true;
+    }
+
+    // The value of an enum-typed interface binding (`f[0].kind = metal`):
+    // the literal rule above, with the def-param wording of checkEnumArg
+    // (the local, post-dot name reads like the def signature).
+    bool readEnumBindingValue(const Expr* v, const std::vector<std::string>& values, const std::string& flat) {
+        const size_t dot = flat.find_last_of('.');
+        const std::string local = dot == std::string::npos ? flat : flat.substr(dot + 1);
+        return checkEnumValue(v, values, "enum parameter '" + local + "'");
+    }
+
+    // Enum literal in a == / != comparison: when one operand has a declared
+    // enum type and the other is an ident that does NOT name a defined
+    // binding, the ident reads as an enum literal (E206 on a foreign value).
+    // Returns true when the comparison was typed here (out = its type).
+    bool inferEnumComparison(const Binary* b, Type& out) {
+        const Expr* lit = nullptr;
+        const Expr* other = nullptr;
+        const std::vector<std::string>* values = nullptr;
+        if (const std::vector<std::string>* v = enumValuesOf(b->rhs); v && unresolvedIdent(b->lhs)) {
+            lit = b->lhs;
+            other = b->rhs;
+            values = v;
+        } else if (const std::vector<std::string>* v2 = enumValuesOf(b->lhs); v2 && unresolvedIdent(b->rhs)) {
+            lit = b->rhs;
+            other = b->lhs;
+            values = v2;
+        }
+        if (!lit) return false;
+        const Type ot = infer(other);
+        checkEnumValue(lit, *values,
+                       "the enum of '" + static_cast<const Ident*>(unwrapParens(other))->name + "'");
+        if (ot.base == ScalarType::None) return true;  // out stays none: already reported
+        out = Type{ScalarType::Bool, ot.isField, GeoKind::Any};
+        return true;
+    }
+
     Type inferBinary(const Binary* b) {
+        const std::string& op = b->op;
+        if (op == "==" || op == "!=") {
+            Type t;
+            if (inferEnumComparison(b, t)) return t;
+        }
         const Type lt = infer(b->lhs);
         const Type rt = infer(b->rhs);
         if (lt.base == ScalarType::None || rt.base == ScalarType::None) return {};
         const bool isField = lt.isField || rt.isField;
-        const std::string& op = b->op;
         if (op == "&" || op == "|") {
             const ScalarType t = promoteBase(lt.base, rt.base);
             if (t != ScalarType::Bool) {
@@ -1608,6 +1730,13 @@ private:
             return Type{ScalarType::Bool, isField, GeoKind::Any};
         }
         if (op == "<" || op == "<=" || op == ">" || op == ">=" || op == "==" || op == "!=") {
+            // Strings compare for equality only (mirror of valueBinary); enum
+            // values are strings, so this is also the resolved enum == / !=.
+            if (lt.base == ScalarType::String && rt.base == ScalarType::String) {
+                if (op == "==" || op == "!=") return Type{ScalarType::Bool, isField, GeoKind::Any};
+                error("E204", b->span, "ordered comparison '" + op + "' is not defined for strings");
+                return {};
+            }
             const ScalarType t = promoteBase(lt.base, rt.base);
             if (t == ScalarType::None) {
                 error("E204", b->span, "cannot compare " + typeName(lt) + " and " + typeName(rt));
@@ -1810,8 +1939,9 @@ private:
 }  // namespace
 
 void typecheckFlat(const FlatProgram& flat, const std::vector<std::string>& boundParams,
-                   std::vector<Diagnostic>& diagnostics, std::vector<size_t>& runtimeContracts) {
-    Typechecker tc(flat, boundParams, diagnostics, runtimeContracts);
+                   std::vector<Diagnostic>& diagnostics, std::vector<size_t>& runtimeContracts,
+                   std::unordered_set<const Expr*>* enumLiterals) {
+    Typechecker tc(flat, boundParams, diagnostics, runtimeContracts, enumLiterals);
     tc.file(flat.file);
 }
 
