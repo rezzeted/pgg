@@ -3,11 +3,18 @@
 # парные арочные окна эркера под общим тимпаном, большое готическое окно над
 # входом, подвальные окна, терракотовый медальон (знак Общества архитекторов).
 # Прозрачности в превью нет — glass почти чёрный, переплёт — iron.
+# Раскладка — конвейер lib/arch (A2): план → фасады → полосы → оси паттернами;
+# терминалы — win_* этого файла (инверсия терминалов, принцип 2 §3 плана).
 
 import lib.parts
 import lib.arch.terminals_victorian as victorian
 import lib.ironwork
 import lib.fixtures
+import lib.layout.scope as ls
+import lib.layout.split as lsp
+import lib.arch.kinds as k
+import lib.arch.plan as ap
+import lib.arch.facade as af
 import shreter_mansion.common as common
 
 def win_flat(w: f32, h: f32) -> (out: geo<mesh>) {
@@ -102,71 +109,71 @@ def plaque(s: f32) -> (out: geo<mesh>) {
     out = merge(plate, ring, a_l, a_r, base)
 }
 
-def place_row(n: int, xs0: f32, step: f32, y: f32, fixed: f32, yaw: f32, w: f32, h: f32, along_z: int) -> (out: geo<mesh>) {
-    """n прямоугольных окон win_flat вдоль оси: s0 + k·step; along_z = 0 — ряд вдоль
-    X (фиксирован z = fixed), 1 — вдоль Z (фиксирован x = fixed)."""
-    a0 = along_z == 1 ? vec3(fixed, y, xs0) : vec3(xs0, y, fixed)
-    u0 = parts.place(g = win_flat(w = w, h = h), yaw_deg = yaw, at = a0)
-    out = repeat (u0, iterations = n - 1) |acc| {
-        s = xs0 + (f32(@iteration) + 1.0) * step
-        ak = along_z == 1 ? vec3(fixed, y, s) : vec3(s, y, fixed)
-        acc = merge(acc, parts.place(g = win_flat(w = w, h = h), yaw_deg = yaw, at = ak))
-    }
-}
-
-def place_row_basement(n: int, xs0: f32, step: f32, y: f32, fixed: f32, yaw: f32, w: f32, h: f32, along_z: int) -> (out: geo<mesh>) {
-    """n подвальных окошек win_basement вдоль оси: s0 + k·step (как place_row)."""
-    a0 = along_z == 1 ? vec3(fixed, y, xs0) : vec3(xs0, y, fixed)
-    u0 = parts.place(g = win_basement(w = w, h = h), yaw_deg = yaw, at = a0)
-    out = repeat (u0, iterations = n - 1) |acc| {
-        s = xs0 + (f32(@iteration) + 1.0) * step
-        ak = along_z == 1 ? vec3(fixed, y, s) : vec3(s, y, fixed)
-        acc = merge(acc, parts.place(g = win_basement(w = w, h = h), yaw_deg = yaw, at = ak))
-    }
-}
-
-def place_win(kind: int, w: f32, h: f32, at: vec3, yaw: f32) -> (out: geo<mesh>) {
-    """Поставить окно: kind 0 = flat, 1 = arch, 2 = lancet, 3 = basement. yaw 0 = +Z."""
-    g0 = win_flat(w = w, h = h)
-    g1 = win_arch(w = w, h = h)
-    g2 = win_lancet(w = w, h = h)
-    g3 = win_basement(w = w, h = h)
-    g = select(kind == 3, a = g3, b = select(kind == 2, a = g2, b = select(kind == 1, a = g1, b = g0)))
-    out = parts.place(g = g, yaw_deg = yaw, at = at)
+def tf(bnds: geo<points>, facade: int, floor: int, pat: geo<points>, h: f32, y: f32) -> (out: geo<points>) {
+    """Полосы одного фасада и этажа, разложенные паттерном (сокращение раскладки)."""
+    fb = delete(bnds, where = (@facade != facade) | (@floor != floor))
+    out = af.tiles(bands_in = fb, pattern = pat, slot_h = h, slot_y = y)
 }
 
 def openings_all(w: f32, d: f32, c: f32, plinth_h: f32, f1_top: f32, b1_top: f32, f2_top: f32, crown_top: f32, gable_x: f32, gable_z: f32) -> (out: geo<mesh>) {
-    """Все проёмы по фасадам: 6 осей на +Z (Мойка), 3 оси + вход на +X (Писарева),
-    парные окна эркера, тыловые стены, подвал, мансардные окна щипцов, медальон."""
+    """Все проёмы: план → фасады → полосы (цоколь | этаж | тяга | этаж) → оси паттернами.
+    Один паттерн на обе полосы этажей — общая ось окон автоматически; отклонения
+    (щипцовые окна, готика над входом, медальон) — разовые постановки по своим правилам."""
     hw = w * 0.5
     hd = d * 0.5
     proud = 0.05
-    f1_y = plinth_h + 0.55
     f2_y = b1_top + 0.50
-    win_w = 1.05
-    # +Z фасад (Мойка): оси −8.0 −5.58 −3.16 −0.74 1.68 4.10; под щипцом высокое арочное
-    fz1 = place_row(n = 6, xs0 = 0.0 - 8.0, step = 2.42, y = f1_y, fixed = hd + proud, yaw = 0.0, w = win_w, h = 2.35, along_z = 0)
-    fz2a = place_row(n = 4, xs0 = 0.0 - 3.16, step = 2.42, y = f2_y, fixed = hd + proud, yaw = 0.0, w = win_w, h = 2.20, along_z = 0)
-    fz2b = place_win(kind = 1, w = 1.30, h = 2.60, at = vec3(gable_x, f2_y - 0.05, hd + proud), yaw = 0.0)
-    # +X фасад (Писарева): 3 оси окон + большое готическое окно над входом
-    fx1 = place_row(n = 3, xs0 = 0.2, step = 0.0 - 2.45, y = f1_y, fixed = hw + proud, yaw = 90.0, w = win_w, h = 2.35, along_z = 1)
-    fx2 = place_row(n = 3, xs0 = 0.2, step = 0.0 - 2.45, y = f2_y, fixed = hw + proud, yaw = 90.0, w = win_w, h = 2.20, along_z = 1)
-    goth = place_win(kind = 2, w = 1.55, h = 2.65, at = vec3(hw + proud, f2_y - 0.05, gable_z), yaw = 90.0)
-    # Эркер: парные окна под тимпанами на обоих этажах (диагональная грань, yaw 45)
-    bay1 = parts.place(g = win_pair(w = 0.62, h = 2.10), yaw_deg = 45.0, at = vec3(hw - c * 0.5, f1_y + 0.05, hd - c * 0.5))
-    bay2 = parts.place(g = win_pair(w = 0.62, h = 2.00), yaw_deg = 45.0, at = vec3(hw - c * 0.5, f2_y, hd - c * 0.5))
-    # Тыловые стены: редкие прямоугольные окна
-    bk1 = place_row(n = 4, xs0 = 0.0 - 6.0, step = 4.0, y = f1_y, fixed = 0.0 - hd - proud, yaw = 180.0, w = win_w, h = 2.35, along_z = 0)
-    bk2 = place_row(n = 4, xs0 = 0.0 - 6.0, step = 4.0, y = f2_y, fixed = 0.0 - hd - proud, yaw = 180.0, w = win_w, h = 2.20, along_z = 0)
-    lf1 = place_row(n = 3, xs0 = 0.0 - 4.0, step = 4.0, y = f1_y, fixed = 0.0 - hw - proud, yaw = 270.0, w = win_w, h = 2.35, along_z = 1)
-    lf2 = place_row(n = 3, xs0 = 0.0 - 4.0, step = 4.0, y = f2_y, fixed = 0.0 - hw - proud, yaw = 270.0, w = win_w, h = 2.20, along_z = 1)
-    # Подвал: маленькие окошки по обоим фасадам (цоколь выступает на 0.10)
-    bs1 = place_row_basement(n = 6, xs0 = 0.0 - 8.0, step = 2.42, y = 0.38, fixed = hd + 0.12, yaw = 0.0, w = 0.55, h = 0.50, along_z = 0)
-    bs2 = place_row_basement(n = 3, xs0 = 0.2, step = 0.0 - 2.45, y = 0.38, fixed = hw + 0.12, yaw = 90.0, w = 0.55, h = 0.50, along_z = 1)
-    # Мансардные арочные окна в щипцах
-    at1 = place_win(kind = 1, w = 1.15, h = 1.75, at = vec3(gable_x, crown_top + 0.42, hd + 0.36), yaw = 0.0)
-    at2 = place_win(kind = 1, w = 1.15, h = 1.75, at = vec3(hw + 0.36, crown_top + 0.42, gable_z), yaw = 90.0)
-    # Медальон-знак между этажами на фасаде Мойки
+    plan = ap.plan_chamfer_rect(w = w, d = d, c = c)
+    faces = af.facades(plan = plan, y0 = 0.0, y1 = f2_top, t = 0.3)
+    bp0 = lsp.pattern_add(pat = lsp.pattern_empty(), size = plinth_h, kind = k.K_PLINTH_BAND())
+    bp1 = lsp.pattern_add(pat = bp0, size = f1_top - plinth_h, kind = k.K_FLOOR_BAND())
+    bp2 = lsp.pattern_add(pat = bp1, size = b1_top - f1_top, kind = k.K_WALL())
+    bp = lsp.pattern_add(pat = bp2, size = f2_top - b1_top, kind = k.K_FLOOR_BAND())
+    bnds = af.bands(faces = faces, pattern = bp)
+    # Оси фасадов — данные: x0 — локальная координата первой оси от центра ребра.
+    pat_f = lsp.pattern_row(n = 6, pitch = 2.42, size = 1.05, kind = k.K_WINDOW(), x0 = 0.0 - 6.6, len = w - c)
+    pat_fb = lsp.pattern_row(n = 6, pitch = 2.42, size = 0.55, kind = k.K_WINDOW(), variant = 2, x0 = 0.0 - 6.6, len = w - c)
+    pat_r = lsp.pattern_row(n = 3, pitch = 2.45, size = 1.05, kind = k.K_WINDOW(), x0 = 0.0 - 1.6, len = d - c)
+    pat_rb = lsp.pattern_row(n = 3, pitch = 2.45, size = 0.55, kind = k.K_WINDOW(), variant = 2, x0 = 0.0 - 1.6, len = d - c)
+    pat_b = lsp.pattern_row(n = 4, pitch = 4.0, size = 1.05, kind = k.K_WINDOW(), x0 = 0.0 - 6.0, len = w)
+    pat_l = lsp.pattern_row(n = 3, pitch = 4.0, size = 1.05, kind = k.K_WINDOW(), x0 = 0.0 - 4.0, len = d)
+    pat_bay = lsp.pattern_row(n = 1, pitch = 1.0, size = 1.54, kind = k.K_WINDOW(), variant = 1, x0 = 0.0, len = c * 1.41421356)
+    t0 = tf(bnds, 1, 1, pat_f, 2.35, 0.55)
+    t1 = tf(bnds, 1, 3, pat_f, 2.20, 0.50)
+    t2 = tf(bnds, 3, 1, pat_r, 2.35, 0.55)
+    t3 = tf(bnds, 3, 3, pat_r, 2.20, 0.50)
+    t4 = tf(bnds, 4, 1, pat_b, 2.35, 0.55)
+    t5 = tf(bnds, 4, 3, pat_b, 2.20, 0.50)
+    t6 = tf(bnds, 0, 1, pat_l, 2.35, 0.55)
+    t7 = tf(bnds, 0, 3, pat_l, 2.20, 0.50)
+    t8 = tf(bnds, 2, 1, pat_bay, 2.10, 0.60)
+    t9 = tf(bnds, 2, 3, pat_bay, 2.00, 0.50)
+    ta = tf(bnds, 1, 0, pat_fb, 0.50, 0.38)
+    tb = tf(bnds, 3, 0, pat_rb, 0.50, 0.38)
+    scopes0 = merge(t0, t1, t2, t3, t4, t5, t6, t7, t8, t9, ta, tb)
+    # Вынос на горизонт стены: окна 0.05, подвал 0.12 (цоколь выступает), эркер заподлицо.
+    scopes1 = set_position(scopes0, pos = @P + vec3(sin(radians(@yaw)), 0.0, cos(radians(@yaw))) * (0.05 * f32(@variant == 0) + 0.12 * f32(@variant == 2)))
+    # Второй этаж фронта: оси 0 и 1 пустые — щипцовое окно ставится отдельно по оси щипца.
+    kw = k.K_WINDOW()
+    scopes = ls.override_where(scopes = scopes1, where = (@facade == 1) & (@floor == 3) & ((@col == 1) | (@col == 3)) & (@kind == kw), kind = k.K_WALL())
+    wins = ls.pick(scopes = scopes, kind = k.K_WINDOW())
+    flat = delete(wins, where = @variant != 0)
+    pairs = delete(wins, where = @variant != 1)
+    base = delete(wins, where = @variant != 2)
+    w_geo = foreach s in flat {
+        s = ls.place(g = win_flat(w = ls.frame_w(s), h = ls.frame_h(s)), s = s)
+    }
+    p_geo = foreach s in pairs {
+        s = ls.place(g = win_pair(w = (ls.frame_w(s) - 0.30) * 0.5, h = ls.frame_h(s)), s = s)
+    }
+    b_geo = foreach s in base {
+        s = ls.place(g = win_basement(w = ls.frame_w(s), h = ls.frame_h(s)), s = s)
+    }
+    # Разовые: щипцовые окна по осям щипцов, готика над входом, медальон на фасаде Мойки.
+    arch2 = parts.place(g = win_arch(w = 1.30, h = 2.60), yaw_deg = 0.0, at = vec3(gable_x, f2_y - 0.05, hd + proud))
+    goth = parts.place(g = win_lancet(w = 1.55, h = 2.65), yaw_deg = 90.0, at = vec3(hw + proud, f2_y - 0.05, gable_z))
+    at1 = parts.place(g = win_arch(w = 1.15, h = 1.75), yaw_deg = 0.0, at = vec3(gable_x, crown_top + 0.42, hd + 0.36))
+    at2 = parts.place(g = win_arch(w = 1.15, h = 1.75), yaw_deg = 90.0, at = vec3(hw + 0.36, crown_top + 0.42, gable_z))
     med = parts.place(g = plaque(s = 0.72), yaw_deg = 0.0, at = vec3(0.0 - 8.0, b1_top + 0.85, hd + proud))
-    out = merge(fz1, fz2a, fz2b, fx1, fx2, goth, bay1, bay2, bk1, bk2, lf1, lf2, bs1, bs2, at1, at2, med)
+    out = merge(w_geo, p_geo, b_geo, arch2, goth, at1, at2, med)
 }

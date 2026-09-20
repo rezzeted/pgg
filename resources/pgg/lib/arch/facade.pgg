@@ -1,0 +1,148 @@
+# lib/arch/facade.pgg — фасадный конвейер (docs/pgg/architecture_library_plan.md §6.4):
+# facades (scope на ребро плана) → bands (split по Y: цоколь | этажи | венец) →
+# tiles (split по X: проёмы по осям). Один паттерн на все полосы — общая ось окон
+# между этажами автоматически; отклонения — override_*. Библиотека доводит до
+# scope'ов и НЕ материализует терминалы: окна/двери ставит файл здания
+# (pick + foreach под размер или stamp со variants). Стиль — точка-запись §5.5,
+# читают только сборки верхнего уровня (facade_tree, walls).
+
+import lib.layout.scope as ls
+import lib.layout.split as lsp
+import lib.layout.record as lrec
+import lib.arch.kinds as k
+import lib.blockwork
+import lib.masonry
+
+def REC_STYLE() -> (out: int) {
+    """Код записи стиля (@type точки-записи style_default)."""
+    out = 1
+}
+
+def style_default() -> (out: geo<points>) {
+    """Стиль по умолчанию: запись с полями членения и проёмов. Переопределение —
+    set(style, "поле", значение, domain = points); читают только сборки верхнего уровня.
+    Поля: plinth_h / floor_h / crown_h / wall_t / sill_y / win_w / win_h / cornice_h."""
+    r0 = lrec.record(type = REC_STYLE())
+    r1 = set(r0, "plinth_h", 1.20, domain = points)
+    r2 = set(r1, "floor_h", 3.60, domain = points)
+    r3 = set(r2, "crown_h", 0.60, domain = points)
+    r4 = set(r3, "wall_t", 0.30, domain = points)
+    r5 = set(r4, "sill_y", 0.55, domain = points)
+    r6 = set(r5, "win_w", 1.05, domain = points)
+    r7 = set(r6, "win_h", 2.20, domain = points)
+    out = set(r7, "cornice_h", 0.35, domain = points)
+}
+
+def facades(plan: geo<points>, y0: f32, y1: f32, t: f32 = 0.30) -> (out: geo<points>) {
+    """Scope на каждое ребро плана: @P — середина ребра на y0, @yaw — наружная нормаль
+    ребра, размер (edge_len, y1 − y0, t), @facade = индекс ребра (вершины-начала),
+    @convex — оба конца ребра выпуклые (ложно у рёбер, примыкающих к ендове)."""
+    expect y1 > y0: "facades: y1 выше y0, в метрах"
+    expect t > 0.0: "facades: толщина стены положительная, в метрах"
+    n = count(plan)
+    out = foreach v in plan {
+        nxt = delete(plan, where = @index != (@piece_index + 1) % n)
+        v = facade_of_edge(v = v, nxt = nxt, i = @piece_index, y0 = y0, y1 = y1, t = t)
+    }
+}
+
+def facade_of_edge(v: geo<points>, nxt: geo<points>, i: int, y0: f32, y1: f32, t: f32) -> (out: geo<points>) {
+    """Один facade-scope по ребру v→nxt (внутренность facades; i — @piece_index цикла,
+    value(@index) на виртуальной колонке в этом контексте даёт 0)."""
+    p0 = value(@P, on = v)
+    p1 = value(@P, on = nxt)
+    mx = (dot(p0, (1, 0, 0)) + dot(p1, (1, 0, 0))) * 0.5
+    mz = (dot(p0, (0, 0, 1)) + dot(p1, (0, 0, 1))) * 0.5
+    s = ls.scope(at = vec3(mx, y0, mz), yaw = value(@edge_yaw, on = v), size = vec3(value(@edge_len, on = v), y1 - y0, t), kind = k.K_WALL())
+    s0 = set(s, "facade", i, domain = points)
+    out = set(s0, "convex", value(@convex, on = v) & value(@convex, on = nxt), domain = points)
+}
+
+def bands(faces: geo<points>, pattern: geo<points>) -> (out: geo<points>) {
+    """Вертикальное членение фасадов: split по Y паттерном «цоколь | этажи | венец»
+    (виды полос — @kind строк паттерна: K_PLINTH_BAND/K_FLOOR_BAND/K_CROWN_BAND).
+    Каждая полоса знает @floor (номер строки паттерна); @col сброшен — его даст tiles."""
+    b = lsp.split(scopes = faces, pattern = pattern, axis = 1, cycle = false)
+    f = set(b, "floor", @col, domain = points)
+    out = set(f, "col", 0, domain = points)
+}
+
+def tiles(bands_in: geo<points>, pattern: geo<points>, slot_h: f32 = 0.0, slot_y: f32 = 0.0) -> (out: geo<points>) {
+    """Горизонтальная раскладка полос паттерном (проёмы по осям). Один и тот же паттерн
+    на всех полосах — общая ось окон между этажами автоматически; отклонения — override_*.
+    slot_h > 0 — высота слота (иначе полная высота полосы), slot_y — подъём низа слота
+    от низа полосы (подоконная высота)."""
+    t = lsp.split(scopes = bands_in, pattern = pattern, axis = 0, cycle = false)
+    h = set(t, "h", slot_h > 0.0 ? slot_h : @h, domain = points)
+    out = set_position(h, offset = vec3(0.0, slot_y, 0.0))
+}
+
+def band_pattern(plinth_h: f32, floor_h: f32, floors: int, crown_h: f32) -> (out: geo<points>) {
+    """Паттерн вертикального членения «цоколь | этаж × floors | венец» с кодами полос."""
+    expect floors >= 1: "band_pattern: хотя бы один этаж"
+    p0 = lsp.pattern_add(pat = lsp.pattern_empty(), size = plinth_h, kind = k.K_PLINTH_BAND())
+    p1 = repeat (p0, iterations = floors) |acc| {
+        acc = lsp.pattern_add(pat = acc, size = floor_h, kind = k.K_FLOOR_BAND())
+    }
+    out = lsp.pattern_add(pat = p1, size = crown_h, kind = k.K_CROWN_BAND())
+}
+
+def facade_tree(plan: geo<points>, style: geo<points>, floors: int, facade_pattern: geo<points>) -> (slots: geo<points>, band_scopes: geo<points>) {
+    """Стандартный фасад: facades → bands(«цоколь|этажи|венец» из стиля) → tiles
+    (facade_pattern на полосах этажей, высота/подоконник из стиля). Редкие членения
+    (тяги между этажами, свой ритм цоколя) — собрать facades/bands/tiles вручную."""
+    expect style has @plinth_h: "facade_tree: стилю не хватает @plinth_h (возьмите style_default)"
+    expect style has @floor_h: "facade_tree: стилю не хватает @floor_h"
+    expect style has @crown_h: "facade_tree: стилю не хватает @crown_h"
+    expect style has @wall_t: "facade_tree: стилю не хватает @wall_t"
+    expect style has @sill_y: "facade_tree: стилю не хватает @sill_y"
+    expect style has @win_h: "facade_tree: стилю не хватает @win_h"
+    plinth_h = value(@plinth_h, on = style)
+    floor_h = value(@floor_h, on = style)
+    crown_h = value(@crown_h, on = style)
+    y1 = plinth_h + f32(floors) * floor_h + crown_h
+    f0 = facades(plan = plan, y0 = 0.0, y1 = y1, t = value(@wall_t, on = style))
+    b = bands(faces = f0, pattern = band_pattern(plinth_h = plinth_h, floor_h = floor_h, floors = floors, crown_h = crown_h))
+    fb = ls.pick(scopes = b, kind = k.K_FLOOR_BAND())
+    slots = tiles(bands_in = fb, pattern = facade_pattern, slot_h = value(@win_h, on = style), slot_y = value(@sill_y, on = style))
+    band_scopes = b
+}
+
+def walls(faces: geo<points>, scopes: geo<points>, rng: rng) -> (out: geo<mesh>) {
+    """Стены под слоты: на каждый facade-scope — сердцевина (mortar) + мелкая кладка
+    (brick), обе с прямоугольными проёмами под слотами K_WINDOW/K_DOOR этого фасада
+    (masonry.clip_rect_hole; арочная/стрельчатая голова — забота терминала: он строится
+    по своей геометрии и закрывает расширение проёма). Лист графа: возвращает меш."""
+    out = foreach f in faces {
+        f = wall_one(f = f, scopes = scopes, rng = split_rng(rng, key = @piece_index))
+    }
+}
+
+def wall_one(f: geo<points>, scopes: geo<points>, rng: rng) -> (out: geo<mesh>) {
+    """Одна стена под слоты с тем же @facade (внутренность walls)."""
+    w = ls.frame_w(f)
+    h = ls.frame_h(f)
+    t = ls.frame_d(f)
+    fid = value(@facade, on = f)
+    base_y = dot(ls.frame_at(f), (0, 1, 0))
+    kw = k.K_WINDOW()
+    kd = k.K_DOOR()
+    slots0 = delete(scopes, where = @facade != fid)
+    slots = delete(slots0, where = (@kind != kw) & (@kind != kd))
+    core = wall_piece(g = blockwork.core_prism(w = w, d = t, h = h, y0 = 0.0, grp = "mortar"), slots = slots, fw = w, base_y = base_y)
+    ven0 = blockwork.brick_veneer(rows = blockwork.brick_veneer_rows(len = w, h = h), rng = rng)
+    ven = wall_piece(g = ven0, slots = slots, fw = w, base_y = base_y)
+    out = ls.place(g = merge(core, ven), s = f)
+}
+
+def wall_piece(g: geo<mesh>, slots: geo<points>, fw: f32, base_y: f32) -> (out: geo<mesh>) {
+    """Прорезать в панели прямоугольные проёмы по слотам (локальная рамка панели:
+    x вдоль лица от центра, низ y = 0; слот @t — доля вдоль фасада). Внутренность walls."""
+    slots_i = set(slots, "i", @index, domain = points)
+    out = repeat (g, iterations = count(slots)) |acc| {
+        cur = delete(slots_i, where = @i != @iteration)
+        cx = (value(@t, on = cur) - 0.5) * fw
+        sy = dot(value(@P, on = cur), (0, 1, 0)) - base_y
+        acc = masonry.clip_rect_hole(g = acc, cx = cx, y0 = sy, w = value(@w, on = cur), h = value(@h, on = cur))
+    }
+}

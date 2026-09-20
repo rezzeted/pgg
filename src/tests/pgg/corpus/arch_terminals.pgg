@@ -1,0 +1,13 @@
+# A2 (docs/pgg/architecture_library_plan.md): терминалы набора arch/terminals_basic —
+# эталонные кадры каждого (голден). Геометрические проверки — в arch_lib_test.cpp.
+import lib.arch.terminals_basic as tb
+
+win = tb.win_flat(w = 1.05, h = 2.20)
+door = transform(tb.door_plain(w = 0.95, h = 2.10), translate = vec3(2.0, 0, 0))
+cornice = transform(tb.cornice_run(len = 3.0), translate = vec3(4.0, 2.6, 0))
+tile = transform(tb.tile_plain(), translate = vec3(4.0, 0, 0))
+ridge = transform(tb.ridge_cap(len = 3.0), translate = vec3(6.0, 0.8, 0))
+
+row = merge(win, door, cornice, tile, ridge)
+
+output row

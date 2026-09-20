@@ -4,7 +4,9 @@
 # пишет pattern_add, в полях split не считаются). split режет scope'ы lib/layout/scope
 # вдоль локальной оси: фиксированные элементы занимают @size, flex делят остаток по весам,
 # repeat = true — целое число повторений паттерна (остаток во flex). Тот же split по оси Y
-# режет фасад на полосы (цоколь / этажи / венец). Дети наследуют контекст родителя + @col/@t.
+# режет фасад на полосы (цоколь / этажи / венец). Дети наследуют контекст родителя + @col/@t;
+# @P ребёнка — низ-центр (контракт scope, в т.ч. для оси Y). pattern_row — ритм-ряд
+# «n слотов с шагом pitch от x0» одной строкой данных (оконные оси фасадов).
 
 import lib.layout.scope as ls
 
@@ -32,6 +34,27 @@ def pattern_add(pat: geo<points>, size: f32, kind: int, flex: bool = false, vari
     r5 = set(r4, "off", sum_of(@size * (1.0 - f32(@flex)), on = pat), domain = points)
     r6 = set(r5, "w_off", sum_of(@size * f32(@flex), on = pat), domain = points)
     out = merge(pat, r6)
+}
+
+def pattern_row(n: int, pitch: f32, size: f32, kind: int, x0: f32, len: f32, variant: int = 0, wall_kind: int = 0) -> (out: geo<points>) {
+    """Ритм-ряд: n слотов kind размера size с шагом pitch, центр первого в x0 (локальная
+    ось родителя, отсчёт от его центра), остаток длины — стеновые поля wall_kind.
+    len — длина родителя (нужна для полей). Ряды окон на фасаде — это pattern_row:
+    одна строка данных на фасад, ось задаётся явно, поля вычисляются."""
+    expect n >= 1: "pattern_row: n >= 1"
+    expect (pitch > 0.0) | (n == 1): "pattern_row: шаг положительный (при n = 1 игнорируется)"
+    expect (x0 + len * 0.5 - size * 0.5 > 0.0) & (len * 0.5 - (x0 + f32(n - 1) * pitch + size * 0.5) > 0.0): "pattern_row: ряд не влезает в родителя — крайний слот на ребре или за ним; уменьшите n/шаг или сдвиньте x0"
+    expect (pitch - size > 0.0) | (n == 1): "pattern_row: шаг меньше размера слота — слоты пересекаются"
+    m0 = x0 + len * 0.5 - size * 0.5
+    m1 = len * 0.5 - (x0 + f32(n - 1) * pitch + size * 0.5)
+    gap = pitch - size
+    p0 = pattern_add(pat = pattern_empty(), size = m0, kind = wall_kind)
+    p1 = pattern_add(pat = p0, size = size, kind = kind, variant = variant)
+    p2 = repeat (p1, iterations = n - 1) |acc| {
+        a1 = pattern_add(pat = acc, size = gap, kind = wall_kind)
+        acc = pattern_add(pat = a1, size = size, kind = kind, variant = variant)
+    }
+    out = pattern_add(pat = p2, size = m1, kind = wall_kind)
 }
 
 def split(scopes: geo<points>, pattern: geo<points>, axis: int = 0, cycle: bool = false) -> (out: geo<points>) {
@@ -81,7 +104,7 @@ def split_child(s: geo<points>, a: geo<points>, pattern: geo<points>, axis: int,
     cs = cos(radians(yaw))
     sn = sin(radians(yaw))
     p0 = value(@P, on = s)
-    pos = axis == 0 ? p0 + (center - L * 0.5) * vec3(cs, 0.0, 0.0 - sn) : p0 + vec3(0.0, center, 0.0)
+    pos = axis == 0 ? p0 + (center - L * 0.5) * vec3(cs, 0.0, 0.0 - sn) : p0 + vec3(0.0, center - child_len * 0.5, 0.0)
     pw = value(@w, on = s)
     ph = value(@h, on = s)
     pd = value(@d, on = s)

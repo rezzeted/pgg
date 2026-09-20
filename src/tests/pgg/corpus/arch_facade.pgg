@@ -1,0 +1,36 @@
+# A2 (docs/pgg/architecture_library_plan.md): фасадный конвейер arch/facade —
+# facade_tree на Г-плане (общая ось окон двух этажей автоматически), override_box
+# «здесь дверь», walls под слоты на малом прямоугольнике. Точные проверки —
+# в arch_lib_test.cpp.
+import lib.layout.scope as ls
+import lib.layout.split as lsp
+import lib.arch.kinds as k
+import lib.arch.plan as ap
+import lib.arch.facade as af
+
+rng = rng_from_seed(7)
+
+plan = ap.plan_l(w = 9.0, d = 6.5, cut_w = 3.0, cut_d = 2.5)
+style = af.style_default()
+fpat = lsp.pattern_add(lsp.pattern_add(lsp.pattern_add(lsp.pattern_empty(), size = 1.0, kind = k.K_WALL(), flex = true), size = 1.1, kind = k.K_WINDOW()), size = 1.0, kind = k.K_WALL(), flex = true)
+slots0, band_scopes = af.facade_tree(plan = plan, style = style, floors = 2, facade_pattern = fpat)
+
+# «Здесь дверь»: центральное окно первого этажа фронтального фасада (facade 1) — в дверь.
+slots = ls.override_box(scopes = slots0, lo = vec3(-1.7, 1.0, 3.0), hi = vec3(-1.3, 2.0, 3.5), kind = k.K_DOOR())
+doors = ls.pick(scopes = slots, kind = k.K_DOOR())
+wins = ls.pick(scopes = slots, kind = k.K_WINDOW())
+
+# Стены под слоты на малом прямоугольнике: одно окно по центру фронтальной стены
+# (ребро плана №1: вершины 0 = левый край, 1 = фронт).
+plan_s = ap.plan_rect(w = 3.0, d = 2.0)
+faces_s = af.facades(plan = plan_s, y0 = 0.0, y1 = 2.9, t = 0.25)
+win0 = ls.scope(at = vec3(0.0, 0.9, 1.0), yaw = 0.0, size = vec3(1.0, 1.2, 0.25), kind = k.K_WINDOW())
+win1 = set(win0, "t", 0.5, domain = points)
+win2 = set(win1, "facade", 1, domain = points)
+walls_s = af.walls(faces = faces_s, scopes = win2, rng = split_rng(rng, key = "walls"))
+
+output slots
+output band_scopes
+output doors
+output wins
+output walls_s

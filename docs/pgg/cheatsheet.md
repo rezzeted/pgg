@@ -57,7 +57,10 @@ tube = sweep(mesh_line(count = 2, length = h, dir = (0, 1, 0)), profile = ring)
 - Кортеж `(a, b)` из идентификаторов не парсится (только литералы) — `vec2(a, b)`; `grid(res = vec2(f32(n), f32(n)))`.
 - Вложенный `foreach`: целевое имя внутреннего цикла **не** должно совпадать с портом внешнего (`row = foreach s in ...` → E204 «never bound»); `pins = foreach ...` и затем `row = pins`.
 - `select(cond, a, b)` в теле `foreach` принимает value-bool из `value(random(...), on = row) < p` — так делаются пропуски (`b = empty_points()` / `empty_mesh()`).
-- `expect` — только в начале тела def, до первого binding'а.
+- `expect` — только в начале тела def, до первого binding'а. Вычисляемые величины (поля/зазоры) инлайнить в условие expect, а не выносить в binding выше.
+- `value(@index)` в zone-контексте даёт **0** (виртуальная колонка) — индекс передавать аргументом: `helper(v = v, i = @piece_index)` (идиома `split_child` в `lib/layout/split`).
+- `remove_attr(geo, name)` — параметра `domain` нет. `split_rng(parent, key)` — `key: any` (counter-варианта нет; per-элементный rng — `key = @piece_index` в зоне).
+- Def-параметр не принимает field-значение (`helper(i = @index)` — E204 «expects int, got field»): поле вычисляется в контексте геометрии узла (`set_position(pos = vec3(<тернарники от @index>)`) или передаётся value-контекстом зоны (`@piece_index`).
 - `value()` на открытой схеме — **провизорный f32** (§8.10): vec3-атрибут модели, который def'ы ниже по конвейеру читают через `value()`, не доезжает (`dot(value(@size, on = s), (1,0,0))` — статический E204). Размеры моделей — f32-колонками (`@w/@h/@d`, не vec3 `@size`; идиома `lib/layout/scope`); `@P` читается всегда (встроенный).
 - Пустой списочный литерал `[]` **не парсится** (ни дефолт параметра, ни аргумент): «variants по умолчанию» — отдельные def'ы (`stamp` / `stamp_variants` в `lib/layout/scope`).
 - Имя параметра не может быть ключевым словом (`repeat`/`foreach`/`in`/…): вызов `split(..., repeat = true)` — E100. Флаг повтора в `lib/layout/split` называется `cycle`.
