@@ -1,0 +1,25 @@
+# A1 (docs/pgg/architecture_library_plan.md): модель рёбер lib/layout —
+# edges_of_polygon по замкнутому контуру, @len/@yaw, pick_role, терминал на ребре
+# через place_edge (контракт: терминал от origin вдоль локального +Z на edge_len).
+# Точные проверки значений — в layout_test.cpp.
+import lib.layout.edges as lse
+
+param seed: int = 3
+
+# Прямоугольный контур 4 x 3, CCW вид сверху
+x = f32(@index / 2) * 4.0
+z = @index % 3 == 0 ? 0.0 : 3.0
+plan = set_position(mesh_line(count = 4, length = 0.0), pos = vec3(x, 0.0, z))
+
+edges = lse.edges_of_polygon(plan, role = 5)
+diag = lse.edge(p0 = vec3(0, 0, 0), p1 = vec3(4, 0, 3), role = 6)
+all_e = merge(edges, diag)
+diags = lse.pick_role(all_e, role = 6)
+
+e1 = delete(edges, where = @index != 1)
+curb = transform(box(size = vec3(0.1, 0.2, lse.edge_len(e1))), translate = vec3(0.0, 0.0, lse.edge_len(e1) * 0.5))
+placed = lse.place_edge(curb, e1)
+
+output edges
+output diags
+output placed

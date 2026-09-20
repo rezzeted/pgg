@@ -1,0 +1,17 @@
+# lib/layout/record.pgg — точка-запись (docs/pgg/architecture_library_plan.md §5.5).
+# Записей в языке нет; закрытая статическая схема одной точки — эмуляция typed bundle:
+# @type (int-код записи) + именованные поля. Поля дописываются потребителем обычным set
+# (SSA: новое имя), читаются value(@field, on = rec); def-читатель страхуется
+# `expect rec has @field` — промах ловится статически (E302).
+# Правило: запись читают только сборки верхнего уровня, вниз — явные параметры.
+
+def record(type: int) -> (out: geo<points>) {
+    """Пустая запись с кодом type. Поля — через set(..., domain = points)."""
+    p0 = set_position(mesh_line(count = 1, length = 0.0), pos = vec3(0.0, 0.0, 0.0))
+    out = set(p0, "type", type, domain = points)
+}
+
+def rec_type(rec: geo<points>) -> (out: int) {
+    """Код записи."""
+    out = value(@type, on = rec)
+}
