@@ -46,9 +46,10 @@ def cornice_run(len: f32, h: f32 = 0.30, out_n: f32 = 0.22) -> (out: geo<mesh>) 
     out = merge(lo, hi)
 }
 
-def tile_plain(w: f32 = 0.18, l: f32 = 0.30, t: f32 = 0.02) -> (out: geo<mesh>) {
+def tile_plain(w: f32 = 0.30, l: f32 = 0.42, t: f32 = 0.03) -> (out: geo<mesh>) {
     """Плоская черепичка w×l: низ-центр в origin, лежит в плоскости XZ, лицо +Y,
-    штампуется по якорям покрытия (A3). Группа tile."""
+    штампуется по якорям tile_anchors (длина l вдоль ската, нахлёст — шагом рядов).
+    Группа tile."""
     out = parts.slab(size = vec3(w, t, l), pos = vec3(0, t * 0.5, 0), grp = "tile")
 }
 
