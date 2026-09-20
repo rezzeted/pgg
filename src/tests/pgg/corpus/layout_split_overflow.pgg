@@ -1,0 +1,9 @@
+# A1: ensure «паттерн не влезает» срабатывает с понятным текстом (негативный тест —
+# файл обязан падать; проверка сообщения в layout_test.cpp).
+import lib.layout.scope as ls
+import lib.layout.split as lsp
+
+s = ls.scope(at = vec3(0, 0, 0), yaw = 0.0, size = vec3(2.0, 3.0, 0.4), kind = 0)
+pat = lsp.pattern_add(lsp.pattern_add(lsp.pattern_empty(), size = 1.5, kind = 1), size = 1.5, kind = 2)
+kids = lsp.split(s, pat)
+output kids

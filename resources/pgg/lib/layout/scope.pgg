@@ -1,0 +1,92 @@
+# lib/layout/scope.pgg — scope: область с рамкой и смыслом (docs/pgg/architecture_library_plan.md §5.1).
+# Контракт: метры; +Y вверх; лицо рамки — локальный +Z при yaw = 0 (yaw в градусах вокруг +Y);
+# @P — низ-центр рамки. Все атрибуты scope — строго domain = points: единая закрытая схема
+# (@yaw, @orient, @w/@h/@d, @kind, @variant, @facade, @floor, @col, @is_corner, @convex, @t) —
+# merge scope'ов любых стадий без E609; новые атрибуты писать только через helper scope().
+# Размер хранится тремя f32-колонками, а не vec3 @size: value() на открытой схеме даёт
+# провизорный f32 (§8.10), и только f32-колонки читаются в def'ах ниже по конвейеру.
+
+def scope(at: vec3, yaw: f32, size: vec3, kind: int, variant: int = 0) -> (out: geo<points>) {
+    """Один scope: рамка низ-центр at, лицо по yaw (0 = +Z), локальный габарит size, слот kind.
+    Контекст по умолчанию: facade/floor/col = 0, is_corner/convex = false, t = 0."""
+    expect dot(size, (1, 0, 0)) >= 0.0: "scope: ширина рамки (size.x) неотрицательна, в метрах"
+    expect dot(size, (0, 1, 0)) >= 0.0: "scope: высота рамки (size.y) неотрицательна, в метрах"
+    p0 = set_position(mesh_line(count = 1, length = 0.0), pos = at)
+    p1 = set(p0, "yaw", yaw, domain = points)
+    p2 = set(p1, "orient", orient_from_euler(vec3(0.0, yaw, 0.0)), domain = points)
+    p3 = set(p2, "w", dot(size, (1, 0, 0)), domain = points)
+    p4 = set(p3, "h", dot(size, (0, 1, 0)), domain = points)
+    p5 = set(p4, "d", dot(size, (0, 0, 1)), domain = points)
+    p6 = set(p5, "kind", kind, domain = points)
+    p7 = set(p6, "variant", variant, domain = points)
+    p8 = set(p7, "facade", 0, domain = points)
+    p9 = set(p8, "floor", 0, domain = points)
+    p10 = set(p9, "col", 0, domain = points)
+    p11 = set(p10, "is_corner", false, domain = points)
+    p12 = set(p11, "convex", false, domain = points)
+    out = set(p12, "t", 0.0, domain = points)
+}
+
+def pick(scopes: geo<points>, kind: int) -> (out: geo<points>) {
+    """Scope'ы одного слота kind."""
+    out = delete(scopes, where = @kind != kind)
+}
+
+def place(g: geo<mesh>, s: geo<points>) -> (out: geo<mesh>) {
+    """Поставить меш терминала в рамку одного scope (s — ровно одна точка, иначе E601):
+    поворот вокруг +Y на @yaw, перенос в @P. Размер терминал строит сам (E611 — @scale только равномерный)."""
+    out = transform(g, rotate = vec3(0.0, value(@yaw, on = s), 0.0), translate = value(@P, on = s))
+}
+
+def stamp(scopes: geo<points>, source: geo<mesh>) -> (out: geo<mesh>) {
+    """Дешёвый путь для одинаковых терминалов: instance_on_points по @orient + realize.
+    Выбор по @variant — stamp_variants (пустой списочный литерал [] в языке не парсится,
+    поэтому variants без дефолта)."""
+    out = realize(instance_on_points(scopes, source = source))
+}
+
+def stamp_variants(scopes: geo<points>, source: geo<mesh>, variants: geo<mesh>[]) -> (out: geo<mesh>) {
+    """То же с выбором терминала по @variant: variants — непустой список источников."""
+    out = realize(instance_on_points(scopes, source = source, variants = variants))
+}
+
+def override_where(scopes: geo<points>, where: field<bool>, kind: int, variant: int = 0) -> (out: geo<points>) {
+    """Переписать @kind/@variant всем scope'ам под предикатом where (поле на scopes)."""
+    k = set(scopes, "kind", where ? kind : @kind, domain = points)
+    out = set(k, "variant", where ? variant : @variant, domain = points)
+}
+
+def override_box(scopes: geo<points>, lo: vec3, hi: vec3, kind: int, variant: int = 0) -> (out: geo<points>) {
+    """Пространственный override: переписать @kind/@variant всем scope'ам, чей центр @P внутри
+    бокса [lo, hi] («здесь дверь»). Семантика — по центру рамки: сама рамка может торчать из бокса."""
+    px = dot(@P, (1, 0, 0))
+    py = dot(@P, (0, 1, 0))
+    pz = dot(@P, (0, 0, 1))
+    inside = (px >= dot(lo, (1, 0, 0))) & (px <= dot(hi, (1, 0, 0))) & (py >= dot(lo, (0, 1, 0))) & (py <= dot(hi, (0, 1, 0))) & (pz >= dot(lo, (0, 0, 1))) & (pz <= dot(hi, (0, 0, 1)))
+    out = override_where(scopes, where = inside, kind = kind, variant = variant)
+}
+
+def frame_w(s: geo<points>) -> (out: f32) {
+    """Ширина рамки scope'а (локальная ось вдоль лица)."""
+    out = value(@w, on = s)
+}
+
+def frame_h(s: geo<points>) -> (out: f32) {
+    """Высота рамки scope'а."""
+    out = value(@h, on = s)
+}
+
+def frame_d(s: geo<points>) -> (out: f32) {
+    """Глубина рамки scope'а (вдоль нормали лица)."""
+    out = value(@d, on = s)
+}
+
+def frame_yaw(s: geo<points>) -> (out: f32) {
+    """Азимут лица scope'а, градусы (0 = +Z)."""
+    out = value(@yaw, on = s)
+}
+
+def frame_at(s: geo<points>) -> (out: vec3) {
+    """Опорная точка рамки scope'а (низ-центр)."""
+    out = value(@P, on = s)
+}

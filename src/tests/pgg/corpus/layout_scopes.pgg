@@ -1,0 +1,26 @@
+# A1 (docs/pgg/architecture_library_plan.md): scope-протокол lib/layout —
+# построение scope, pick по слоту, override_box по центру рамки, frame-helper'ы,
+# точка-запись record. Точные проверки значений — в layout_test.cpp.
+import lib.layout.scope as ls
+import lib.layout.record as lr
+
+param seed: int = 3
+
+s0 = ls.scope(at = vec3(0, 0, 0), yaw = 0.0, size = vec3(4.0, 3.0, 0.4), kind = 1, variant = 0)
+s1 = ls.scope(at = vec3(2, 0, 5), yaw = 90.0, size = vec3(2.0, 3.0, 0.4), kind = 2, variant = 1)
+scopes = merge(s0, s1)
+windows = ls.pick(scopes, kind = 2)
+over = ls.override_box(scopes, lo = vec3(-1, -1, -1), hi = vec3(1, 1, 1), kind = 7, variant = 2)
+
+# frame-helper'ы в размере терминала + place по рамке scope
+marker = box(size = vec3(ls.frame_w(s1) * 0.5, 0.2, 0.2))
+scene = ls.place(marker, s1)
+
+rec0 = lr.record(type = 1)
+rec = set(rec0, "cornice_h", 0.35, domain = points)
+
+output scopes
+output windows
+output over
+output scene
+output rec

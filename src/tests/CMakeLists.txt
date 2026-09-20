@@ -18,6 +18,7 @@ target_link_libraries(pgg_tests PRIVATE
 target_compile_definitions(pgg_tests PRIVATE
     PGG_CORPUS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/pgg/corpus"
     PGG_GOLDENS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/pgg/goldens"
+    PGG_RESOURCES_DIR="${CMAKE_SOURCE_DIR}/resources/pgg"
 )
 
 if(MSVC)

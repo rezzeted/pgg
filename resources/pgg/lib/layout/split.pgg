@@ -1,0 +1,96 @@
+# lib/layout/split.pgg — паттерны и split (docs/pgg/architecture_library_plan.md §5.3).
+# Паттерн — geo<points> модель строк: @size (f32 вдоль оси; для flex — вес), @flex (bool),
+# @kind, @variant, @off/@w_off (префиксные суммы фиксированных размеров и flex-весов —
+# пишет pattern_add, в полях split не считаются). split режет scope'ы lib/layout/scope
+# вдоль локальной оси: фиксированные элементы занимают @size, flex делят остаток по весам,
+# repeat = true — целое число повторений паттерна (остаток во flex). Тот же split по оси Y
+# режет фасад на полосы (цоколь / этажи / венец). Дети наследуют контекст родителя + @col/@t.
+
+import lib.layout.scope as ls
+
+def pattern_empty() -> (out: geo<points>) {
+    """Пустой паттерн — нейтраль pattern_add. Пишет все колонки схемы пустыми,
+    чтобы @size/@flex первого pattern_add читались без E302."""
+    p0 = set(empty_points(), "size", 0.0, domain = points)
+    p1 = set(p0, "flex", false, domain = points)
+    p2 = set(p1, "kind", 0, domain = points)
+    p3 = set(p2, "variant", 0, domain = points)
+    p4 = set(p3, "off", 0.0, domain = points)
+    out = set(p4, "w_off", 0.0, domain = points)
+}
+
+def pattern_add(pat: geo<points>, size: f32, kind: int, flex: bool = false, variant: int = 0) -> (out: geo<points>) {
+    """Элемент в конец паттерна: размер size вдоль оси (для flex = true — вес делёжа остатка),
+    слот kind, вариант variant терминала. Компоновать через merge с паттернами нельзя —
+    префиксные суммы @off/@w_off валидны только для одной цепочки pattern_add."""
+    expect size > 0.0: "pattern_add: размер/вес элемента — положительный, в метрах"
+    r0 = set_position(mesh_line(count = 1, length = 0.0), pos = vec3(0.0, 0.0, 0.0))
+    r1 = set(r0, "size", size, domain = points)
+    r2 = set(r1, "flex", flex, domain = points)
+    r3 = set(r2, "kind", kind, domain = points)
+    r4 = set(r3, "variant", variant, domain = points)
+    r5 = set(r4, "off", sum_of(@size * (1.0 - f32(@flex)), on = pat), domain = points)
+    r6 = set(r5, "w_off", sum_of(@size * f32(@flex), on = pat), domain = points)
+    out = merge(pat, r6)
+}
+
+def split(scopes: geo<points>, pattern: geo<points>, axis: int = 0, cycle: bool = false) -> (out: geo<points>) {
+    """Разрезать scope'ы паттерном вдоль локальной оси рамки (axis: 0 = X вдоль лица,
+    1 = Y по высоте). Каждый дочерний scope: @kind/@variant из строки паттерна, @size по
+    правилам fixed/flex, контекст родителя + @col (номер в родителе) и @t (доля вдоль него)."""
+    expect (axis == 0) | (axis == 1): "split: axis 0 = X (вдоль лица), 1 = Y (по высоте)"
+    expect count(pattern) > 0: "split: паттерн пуст — собери его pattern_empty + pattern_add"
+    out = foreach s in scopes {
+        s = split_one(s = s, pattern = pattern, axis = axis, cycle = cycle)
+    }
+}
+
+def split_one(s: geo<points>, pattern: geo<points>, axis: int, cycle: bool) -> (out: geo<points>) {
+    """Дети одного родителя s (ровно одна точка). Внутренность split, напрямую не вызывать."""
+    L = axis == 0 ? ls.frame_w(s) : ls.frame_h(s)
+    fixed_sum = sum_of(@size * (1.0 - f32(@flex)), on = pattern)
+    w_sum = sum_of(@size * f32(@flex), on = pattern)
+    n = (!cycle) ? 1 : (fixed_sum > 0.0001 ? max(1, int(L / fixed_sum)) : 1)
+    leftover = L - f32(n) * fixed_sum
+    flex_unit = w_sum > 0.0001 ? leftover / (f32(n) * w_sum) : 0.0
+    rows = count(pattern)
+    a0 = mesh_line(count = n * rows, length = 0.0)
+    a1 = set(a0, "rep", @index / rows, domain = points)
+    anchors = set(a1, "k", @index % rows, domain = points)
+    out = foreach a in anchors {
+        a = split_child(s = s, a = a, pattern = pattern, axis = axis, L = L, n = n, flex_unit = flex_unit, col = @piece_index)
+    }
+    ensure leftover >= -0.001: "split: паттерн не влезает в scope — сумма фиксированных размеров больше длины; уменьшите шаг или уберите элемент"
+    ensure (!cycle) | (w_sum > 0.0001): "split: repeat-паттерну нужен flex-элемент — остаток девать некуда"
+}
+
+def split_child(s: geo<points>, a: geo<points>, pattern: geo<points>, axis: int, L: f32, n: int, flex_unit: f32, col: int) -> (out: geo<points>) {
+    """Один дочерний scope: рамка по строке паттерна (@k якоря), контекст родителя + @col/@t.
+    Внутренность split, напрямую не вызывать."""
+    row = delete(pattern, where = @index != value(@k, on = a))
+    off_k = value(@off, on = row)
+    woff_k = value(@w_off, on = row)
+    size_k = value(@size, on = row)
+    flex_i = f32(value(@flex, on = row))
+    kind_k = value(@kind, on = row)
+    var_k = value(@variant, on = row)
+    off_in_parent = f32(value(@rep, on = a)) * L / f32(n) + off_k + woff_k * flex_unit
+    child_len = size_k * (flex_i * flex_unit + 1.0 - flex_i)
+    center = off_in_parent + child_len * 0.5
+    yaw = value(@yaw, on = s)
+    cs = cos(radians(yaw))
+    sn = sin(radians(yaw))
+    p0 = value(@P, on = s)
+    pos = axis == 0 ? p0 + (center - L * 0.5) * vec3(cs, 0.0, 0.0 - sn) : p0 + vec3(0.0, center, 0.0)
+    pw = value(@w, on = s)
+    ph = value(@h, on = s)
+    pd = value(@d, on = s)
+    new_size = axis == 0 ? vec3(child_len, ph, pd) : vec3(pw, child_len, pd)
+    c0 = ls.scope(at = pos, yaw = yaw, size = new_size, kind = kind_k, variant = var_k)
+    c1 = set(c0, "facade", value(@facade, on = s), domain = points)
+    c2 = set(c1, "floor", value(@floor, on = s), domain = points)
+    c3 = set(c2, "col", col, domain = points)
+    c4 = set(c3, "is_corner", value(@is_corner, on = s), domain = points)
+    c5 = set(c4, "convex", value(@convex, on = s), domain = points)
+    out = set(c5, "t", center / L, domain = points)
+}

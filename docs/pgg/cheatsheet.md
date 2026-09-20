@@ -58,6 +58,13 @@ tube = sweep(mesh_line(count = 2, length = h, dir = (0, 1, 0)), profile = ring)
 - Вложенный `foreach`: целевое имя внутреннего цикла **не** должно совпадать с портом внешнего (`row = foreach s in ...` → E204 «never bound»); `pins = foreach ...` и затем `row = pins`.
 - `select(cond, a, b)` в теле `foreach` принимает value-bool из `value(random(...), on = row) < p` — так делаются пропуски (`b = empty_points()` / `empty_mesh()`).
 - `expect` — только в начале тела def, до первого binding'а.
+- `value()` на открытой схеме — **провизорный f32** (§8.10): vec3-атрибут модели, который def'ы ниже по конвейеру читают через `value()`, не доезжает (`dot(value(@size, on = s), (1,0,0))` — статический E204). Размеры моделей — f32-колонками (`@w/@h/@d`, не vec3 `@size`; идиома `lib/layout/scope`); `@P` читается всегда (встроенный).
+- Пустой списочный литерал `[]` **не парсится** (ни дефолт параметра, ни аргумент): «variants по умолчанию» — отдельные def'ы (`stamp` / `stamp_variants` в `lib/layout/scope`).
+- Имя параметра не может быть ключевым словом (`repeat`/`foreach`/`in`/…): вызов `split(..., repeat = true)` — E100. Флаг повтора в `lib/layout/split` называется `cycle`.
+- Дефолты параметров — **только литералы**: `= vec3(0, 0, 1)` не парсится (E100 каскадом), писать `= (0, 0, 1)`.
+- Закрывающая `}` зоны — **на своей строке**: stmt внутри зоны требует NEWLINE, `{ s = f() }` в одну строку — E100 «unclosed block».
+- Пустая модель со схемой: `set(empty_points(), "size", 0.0, domain = points)` × все колонки — иначе первый читающий агрегат (`sum_of(@size, on = pat)`) падает E302 (идиома `pattern_empty` из `lib/layout/split`).
+- enum-параметры (v1.28): `param roof_kind: enum {hip, gable} = hip`, сравнение `kind == hip` работает в теле def и на top-level; launch-привязка строкой (`--param roof_kind=gable`, `pgg_params`); чужое значение — E206, определённый binding литералом не перечитывается.
 
 ## MCP (одна строка)
 
