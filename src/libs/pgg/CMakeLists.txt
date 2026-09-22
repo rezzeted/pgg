@@ -50,6 +50,8 @@ nw_add_lib_sources(
         src/eval/mc_tables.h
         src/eval/fracture.h
         src/eval/fracture.cpp
+        src/eval/straight_skeleton.h
+        src/eval/straight_skeleton.cpp
         src/eval/builtins.h
         src/eval/builtins.cpp
         src/eval/builtins_sources.cpp
@@ -60,6 +62,7 @@ nw_add_lib_sources(
         src/eval/builtins_aggregate.cpp
         src/eval/builtins_sdf.cpp
         src/eval/builtins_fracture.cpp
+        src/eval/builtins_roof.cpp
         src/eval/topology_util.h
         src/eval/builtins_topology.cpp
         src/eval/builtins_topology_ops.cpp
