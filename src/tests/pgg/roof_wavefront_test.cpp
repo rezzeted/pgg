@@ -271,6 +271,25 @@ TEST(RoofWavefront, BuiltinMatchesAnalyticHip) {
     ASSERT_TRUE(man_t != nullptr);
     ASSERT_EQ(man_t->pointCount(), 4u);
     for (const glm::vec3& p : *man_t->positions) pggtest::expectF32Near(p.y, 1.5f, 1e-4f);
+
+    // Overhang + planes: the eave line moves out by 0.4 and tile_anchors covers
+    // the skeleton panels without outliers (every anchor inside the roof bbox).
+    pgg::GeoPtr oh_p = pggtest::geoOutput(r, "oh_p");
+    ASSERT_TRUE(oh_p != nullptr);
+    pgg::GeoPtr oh_pl = pggtest::geoOutput(r, "oh_pl");
+    ASSERT_TRUE(oh_pl != nullptr);
+    EXPECT_EQ(oh_pl->pointCount(), 14u);  // 4 panels x their polygon edges
+    pgg::GeoPtr anchors = pggtest::geoOutput(r, "anchors");
+    ASSERT_TRUE(anchors != nullptr);
+    ASSERT_GT(anchors->pointCount(), 400u);
+    for (const glm::vec3& p : *anchors->positions) {
+        EXPECT_GE(p.x, -4.5f);
+        EXPECT_LE(p.x, 4.5f);
+        EXPECT_GE(p.z, -3.0f);
+        EXPECT_LE(p.z, 3.0f);
+        EXPECT_GE(p.y, -0.01f);
+        EXPECT_LE(p.y, 3.0f);
+    }
 }
 
 TEST(RoofWavefront, RiseMaxCutSealsRings) {
