@@ -4,6 +4,7 @@
 
 import lib.parts
 import lib.arch.terminals_victorian as victorian
+import lib.arch.terminals_basic as tb
 import lib.plan as plan
 import lib.ironwork
 import shreter_mansion.common as common
@@ -59,7 +60,7 @@ def attic_balcony(r: f32) -> (out: geo<mesh>) {
     """Полукруглый балкончик мансардного окна: полудиск-площадка (вынос в +Z),
     кованая дуга ограждения, консоль по центру. Низ на y = 0."""
     plate = plan.arc_shell(cx = 0.0, cz = 0.0, r_in = 0.03, r_out = r, a0 = 0.0 - 90.0, a1 = 90.0, y0 = 0.0, y1 = 0.12, grp = "deco", n = 18)
-    rail = common.rail_arc(r = r - 0.03, a0 = 0.0 - 88.0, a1 = 88.0, h = 0.85)
+    rail = tb.rail_arc(r = r - 0.03, a0 = 0.0 - 88.0, a1 = 88.0, h = 0.85)
     corb = transform(victorian.corbel(w = 0.30, d = r * 0.8, h = 0.5, grp = "deco", steps = 3), translate = vec3(0, 0.0 - 0.5, r * 0.15))
     out = merge(plate, rail, corb)
 }

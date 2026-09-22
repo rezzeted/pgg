@@ -4,6 +4,10 @@
 # Окна и портал — накладные (openings.pgg / portal.pgg), стены сплошные.
 
 import lib.parts
+import lib.layout.edges as lse
+import lib.arch.kinds as ak
+import lib.arch.plan as ap
+import lib.arch.elements as ae
 import shreter_mansion.common as common
 
 def chamfer_clip(g: geo<mesh>, w: f32, d: f32, c: f32) -> (out: geo<mesh>) {
@@ -78,11 +82,14 @@ def body(w: f32, d: f32, c: f32, plinth_h: f32, floor1_h: f32, belt_h: f32, floo
     ven1 = floor_veneer(w = w, d = d, c = c, y0 = plinth_h, h = floor1_h, rng = split_rng(rng, key = "v1"))
     ven2 = floor_veneer(w = w, d = d, c = c, y0 = b1_top, h = floor2_h, rng = split_rng(rng, key = "v2"))
     ven = select(detail > 0, a = merge(ven1, ven2), b = empty_mesh())
-    # Лопатки и тяги
+    # Лопатки и тяги: пояса — терминал belt_edges (lib/arch/elements) на рёбрах
+    # горизонта R_FLOOR_TOP (контур со срезом; срез плит — chamfer_clip ниже).
     strips = corner_strips(w = w, d = d, c = c, y0 = plinth_h, y1 = f2_top)
-    belt1 = chamfer_clip(g = common.belt(w = w, d = d, y = f1_top, h = belt_h, grp = "deco", over_lo = 0.14, over_hi = 0.22), w = w + 0.44, d = d + 0.44, c = c + 0.22)
+    bed1 = lse.edges_of_polygon(plan = set_position(ap.plan_chamfer_rect(w = w, d = d, c = c), offset = vec3(0, f1_top, 0)), role = ak.R_FLOOR_TOP())
+    belt1 = chamfer_clip(g = ae.belt_edges(edges = bed1, h = belt_h, grp = "deco", over_lo = 0.14, over_hi = 0.22, split = 0.55, bevel = false), w = w + 0.44, d = d + 0.44, c = c + 0.22)
     # Венец: опорный пояс + аркатурный фриз + крышка карниза
-    cr_base = chamfer_clip(g = common.belt(w = w, d = d, y = f2_top, h = 0.26, grp = "deco", over_lo = 0.10, over_hi = 0.18), w = w + 0.36, d = d + 0.36, c = c + 0.18)
+    bed2 = lse.edges_of_polygon(plan = set_position(ap.plan_chamfer_rect(w = w, d = d, c = c), offset = vec3(0, f2_top, 0)), role = ak.R_FLOOR_TOP())
+    cr_base = chamfer_clip(g = ae.belt_edges(edges = bed2, h = 0.26, grp = "deco", over_lo = 0.10, over_hi = 0.18, split = 0.55, bevel = false), w = w + 0.36, d = d + 0.36, c = c + 0.18)
     frz = select(detail > 0, a = floor_frieze(w = w, d = d, c = c, y = f2_top + 0.26), b = empty_mesh())
     cr_cap = chamfer_clip(g = parts.slab(size = vec3(w + 0.56, 0.12, d + 0.56), pos = vec3(0, f2_top + 0.60, 0), grp = "deco"), w = w + 0.56, d = d + 0.56, c = c + 0.28)
     out = merge(p_base, p_cap, core, ven, strips, belt1, cr_base, frz, cr_cap)
