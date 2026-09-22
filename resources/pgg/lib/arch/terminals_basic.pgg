@@ -109,8 +109,8 @@ def rail_run(len: f32, h: f32, pitch: f32 = 0.32, rail_s: f32 = 0.04, bot_s: f32
     (bot_s на bot_y), штакетины 0.025 высотой h − gap с шагом pitch, центрированные
     по длине. Терминал на ребре (роль R_RAIL, place_edge): от origin вдоль +Z, ось
     ограждения — линия ребра (профиль симметричен, направление обхода неважно).
-    Группа iron. Дефолты — профиль spire_house; shreter: pitch 0.30, rail_s 0.045,
-    bot_y 0.10, gap 0.10, bevel false."""
+    Группа iron. Дефолты — профиль spire_house; тяжёлый профиль особняка:
+    pitch 0.30, rail_s 0.045, bot_y 0.10, gap 0.10, bevel false."""
     expect len > 0.0 & h > bot_y + 0.02: "rail_run: длина/высота положительные (edge_len(e), метры)"
     top_r = rail_stock(size = vec3(rail_s, rail_s, len), pos = vec3(0, h, len * 0.5), bevel = bevel)
     bot_r = rail_stock(size = vec3(bot_s, bot_s, len), pos = vec3(0, bot_y, len * 0.5), bevel = bevel)
