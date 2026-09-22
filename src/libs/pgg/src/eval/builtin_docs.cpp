@@ -447,6 +447,17 @@ const std::vector<BuiltinDoc>& docs() {
          "pieces come out watertight with @island_id (faces), ready for foreach. "
          "0 sites after dedup or an empty mesh is E608.",
          "pieces = fracture(g, planes = sites, rng = root)"},
+        // --- §8.12 roof skeleton (v1.30) -------------------------------------------
+        {"roof_wavefront", "topology",
+         "Straight-skeleton roof over an arbitrary plan outline (CCW from above, "
+         "the lib/arch/plan convention): returns (panels, edges, top). Panels are "
+         "the slope faces tagged as the arch face-scope contract (@kind = "
+         "K_SLOPE(7), @slope_id, @slope_pitch, @eave_yaw, @island_id, group roof); "
+         "edges are the §5.2 edge model (R_EAVE outline + R_RIDGE/HIP/VALLEY/RAKE/"
+         "FLOOR_TOP skeleton arcs); top is the rise_max cut contour (mansard "
+         "decks). Per-vertex @pitch on the outline overrides pitch per edge; "
+         "pitch = 90 is a vertical gable wall.",
+         "panels, edges, top = roof_wavefront(outline = plan, pitch = 45.0, y0 = 9.0)"},
         // --- deferred (registered, not supported at this stage) ------------------
         {"import_mesh", "deferred",
          "Deferred past this stage: fetch an immutable mesh through the host "

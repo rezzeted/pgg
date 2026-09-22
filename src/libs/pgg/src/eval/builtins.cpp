@@ -462,6 +462,18 @@ const std::vector<BuiltinSig>& registry() {
                          valDef("cap", ScalarType::Bool, Value(true)),
                          valDef("profile_closed", ScalarType::Bool, Value(true))},
                         Type{ScalarType::Geo, false, GeoKind::Mesh}));
+        {
+            // §8 L1 roof_wavefront (v1.30): straight-skeleton roof over an
+            // arbitrary outline -> (panels, edges, top).
+            BuiltinSig s = sig(BuiltinId::RoofWavefront, "roof_wavefront",
+                               {geoArg("outline", GeoKind::Points), valDef("pitch", ScalarType::F32, Value(45.0f)),
+                                valDef("rise_max", ScalarType::F32, Value(0.0f)), valDef("y0", ScalarType::F32, Value(0.0f))},
+                               Type{});
+            s.results = {Type{ScalarType::Geo, false, GeoKind::Mesh},
+                         Type{ScalarType::Geo, false, GeoKind::Points},
+                         Type{ScalarType::Geo, false, GeoKind::Points}};
+            r.push_back(s);
+        }
 
         // --- §8.8 scatter and instancing ----------------------------------------
         {
@@ -736,6 +748,8 @@ Value evalBuiltinCall(const BoundCall& bound, RunContext& run) {
             return evalSweepBuiltin(bound, run);
         case BuiltinId::BakeAo:
             return evalBakeBuiltin(bound, run);
+        case BuiltinId::RoofWavefront:
+            return evalRoofBuiltin(bound, run);
         case BuiltinId::Delete:
         case BuiltinId::Clip:
             return evalTopologyBuiltin(bound, run);
