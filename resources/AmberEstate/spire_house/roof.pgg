@@ -3,6 +3,10 @@
 import lib.parts
 import lib.ironwork
 import lib.roofing as roofing
+import lib.layout.edges as lse
+import lib.arch.kinds as ak
+import lib.arch.plan as ap
+import lib.arch.terminals_basic as tb
 import spire_house.common as common
 
 def mansard_tile_slope(len_bot: f32, len_top: f32, slope_len: f32, n_rows: int, rng: rng) -> (out: geo<mesh>) {
@@ -83,13 +87,17 @@ def mansard_roof(width: f32, depth: f32, crown_top: f32, roof_h: f32, deck_hw: f
     hip_br = hip_caps(p0 = vec3(eave_hw, crown_top, 0.0 - eave_hd), p1 = vec3(deck_hw, deck_y, 0.0 - deck_hd), rng = split_rng(rng, key = "hip_br"))
     hip_bl = hip_caps(p0 = vec3(0.0 - eave_hw, crown_top, 0.0 - eave_hd), p1 = vec3(0.0 - deck_hw, deck_y, 0.0 - deck_hd), rng = split_rng(rng, key = "hip_bl"))
     hips = merge(hip_fr, hip_fl, hip_br, hip_bl)
-    # Решётка палубы
+    # Ограда палубы: терминал rail_run (lib/arch/terminals_basic) на рёбрах периметра
+    # палубы (R_RAIL), отступ 0.15 от края. Фронт без ограды (там башня/эркер) —
+    # ребро 1 контура plan_rect (левая → правая вершина вдоль +Z).
     rail_h = 0.95
-    rail_bk = transform(common.rail_run(len = deck_hw * 2.0 - 0.3, h = rail_h), translate = vec3(0, deck_y, 0.0 - deck_hd + 0.15))
-    rail_rt = transform(transform(common.rail_run(len = deck_hd * 2.0 - 0.3, h = rail_h), rotate = vec3(0, 90, 0)), translate = vec3(deck_hw - 0.15, deck_y, 0))
-    rail_lt = transform(transform(common.rail_run(len = deck_hd * 2.0 - 0.3, h = rail_h), rotate = vec3(0, 90, 0)), translate = vec3(0.0 - deck_hw + 0.15, deck_y, 0))
+    deck_plan = set_position(ap.plan_rect(w = deck_hw * 2.0 - 0.3, d = deck_hd * 2.0 - 0.3), offset = vec3(0, deck_y, 0))
+    rail_edges = lse.edges_of_polygon(plan = deck_plan, role = ak.R_RAIL())
+    rails = foreach e in delete(rail_edges, where = @index == 1) {
+        e = lse.place_edge(g = tb.rail_run(len = lse.edge_len(e), h = rail_h), e = e)
+    }
     # Угловые пики-финиалы карниза
     eave_fin = merge(parts.piece(size = vec3(0.07, 0.3, 0.07), pos = vec3(0, 0.15, 0), grp = "iron"), ironwork.spearhead(base = vec3(0, 0.3, 0), h = 0.4, w = 0.12))
     eave_fins = merge(transform(eave_fin, translate = vec3(eave_hw - 0.10, crown_top - 0.05, eave_hd - 0.10)), transform(eave_fin, translate = vec3(0.0 - eave_hw + 0.10, crown_top - 0.05, eave_hd - 0.10)), transform(eave_fin, translate = vec3(eave_hw - 0.10, crown_top - 0.05, 0.0 - eave_hd + 0.10)), transform(eave_fin, translate = vec3(0.0 - eave_hw + 0.10, crown_top - 0.05, 0.0 - eave_hd + 0.10)))
-    out = merge(roof_deck, slope_f, slope_b, slope_r, slope_l, hips, rail_bk, rail_rt, rail_lt, eave_fins)
+    out = merge(roof_deck, slope_f, slope_b, slope_r, slope_l, hips, rails, eave_fins)
 }
