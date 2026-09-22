@@ -99,6 +99,21 @@ def trim_run(len: f32, w: f32 = 0.10, t: f32 = 0.05) -> (out: geo<mesh>) {
     out = parts.slab(size = vec3(w, t, len), pos = vec3(0, t * 0.5, len * 0.5), grp = "trim")
 }
 
+def rail_run(len: f32, h: f32, pitch: f32 = 0.32) -> (out: geo<mesh>) {
+    """Кованое ограждение длины len: поручень и нижняя тяга (квадрат 0.04, тяга на
+    0.08), штакетины 0.025 с шагом pitch, центрированные по длине. Терминал на ребре
+    (роль R_RAIL, place_edge): от origin вдоль +Z, ось ограждения — линия ребра
+    (профиль симметричен, направление обхода неважно). Группа iron."""
+    expect len > 0.0 & h > 0.1: "rail_run: длина/высота положительные (edge_len(e), метры)"
+    top_r = parts.piece(size = vec3(0.04, 0.04, len), pos = vec3(0, h, len * 0.5), grp = "iron")
+    bot_r = parts.piece(size = vec3(0.04, 0.04, len), pos = vec3(0, 0.08, len * 0.5), grp = "iron")
+    n_p = int(len / pitch)
+    pts = transform(mesh_line(count = n_p, length = f32(n_p - 1) * pitch, dir = (0, 0, 1)), translate = vec3(0, 0, (len - f32(n_p - 1) * pitch) * 0.5))
+    picket = parts.piece(size = vec3(0.025, h - 0.08, 0.025), pos = vec3(0, (h + 0.08) * 0.5, 0), grp = "iron")
+    pickets = realize(instance_on_points(pts, source = picket))
+    out = merge(top_r, bot_r, pickets)
+}
+
 def chimney_stack(w: f32, d: f32, h: f32) -> (out: geo<mesh>) {
     """Простая труба: ствол, напускной пояс и крышка с тёмным устьем; низ-центр в
     origin, верх крышки на h выше. Высоту верха над крышей даёт правило chimney_rule

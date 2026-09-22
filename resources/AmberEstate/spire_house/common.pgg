@@ -205,14 +205,3 @@ def hexa_dentils(y: f32, r_in: f32) -> (out: geo<mesh>) {
     face_d = merge(d0, d1, d2, d3)
     out = merge(face_d, transform(face_d, rotate = vec3(0, 60, 0)), transform(face_d, rotate = vec3(0, 120, 0)), transform(face_d, rotate = vec3(0, 180, 0)), transform(face_d, rotate = vec3(0, 240, 0)), transform(face_d, rotate = vec3(0, 300, 0)))
 }
-
-def rail_run(len: f32, h: f32) -> (out: geo<mesh>) {
-    """Кованое ограждение террасы/палубы заданной длины."""
-    top_r = parts.piece(size = vec3(len, 0.04, 0.04), pos = vec3(0, h, 0), grp = "iron")
-    bot_r = parts.piece(size = vec3(len, 0.04, 0.04), pos = vec3(0, 0.08, 0), grp = "iron")
-    n_p = int(len / 0.32)
-    pts = transform(mesh_line(count = n_p, length = f32(n_p - 1) * 0.32, dir = (1, 0, 0)), translate = vec3(0.0 - f32(n_p - 1) * 0.32 * 0.5, 0, 0))
-    picket = parts.piece(size = vec3(0.025, h - 0.08, 0.025), pos = vec3(0, (h + 0.08) * 0.5, 0), grp = "iron")
-    pickets = realize(instance_on_points(pts, source = picket))
-    out = merge(top_r, bot_r, pickets)
-}
