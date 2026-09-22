@@ -99,17 +99,38 @@ def trim_run(len: f32, w: f32 = 0.10, t: f32 = 0.05) -> (out: geo<mesh>) {
     out = parts.slab(size = vec3(w, t, len), pos = vec3(0, t * 0.5, len * 0.5), grp = "trim")
 }
 
-def rail_run(len: f32, h: f32, pitch: f32 = 0.32) -> (out: geo<mesh>) {
-    """Кованое ограждение длины len: поручень и нижняя тяга (квадрат 0.04, тяга на
-    0.08), штакетины 0.025 с шагом pitch, центрированные по длине. Терминал на ребре
-    (роль R_RAIL, place_edge): от origin вдоль +Z, ось ограждения — линия ребра
-    (профиль симметричен, направление обхода неважно). Группа iron."""
-    expect len > 0.0 & h > 0.1: "rail_run: длина/высота положительные (edge_len(e), метры)"
-    top_r = parts.piece(size = vec3(0.04, 0.04, len), pos = vec3(0, h, len * 0.5), grp = "iron")
-    bot_r = parts.piece(size = vec3(0.04, 0.04, len), pos = vec3(0, 0.08, len * 0.5), grp = "iron")
-    n_p = int(len / pitch)
+def rail_stock(size: vec3, pos: vec3, bevel: bool) -> (out: geo<mesh>) {
+    """Брус ограждения: с фаской (parts.piece) или прямой (parts.slab), группа iron."""
+    out = select(bevel, a = parts.piece(size = size, pos = pos, grp = "iron"), b = parts.slab(size = size, pos = pos, grp = "iron"))
+}
+
+def rail_run(len: f32, h: f32, pitch: f32 = 0.32, rail_s: f32 = 0.04, bot_s: f32 = 0.04, bot_y: f32 = 0.08, gap: f32 = 0.08, bevel: bool = true) -> (out: geo<mesh>) {
+    """Кованое ограждение длины len: поручень (квадрат rail_s на h) и нижняя тяга
+    (bot_s на bot_y), штакетины 0.025 высотой h − gap с шагом pitch, центрированные
+    по длине. Терминал на ребре (роль R_RAIL, place_edge): от origin вдоль +Z, ось
+    ограждения — линия ребра (профиль симметричен, направление обхода неважно).
+    Группа iron. Дефолты — профиль spire_house; shreter: pitch 0.30, rail_s 0.045,
+    bot_y 0.10, gap 0.10, bevel false."""
+    expect len > 0.0 & h > bot_y + 0.02: "rail_run: длина/высота положительные (edge_len(e), метры)"
+    top_r = rail_stock(size = vec3(rail_s, rail_s, len), pos = vec3(0, h, len * 0.5), bevel = bevel)
+    bot_r = rail_stock(size = vec3(bot_s, bot_s, len), pos = vec3(0, bot_y, len * 0.5), bevel = bevel)
+    n_p = max(int(len / pitch), 2)
     pts = transform(mesh_line(count = n_p, length = f32(n_p - 1) * pitch, dir = (0, 0, 1)), translate = vec3(0, 0, (len - f32(n_p - 1) * pitch) * 0.5))
-    picket = parts.piece(size = vec3(0.025, h - 0.08, 0.025), pos = vec3(0, (h + 0.08) * 0.5, 0), grp = "iron")
+    picket = rail_stock(size = vec3(0.025, h - gap, 0.025), pos = vec3(0, (h + gap) * 0.5, 0), bevel = bevel)
+    pickets = realize(instance_on_points(pts, source = picket))
+    out = merge(top_r, bot_r, pickets)
+}
+
+def rail_arc(r: f32, a0: f32, a1: f32, h: f32) -> (out: geo<mesh>) {
+    """Кованое ограждение по дуге (план, центр в origin, низ на y = 0): два кольцевых
+    пояска и штакетины. Углы — градусы от направления +Z в сторону +X. Дуга — не
+    ребро: терминал ставится transform'ом на место (балкон/эркер). Группа iron."""
+    expect r > 0.05 & a1 > a0: "rail_arc: радиус и дуга положительные"
+    top_r = plan.arc_shell(cx = 0.0, cz = 0.0, r_in = r - 0.022, r_out = r + 0.022, a0 = a0, a1 = a1, y0 = h - 0.022, y1 = h + 0.022, grp = "iron", n = 24)
+    bot_r = plan.arc_shell(cx = 0.0, cz = 0.0, r_in = r - 0.020, r_out = r + 0.020, a0 = a0, a1 = a1, y0 = 0.08, y1 = 0.12, grp = "iron", n = 24)
+    n_p = max(int((a1 - a0) / 14.0), 3)
+    pts = set_position(mesh_line(count = n_p, length = 0.0), pos = vec3(r * sin(radians(a0 + (a1 - a0) * f32(@index) / f32(n_p - 1))), 0.0, r * cos(radians(a0 + (a1 - a0) * f32(@index) / f32(n_p - 1)))))
+    picket = parts.slab(size = vec3(0.025, h - 0.10, 0.025), pos = vec3(0, (h + 0.10) * 0.5, 0), grp = "iron")
     pickets = realize(instance_on_points(pts, source = picket))
     out = merge(top_r, bot_r, pickets)
 }

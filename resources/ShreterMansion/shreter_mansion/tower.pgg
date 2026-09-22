@@ -6,6 +6,11 @@ import lib.parts
 import lib.ironwork
 import lib.roofing
 import lib.shapes as shapes
+import lib.layout.edges as lse
+import lib.arch.kinds as ak
+import lib.arch.plan as ap
+import lib.arch.elements as ae
+import lib.arch.terminals_basic as tb
 import shreter_mansion.common as common
 import shreter_mansion.roof as roof
 
@@ -40,14 +45,16 @@ def lib_roof_face(s: f32, top_s: f32, slope_len: f32, rng: rng) -> (out: geo<mes
 
 def crown(top_s: f32, y0: f32) -> (out: geo<mesh>) {
     """Кованая корона на вершине шатра: площадка, ограждение по четырём сторонам,
-    четыре угловых пики-копья и центральный флюгер-стрела с крестовиной."""
+    четыре угловых пики-копья и центральный флюгер-стрела с крестовиной.
+    Ограда — терминал rail_run (terminals_basic) на рёбрах R_RAIL периметра
+    площадки; пролёты на 0.02 длиннее стороны ребра с каждого конца (стык внахлёст)."""
     plat = parts.slab(size = vec3(top_s + 0.30, 0.10, top_s + 0.30), pos = vec3(0, y0 + 0.05, 0), grp = "iron")
     e = (top_s + 0.30) * 0.5
-    r0 = common.rail_run(len = top_s + 0.30, h = 0.52)
-    rail_f = transform(r0, translate = vec3(0, y0 + 0.10, e - 0.02))
-    rail_b = transform(transform(r0, rotate = vec3(0, 180, 0)), translate = vec3(0, y0 + 0.10, 0.0 - e + 0.02))
-    rail_r = transform(transform(r0, rotate = vec3(0, 90, 0)), translate = vec3(e - 0.02, y0 + 0.10, 0))
-    rail_l = transform(transform(r0, rotate = vec3(0, 270, 0)), translate = vec3(0.0 - e + 0.02, y0 + 0.10, 0))
+    rplan = set_position(ap.plan_rect(w = 2.0 * (e - 0.02), d = 2.0 * (e - 0.02)), offset = vec3(0, y0 + 0.10, 0))
+    redges = lse.edges_of_polygon(plan = rplan, role = ak.R_RAIL())
+    rails = foreach re in redges {
+        re = lse.place_edge(g = transform(tb.rail_run(len = lse.edge_len(re) + 0.04, h = 0.52, pitch = 0.30, rail_s = 0.045, bot_y = 0.10, gap = 0.10, bevel = false), translate = vec3(0, 0, 0.0 - 0.02)), e = re)
+    }
     sp0 = ironwork.spearhead(base = vec3(0, 0, 0), h = 0.95, w = 0.16)
     sp1 = transform(sp0, translate = vec3(e - 0.03, y0 + 0.10, e - 0.03))
     sp2 = transform(sp0, translate = vec3(0.0 - e + 0.03, y0 + 0.10, e - 0.03))
@@ -57,7 +64,7 @@ def crown(top_s: f32, y0: f32) -> (out: geo<mesh>) {
     cross_a = parts.slab(size = vec3(0.52, 0.035, 0.035), pos = vec3(0, y0 + 1.10, 0), grp = "iron")
     cross_b = parts.slab(size = vec3(0.36, 0.035, 0.035), pos = vec3(0, y0 + 1.34, 0), grp = "iron")
     ball = mark(transform(ico_sphere(subdiv = 1, radius = 0.07), translate = vec3(0, y0 + 0.72, 0)), "iron", where = true, domain = faces)
-    out = merge(plat, rail_f, rail_b, rail_r, rail_l, sp1, sp2, sp3, sp4, vane, cross_a, cross_b, ball)
+    out = merge(plat, rails, sp1, sp2, sp3, sp4, vane, cross_a, cross_b, ball)
 }
 
 def tower_all(tcx: f32, tcz: f32, s: f32, base_y: f32, cube_h: f32, spire_h: f32, detail: int, rng: rng) -> (out: geo<mesh>) {
@@ -73,7 +80,7 @@ def tower_all(tcx: f32, tcz: f32, s: f32, base_y: f32, cube_h: f32, spire_h: f32
     frz_f = transform(frz0, translate = vec3(0, top_y - 0.42, hs + 0.03))
     frz_all = shapes.polar_array(g = frz_f, n = 4, step_deg = 90)
     frz = select(detail > 0, a = frz_all, b = empty_mesh())
-    eav = common.belt(w = s, d = s, y = top_y, h = 0.26, grp = "deco", over_lo = 0.10, over_hi = 0.20)
+    eav = ae.belt_edges(edges = lse.edges_of_polygon(plan = set_position(ap.plan_rect(w = s, d = s), offset = vec3(0, top_y, 0)), role = ak.R_FLOOR_TOP()), h = 0.26, grp = "deco", over_lo = 0.10, over_hi = 0.20, split = 0.55, bevel = false)
     cube_all = merge(cube, pils, frz, eav)
     # Юбка: тонкий тёмный карниз на стыке куба и шатра
     skirt = common.hip_band(w0 = s + 0.52, d0 = s + 0.52, w1 = s + 0.16, d1 = s + 0.16, y0 = top_y + 0.26, y1 = top_y + 0.52, grp = "iron")

@@ -1,6 +1,6 @@
 # Общий словарь особняка Шретера: четырёхскатные призмы, сегментные арки,
-# кирпичная облицовка, кованые ограждения. Плиты — parts.slab, стрельчатые
-# силуэты и консоли — lib.arch.terminals_victorian.
+# кирпичная облицовка. Плиты — parts.slab, стрельчатые силуэты и консоли —
+# lib.arch.terminals_victorian; пояса/ограждения — lib.arch (elements/terminals_basic).
 # Лицо деталей +Z, низ на y = 0, если не сказано иначе.
 
 import lib.parts
@@ -8,7 +8,6 @@ import lib.blockwork
 import lib.fixtures
 import lib.ironwork
 import lib.shapes as shapes
-import lib.plan as plan
 
 
 
@@ -39,14 +38,6 @@ def brick_rows(len: f32, h: f32) -> (out: geo<points>) {
 def brick_from_rows(rows: geo<points>, rng: rng) -> (out: geo<mesh>) {
     """Мелкие кирпичи по якорям brick_rows — обёртка blockwork.brick_veneer."""
     out = blockwork.brick_veneer(rows = rows, rng = rng, L = 0.17, bh = 0.104, t = 0.046, k = 0.14, grp = "brick")
-}
-
-def belt(w: f32, d: f32, y: f32, h: f32, grp: string, over_lo: f32 = 0.16, over_hi: f32 = 0.24) -> (out: geo<mesh>) {
-    """Двухступенчатый поясной карниз по периметру w×d, низ на y: нижняя ступень
-    уже и толще, верхняя шире и тоньше. Вынос каждой ступени от стены на сторону."""
-    lo = parts.slab(size = vec3(w + over_lo * 2.0, h * 0.55, d + over_lo * 2.0), pos = vec3(0, y + h * 0.275, 0), grp = grp)
-    hi = parts.slab(size = vec3(w + over_hi * 2.0, h * 0.45, d + over_hi * 2.0), pos = vec3(0, y + h * 0.775, 0), grp = grp)
-    out = merge(lo, hi)
 }
 
 def seg_arch(w: f32, rise: f32, band: f32, t: f32, grp: string) -> (out: geo<mesh>) {
@@ -83,29 +74,6 @@ def seg_disc(w: f32, rise: f32, t: f32, grp: string) -> (out: geo<mesh>) {
 
 
 
-
-def rail_run(len: f32, h: f32) -> (out: geo<mesh>) {
-    """Кованое ограждение длины len вдоль X: два пояска и частые пики."""
-    top_r = parts.slab(size = vec3(len, 0.045, 0.045), pos = vec3(0, h, 0), grp = "iron")
-    bot_r = parts.slab(size = vec3(len, 0.04, 0.04), pos = vec3(0, 0.10, 0), grp = "iron")
-    n_p = max(int(len / 0.30), 2)
-    pts = transform(mesh_line(count = n_p, length = f32(n_p - 1) * 0.30, dir = (1, 0, 0)), translate = vec3(0.0 - f32(n_p - 1) * 0.30 * 0.5, 0, 0))
-    picket = parts.slab(size = vec3(0.025, h - 0.10, 0.025), pos = vec3(0, (h + 0.10) * 0.5, 0), grp = "iron")
-    pickets = realize(instance_on_points(pts, source = picket))
-    out = merge(top_r, bot_r, pickets)
-}
-
-def rail_arc(r: f32, a0: f32, a1: f32, h: f32) -> (out: geo<mesh>) {
-    """Кованое ограждение по дуге (план, центр в 0): два кольцевых пояска и пики.
-    Углы — градусы от направления +Z в сторону +X (дуга балкона: −88..88)."""
-    top_r = plan.arc_shell(cx = 0.0, cz = 0.0, r_in = r - 0.022, r_out = r + 0.022, a0 = a0, a1 = a1, y0 = h - 0.022, y1 = h + 0.022, grp = "iron", n = 24)
-    bot_r = plan.arc_shell(cx = 0.0, cz = 0.0, r_in = r - 0.020, r_out = r + 0.020, a0 = a0, a1 = a1, y0 = 0.08, y1 = 0.12, grp = "iron", n = 24)
-    n_p = max(int((a1 - a0) / 14.0), 3)
-    pts = set_position(mesh_line(count = n_p, length = 0.0), pos = vec3(r * sin(radians(a0 + (a1 - a0) * f32(@index) / f32(n_p - 1))), 0.0, r * cos(radians(a0 + (a1 - a0) * f32(@index) / f32(n_p - 1)))))
-    picket = parts.slab(size = vec3(0.025, h - 0.10, 0.025), pos = vec3(0, (h + 0.10) * 0.5, 0), grp = "iron")
-    pickets = realize(instance_on_points(pts, source = picket))
-    out = merge(top_r, bot_r, pickets)
-}
 
 def arcade_row(len: f32, y: f32, pitch: f32, grp: string) -> (out: geo<mesh>) {
     """Аркатурный пояс вдоль X: ряд мелких полуциркульных арочек, низ на y."""
