@@ -107,57 +107,45 @@ roof_shell = sdf_subtract(roof_outer, roof_inner)
 roof_mesh = compute_normals(mesh_from_sdf(roof_shell, voxel = 0.05))
 deck = mark(roof_mesh, "roof", where = true, domain = faces)
 
-# Черепица. Одна плитка — SDF «плита + продольный горб» (лежит плашмя:
-# ширина по X, длина по Z, толщина по Y), меш строится один раз и
-# инстансится. Ряды идут по скату вразбежку (сдвиг на полшага у нечётных),
-# плитка наклонена на tile_tilt, чтобы нижний край лежал на ряду ниже, а не
-# в одной плоскости с ним. Скат собирается в локальной системе (ряд 0 у
-# карниза, вверх по скату = −Z, нормаль = +Y), затем один поворот вокруг X
-# на ±45° и перенос на карниз; левый скат — та же сборка, повёрнутая на 180°
-# вокруг Y (без отрицательного scale — он бы вывернул нормали).
+# Черепица и конёк — на конвейере lib/arch (A7): панели/рёбра/плоскости roof_rect,
+# якоря tile_anchors с той же сеткой 0.30 × 0.27, терминал-плитка — та же SDF
+# «плита + продольный горб» (лежит плашмя, наклонена на tile_tilt), конёк —
+# терминал на ребре R_RIDGE (бывшие ручные ряды slope_local и cap_pts).
+import lib.layout.scope as ls
+import lib.layout.edges as lse
+import lib.arch.kinds as k
+import lib.arch.roof as ar
+
 tile_w = 0.32
 tile_len = 0.42
 tile_th = 0.035
-col_pitch = 0.3
-row_pitch = 0.27
 tile_tilt = 0.0 - 8.0
 tile_plate = sdf_box(size = vec3(tile_w, tile_th, tile_len))
 tile_hump = sdf_box_at(size = vec3(tile_w * 0.36, tile_th * 2.4, tile_len), pos = vec3(0, tile_th * 0.8, 0))
 tile_sdf = sdf_union_smooth(tile_plate, tile_hump, k = 0.03)
 tile_mesh = mesh_from_sdf(tile_sdf, voxel = 0.022)
-# Нормали — до инстансинга (realize их поворачивает); группа faces у
-# источника через realize НЕ проходит, поэтому «tile» ставится на рядах ниже.
 tile = compute_normals(transform(tile_mesh, rotate = vec3(tile_tilt, 0, 0)))
 
-slope_len = (depth * 0.5 + overhang) * 1.4142136
-n_rows = int(slope_len / row_pitch) + 1
-n_cols = int((width + overhang * 2.0) / col_pitch) + 1
-row_len = f32(n_cols - 1) * col_pitch
-row0_pts0 = mesh_line(count = n_cols, length = row_len, dir = (1, 0, 0))
-row0_pts = transform(row0_pts0, translate = vec3(0.0 - row_len * 0.5, tile_th, 0.0))
-row0 = mark(realize(instance_on_points(row0_pts, source = tile)), "tile", where = true, domain = faces)
-slope_local = repeat (row0, iterations = n_rows - 1) |acc| {
-    k = f32(@iteration) + 1.0
-    odd = k - 2.0 * floor(k * 0.5)
-    row_pts0 = mesh_line(count = n_cols, length = row_len, dir = (1, 0, 0))
-    row_pts = transform(row_pts0, translate = vec3(0.0 - row_len * 0.5 + odd * col_pitch * 0.5, tile_th + k * 0.01, 0.0 - k * row_pitch))
-    row = mark(realize(instance_on_points(row_pts, source = tile)), "tile", where = true, domain = faces)
-    acc = merge(acc, row)
+def ridge_caps_e(len: f32) -> (out: geo<mesh>) {
+    """Колпаки конька длины len: бокс-ромб 0.3, от origin вдоль +Z (терминал на
+    ребре, place_edge), подъём на 0.20 над ребром (как старый ряд на ridge_y + 0.05).
+    Группа tile."""
+    cap = transform(piece(size = vec3(0.3, 0.3, 0.3), pos = (0, 0, 0), grp = "tile"), rotate = vec3(45, 0, 0))
+    n = max(int(len / 0.3), 1)
+    span = f32(n - 1) * 0.3
+    pts0 = mesh_line(count = n, length = span, dir = (0, 0, 1))
+    pts = transform(pts0, translate = vec3(0, 0.20, (len - span) * 0.5))
+    out = mark(realize(instance_on_points(pts, source = cap)), "tile", where = true, domain = faces)
 }
-# Правый скат (z > 0): поворот +45° вокруг X переводит локальные −Z в «вверх
-# по скату» (0, .707, −.707), а +Y — в нормаль ската (0, .707, .707).
-eave_z = depth * 0.5 + overhang
-slope_right = transform(transform(slope_local, rotate = vec3(45, 0, 0)), translate = vec3(0, eave_y + 0.02, eave_z - 0.02))
-slope_left = transform(transform(transform(slope_local, rotate = vec3(0, 180, 0)), rotate = vec3(0 - 45, 0, 0)), translate = vec3(0, eave_y + 0.02, 0.02 - eave_z))
-# Конёк: ряд колпаков (бокс ромбом) поверх стыка скатов.
-cap_src = piece(size = vec3(0.3, 0.3, 0.3), pos = (0, 0, 0), grp = "tile")
-cap = transform(cap_src, rotate = vec3(45, 0, 0))
-n_caps = int((width + overhang * 2.0) / 0.3)
-cap_len = f32(n_caps - 1) * 0.3
-cap_pts0 = mesh_line(count = n_caps, length = cap_len, dir = (1, 0, 0))
-cap_pts = transform(cap_pts0, translate = vec3(0.0 - cap_len * 0.5, ridge_y + 0.05, 0))
-ridge_caps = mark(realize(instance_on_points(cap_pts, source = cap)), "tile", where = true, domain = faces)
-roof = merge(merge(deck, merge(slope_right, slope_left)), ridge_caps)
+
+# Панели/якоря roof_rect: конёк вдоль X (как у дома), скаты на ±Z, 45° от eave_y.
+sl, ed, pl = ar.roof_rect(w = width + overhang * 2.0, d = depth + overhang * 2.0, kind = gable, pitch = 45.0, overhang = 0.0, y0 = eave_y)
+anc = ar.tile_anchors(slopes = sl, planes = pl, row_pitch = 0.27, col_pitch = 0.30, lift = 0.02, margin = 0.04, top = 0.03, eave_over = 0.02)
+tiles = mark(ls.stamp(scopes = anc, source = tile), "tile", where = true, domain = faces)
+caps = foreach e in lse.pick_role(edges = ed, role = k.R_RIDGE()) {
+    e = lse.place_edge(g = ridge_caps_e(len = lse.edge_len(e)), e = e)
+}
+roof = merge(merge(deck, tiles), caps)
 # Фронтоны: призма под кровлей шириной в стены (стеновой материал).
 gable_sdf = gable_prism(ridge_y = ridge_y, drop = roof_t + 0.01, w = width, d = depth, floor_y = wall_top - 0.05)
 gable_mesh = compute_normals(mesh_from_sdf(gable_sdf, voxel = 0.05))
