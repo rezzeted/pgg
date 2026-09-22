@@ -73,6 +73,9 @@ tube = sweep(mesh_line(count = 2, length = h, dir = (0, 1, 0)), profile = ring)
 - Закрывающая `}` зоны — **на своей строке**: stmt внутри зоны требует NEWLINE, `{ s = f() }` в одну строку — E100 «unclosed block».
 - Пустая модель со схемой: `set(empty_points(), "size", 0.0, domain = points)` × все колонки — иначе первый читающий агрегат (`sum_of(@size, on = pat)`) падает E302 (идиома `pattern_empty` из `lib/layout/split`).
 - enum-параметры (v1.28): `param roof_kind: enum {hip, gable} = hip`, сравнение `kind == hip` работает в теле def и на top-level; launch-привязка строкой (`--param roof_kind=gable`, `pgg_params`); чужое значение — E206, определённый binding литералом не перечитывается.
+- `@index` после `merge` перенумерован **глобально** (0..n−1) — дедуп одинаковых точек: `foreach p in all { earlier = delete(all, where = @index >= @piece_index); dup = delete(earlier, where = length(@P - value(@P, on = p)) > eps); p = select(count(dup) > 0, a = empty_points(), b = p) }` (идиома `edge_ends` в `lib/layout/edges`).
+- У ребра `@pitch` — уклон ската-владельца, **не** наклон ребра (у горизонтальных рёбер мансарды pitch ≠ 0); наклон самого ребра — `@tilt` (`place_edge` учитывает). Выступ терминала на ребре — в локальный +X: чтобы он оказался снаружи (`@out`), ход ребра p0→p1 — **против** локального +X фасада (идиома `band_edges`).
+- Агрегат по возможно-пустому набору: подмешать фиктивный элемент-подпорку (`max_of(@y1, on = merge(ridges, pad))` — без коньков вернётся значение подпорки; идиома `chimney_rule` в `lib/arch/elements`).
 
 ## MCP (одна строка)
 

@@ -7,6 +7,7 @@
 
 import lib.parts
 import lib.ironwork
+import lib.plan
 
 def win_flat(w: f32, h: f32) -> (out: geo<mesh>) {
     """Плоское прямоугольное окно: утопленное стекло, рама и подоконник trim,
@@ -55,9 +56,83 @@ def tile_plain(w: f32 = 0.30, l: f32 = 0.42, t: f32 = 0.03) -> (out: geo<mesh>) 
 
 def ridge_cap(len: f32, r: f32 = 0.09) -> (out: geo<mesh>) {
     """Коньковый брус длины len: полукруглый валик радиуса r от origin вдоль +Z
-    (терминал на ребре, place_edge). Группа roof."""
+    (терминал на ребре, place_edge; конёк R_RIDGE, вальма R_HIP — тот же профиль).
+    Группа roof."""
     expect len > 0.0: "ridge_cap: длина положительная, edge_len(e)"
     cyl = ironwork.spool(p0 = vec3(0, 0, 0), p1 = vec3(0, 0, len), r0 = r, r1 = r, sides = 12)
     half = clip(cyl, origin = vec3(0, 0, 0), normal = vec3(0, 1, 0))
     out = parts.to_group(g = half, src = "iron", dst = "roof")
+}
+
+def gutter_run(len: f32, r: f32 = 0.06, t: f32 = 0.015) -> (out: geo<mesh>) {
+    """Желоб полукруглого сечения длины len: от origin вдоль +Z (терминал на R_EAVE,
+    place_edge), чаша открыта вверх и свисает ниже оси ребра на r (верхние края —
+    на линии свеса). Группа iron."""
+    expect len > 0.0 & r > t: "gutter_run: длина положительная, радиус больше стенки"
+    g0 = plan.arc_shell(cx = 0.0, cz = 0.0, r_in = r - t, r_out = r, a0 = 0.0 - 90.0, a1 = 90.0, y0 = 0.0, y1 = len, grp = "iron", n = 12)
+    out = transform(g0, rotate = vec3(90.0, 0.0, 0.0))
+}
+
+def downspout(h: f32, r: f32 = 0.05, elbow: f32 = 0.14) -> (out: geo<mesh>) {
+    """Водосточная труба: вертикальный ствол от origin (низ у земли) вверх на h − elbow,
+    наклонный отвод к желобу (+Z, наружу от стены). Ставится transform'ом на углы плана
+    (R_PLAN_CORNER) встык к gutter_run. Группа iron."""
+    expect h > 0.2: "downspout: высота от 0.2 м"
+    shaft = ironwork.spool(p0 = vec3(0, 0, 0), p1 = vec3(0, h - elbow, 0), r0 = r, r1 = r, sides = 10)
+    head = ironwork.spool(p0 = vec3(0, h - elbow, 0), p1 = vec3(0, h, elbow), r0 = r, r1 = r * 0.9, sides = 10)
+    out = merge(shaft, head)
+}
+
+def fascia_run(len: f32, h: f32 = 0.20, t: f32 = 0.04) -> (out: geo<mesh>) {
+    """Ветровая (лобовая) доска длины len: брус t×h от origin вдоль +Z, низ доски на оси
+    ребра, плоскость вертикальна (местный YZ; тело доски в −X, снаружи остаётся лицо).
+    Терминал на R_RAKE/R_EAVE — place_edge сам наклоняет на @tilt ребра. Группа wood."""
+    expect len > 0.0: "fascia_run: длина положительная, edge_len(e)"
+    out = parts.slab(size = vec3(t, h, len), pos = vec3(0.0 - t * 0.5, h * 0.5, len * 0.5), grp = "wood")
+}
+
+def trim_run(len: f32, w: f32 = 0.10, t: f32 = 0.05) -> (out: geo<mesh>) {
+    """Планка наличника/тяги длины len: брус w×t от origin вдоль +Z, низ-центр сечения
+    в origin (терминал на ребре, place_edge; рёбра проёма — edges_of_polygon от рамки
+    слота). Группа trim."""
+    expect len > 0.0: "trim_run: длина положительная, edge_len(e)"
+    out = parts.slab(size = vec3(w, t, len), pos = vec3(0, t * 0.5, len * 0.5), grp = "trim")
+}
+
+def chimney_stack(w: f32, d: f32, h: f32) -> (out: geo<mesh>) {
+    """Простая труба: ствол, напускной пояс и крышка с тёмным устьем; низ-центр в
+    origin, верх крышки на h выше. Высоту верха над крышей даёт правило chimney_rule
+    (lib/arch/elements): h = chimney_rule(edges, h_min) − y_основания. Группа brick,
+    устье iron."""
+    expect w > 0.3 & d > 0.3 & h > 0.4: "chimney_stack: сечение от 0.3 м, высота от 0.4 м"
+    shaft = parts.slab(size = vec3(w, h, d), pos = vec3(0, h * 0.5, 0), grp = "brick")
+    band = parts.slab(size = vec3(w + 0.16, 0.14, d + 0.16), pos = vec3(0, h - 0.30, 0), grp = "brick")
+    cap = parts.slab(size = vec3(w + 0.28, 0.10, d + 0.28), pos = vec3(0, h - 0.05, 0), grp = "brick")
+    flue = parts.slab(size = vec3(w - 0.30, 0.10, d - 0.30), pos = vec3(0, h + 0.01, 0), grp = "iron")
+    out = merge(shaft, band, cap, flue)
+}
+
+def dormer_gable(w: f32, h: f32, dep: f32) -> (out: geo<mesh>) {
+    """Слуховое окно с двускатным козырьком 45°: коробка до низа скатов (roof), козырёк
+    шире коробки (призма двумя клипами от сляба, tile; конёк на h + 0.06), окошко
+    trim+glass на лице +Z. Низ-центр в origin — рамка слота dormer_scope (низ уже
+    утоплен в скат; задняя стенка уходит под покрытие, щёк по скатам нет)."""
+    expect w > 0.4 & dep > 0.3: "dormer_gable: ширина от 0.4 м, глубина от 0.3 м"
+    expect h > w * 0.5 + 0.3: "dormer_gable: высота — стеновая часть плюс козырёк 45° (h > w/2 + 0.3)"
+    y_c = h - w * 0.5
+    box = parts.slab(size = vec3(w, y_c, dep), pos = vec3(0, y_c * 0.5, 0), grp = "roof")
+    cap0 = parts.slab(size = vec3(w + 0.12, w * 0.5 + 0.06, dep + 0.14), pos = vec3(0, y_c + w * 0.25 + 0.03, 0), grp = "tile")
+    cap1 = clip(cap0, origin = vec3(w * 0.5 + 0.06, y_c, 0), normal = vec3(0.0 - 0.70710678, 0.0 - 0.70710678, 0))
+    cap = clip(cap1, origin = vec3(0.0 - w * 0.5 - 0.06, y_c, 0), normal = vec3(0.70710678, 0.0 - 0.70710678, 0))
+    frame = parts.slab(size = vec3(w * 0.55 + 0.12, y_c * 0.7 + 0.12, 0.08), pos = vec3(0, y_c * 0.45, dep * 0.5 + 0.02), grp = "trim")
+    glass = parts.slab(size = vec3(w * 0.55, y_c * 0.7, 0.05), pos = vec3(0, y_c * 0.45, dep * 0.5 + 0.05), grp = "glass")
+    out = merge(box, cap, frame, glass)
+}
+
+def finial_ball(r: f32 = 0.09) -> (out: geo<mesh>) {
+    """Навершие-шар на ножке: низ-центр в origin (якорь edge_ends на конце конька /
+    вершине скелета). Группа iron."""
+    stem = ironwork.spool(p0 = vec3(0, 0, 0), p1 = vec3(0, r * 1.6, 0), r0 = r * 0.35, r1 = r * 0.18, sides = 8)
+    ball = transform(ico_sphere(subdiv = 1, radius = r), translate = vec3(0, r * 2.4, 0))
+    out = mark(merge(stem, ball), "iron", where = true, domain = faces)
 }

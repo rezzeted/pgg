@@ -1,14 +1,24 @@
 # lib/layout/edges.pgg — модель границ (docs/pgg/architecture_library_plan.md §5.2).
 # Все границы здания — одна модель: geo<points>, точка на ребро: @P и @p0 — начало,
-# @p1 — конец, @len, @yaw (0 = +Z, направление p0→p1), @out (наружная нормаль), @role
-# (int-код из словаря домена: конёк, вальма, ендова, карниз, верх этажа, угол плана…),
-# @pitch (уклон ската, если ребро ему принадлежит). Контракт терминала на ребре:
-# строится от origin вдоль локального +Z на длину edge_len(e), ставится place_edge.
+# @p1 — конец, @len, @yaw (0 = +Z, горизонтальное направление p0→p1), @tilt (наклон
+# ребра вверх от p0 к p1, градусы), @y0/@y1 (высоты концов), @out (наружная нормаль),
+# @role (int-код из словаря домена: конёк, вальма, ендова, карниз, верх этажа, угол
+# плана…), @pitch (уклон ската, которому ребро принадлежит — НЕ наклон самого ребра;
+# наклон ребра — @tilt). Контракт терминала на ребре: строится от origin вдоль
+# локального +Z на длину edge_len(e), ставится place_edge (наклон по @tilt уже
+# учитывается). Конвенция для несимметричных терминалов (карнизы, тяги): направление
+# p0→p1 выбирать так, чтобы локальный +X терминала после place_edge совпадал с @out
+# (ход ребра против +X фасада) — выступ терминала в +X окажется снаружи.
 
 def edge(p0: vec3, p1: vec3, role: int, out_n: vec3 = (0, 0, 1), pitch: f32 = 0.0) -> (out: geo<points>) {
-    """Одно ребро: концы p0/p1, роль role, наружная нормаль out_n, уклон pitch в градусах."""
+    """Одно ребро: концы p0/p1, роль role, наружная нормаль out_n, уклон ската-владельца
+    pitch в градусах. @tilt/@y0/@y1 вычисляются из геометрии (для вертикального ребра
+    @tilt = ±90, @yaw по горизонтальной проекции — 0)."""
     d = p1 - p0
-    yaw = degrees(atan2(dot(d, (1, 0, 0)), dot(d, (0, 0, 1))))
+    d_x = dot(d, (1, 0, 0))
+    d_y = dot(d, (0, 1, 0))
+    d_z = dot(d, (0, 0, 1))
+    yaw = degrees(atan2(d_x, d_z))
     q0 = set_position(mesh_line(count = 1, length = 0.0), pos = p0)
     q1 = set(q0, "p0", p0, domain = points, typeinfo = point)
     q2 = set(q1, "p1", p1, domain = points, typeinfo = point)
@@ -17,7 +27,10 @@ def edge(p0: vec3, p1: vec3, role: int, out_n: vec3 = (0, 0, 1), pitch: f32 = 0.
     q5 = set(q4, "orient", orient_from_euler(vec3(0.0, yaw, 0.0)), domain = points)
     q6 = set(q5, "out", out_n, domain = points, typeinfo = vector)
     q7 = set(q6, "role", role, domain = points)
-    out = set(q7, "pitch", pitch, domain = points)
+    q8 = set(q7, "pitch", pitch, domain = points)
+    q9 = set(q8, "y0", dot(p0, (0, 1, 0)), domain = points)
+    q10 = set(q9, "y1", dot(p1, (0, 1, 0)), domain = points)
+    out = set(q10, "tilt", degrees(atan2(d_y, sqrt(d_x * d_x + d_z * d_z))), domain = points)
 }
 
 def edges_of_polygon(plan: geo<points>, role: int) -> (out: geo<points>) {
@@ -36,12 +49,39 @@ def pick_role(edges: geo<points>, role: int) -> (out: geo<points>) {
 }
 
 def place_edge(g: geo<mesh>, e: geo<points>) -> (out: geo<mesh>) {
-    """Поставить терминал вдоль ребра (e — ровно одна точка, иначе E601):
-    поворот вокруг +Y на @yaw (локальный +Z → направление ребра), перенос в @p0."""
-    out = transform(g, rotate = vec3(0.0, value(@yaw, on = e), 0.0), translate = value(@p0, on = e))
+    """Поставить терминал вдоль ребра (e — ровно одна точка, иначе E601): наклон на @tilt
+    вокруг локальной X (ребро p0→p1 идёт вверх — терминал следом), поворот вокруг +Y на
+    @yaw (локальный +Z → горизонтальное направление ребра), перенос в @p0."""
+    t = transform(g, rotate = vec3(0.0 - value(@tilt, on = e), 0.0, 0.0))
+    out = transform(t, rotate = vec3(0.0, value(@yaw, on = e), 0.0), translate = value(@p0, on = e))
 }
 
 def edge_len(e: geo<points>) -> (out: f32) {
     """Длина ребра."""
     out = value(@len, on = e)
+}
+
+def end_anchor(at: vec3) -> (out: geo<points>) {
+    """Одна точка-якорь с вертикальным @orient — конец ребра под навершие/колпак."""
+    q0 = set_position(mesh_line(count = 1, length = 0.0), pos = at)
+    out = set(q0, "orient", orient_from_euler(vec3(0.0, 0.0, 0.0)), domain = points)
+}
+
+def edge_ends(edges: geo<points>) -> (out: geo<points>) {
+    """Якоря на обоих концах каждого ребра набора (навершия/шары в вершинах скелета):
+    точка с @P = p0/p1 и вертикальным @orient. Совпадающие концы (вершина pyramid,
+    стык рёбер в одной точке) схлопываются в один якорь (допуск 1 мм). Ставить
+    одинаковым терминалом — stamp, разными — foreach + place."""
+    p0s = foreach e in edges {
+        e = end_anchor(at = value(@p0, on = e))
+    }
+    p1s = foreach e in edges {
+        e = end_anchor(at = value(@p1, on = e))
+    }
+    all = merge(p0s, p1s)
+    out = foreach p in all {
+        earlier = delete(all, where = @index >= @piece_index)
+        dup = delete(earlier, where = length(@P - value(@P, on = p)) > 0.001)
+        p = select(count(dup) > 0, a = empty_points(), b = p)
+    }
 }

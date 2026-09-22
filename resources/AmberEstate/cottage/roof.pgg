@@ -68,11 +68,12 @@ def barge_main(eave_z: f32, rl: f32, eave_y: f32, ridge_y: f32, slope_len: f32) 
     out = merge(barg_rf, barg_rb, barg_lf, barg_lb, fin_f, fin_b)
 }
 
-def gable(width: f32, depth: f32, stone_h: f32, upper_h: f32, jetty: f32, overhang: f32, rng: rng) -> (out: geo<mesh>) {
+def gable(width: f32, depth: f32, stone_h: f32, upper_h: f32, jetty: f32, overhang: f32, rng: rng) -> (out: geo<mesh>, edges: geo<points>) {
     """Двускатная крыша 45° над вторым этажом (uw = width + 2·jetty, ud = depth + 2·jetty):
     карниз на eave_y = stone_h + upper_h − 0.1, свес overhang по всем сторонам. Панели
     и якоря — arch/roof; колпаки конька — из ребра R_RIDGE; фронтоны-заполнение —
-    стеновой материал; ветровые доски — barge_main."""
+    стеновой материал; ветровые доски — barge_main. edges — модель рёбер крыши
+    (локальная система: конёк вдоль X; высоты @y1 — мировые, для chimney_rule)."""
     uw = width + 2.0 * jetty
     ud = depth + 2.0 * jetty
     wall_top = stone_h + upper_h
@@ -97,13 +98,15 @@ def gable(width: f32, depth: f32, stone_h: f32, upper_h: f32, jetty: f32, overha
     eave_z = sd * 0.5 + overhang
     barge = barge_main(eave_z = eave_z, rl = rl, eave_y = eave_y, ridge_y = ridge_y, slope_len = eave_z * 1.4142136)
     out = merge(roof_world, barge)
+    edges = ed
 }
 
-def multi_gable(width: f32, depth: f32, stone_h: f32, upper_h: f32, jetty: f32, overhang: f32, rng: rng) -> (out: geo<mesh>) {
+def multi_gable(width: f32, depth: f32, stone_h: f32, upper_h: f32, jetty: f32, overhang: f32, rng: rng) -> (out: geo<mesh>, edges: geo<points>) {
     """Многощипцовая (крестовая) крыша 45° для мансарды: roof_cross — главное крыло
     (конёк вдоль Z, пролёт uw) и поперечный щипец (конёк вдоль X, пролёт ud, ниже на
     (uw − ud)/2); ендовы — из модели рёбер, колпаки — на видимых пролётах коньков.
-    Торцы щипца — треугольные стены (wall) с окнами мансарды."""
+    Торцы щипца — треугольные стены (wall) с окнами мансарды. edges — модель рёбер
+    крыши (мировая система), для правил размещения (chimney_rule)."""
     uw = width + 2.0 * jetty
     ud = depth + 2.0 * jetty
     wall_top = stone_h + upper_h
@@ -153,4 +156,5 @@ def multi_gable(width: f32, depth: f32, stone_h: f32, upper_h: f32, jetty: f32, 
     barge_w = merge(wbr_f, wbr_b, wbl_f, wbl_b, fin_wf, fin_wb)
     barge = barge_main(eave_z = eave_z, rl = rl, eave_y = eave_y, ridge_y = ridge_y, slope_len = slope_len)
     out = merge(sl, under, tiles, ridges, valleys, fills, win_r, win_l, barge_w, barge)
+    edges = ed
 }

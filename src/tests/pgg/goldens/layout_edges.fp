@@ -1,4 +1,4 @@
 # pgg golden, updated by PggTool run --update-goldens
-fingerprint edges: 4b8400ada7601cb2
-fingerprint diags: 103d022550c45318
-fingerprint placed: fe0cd73e4992e3d4
+fingerprint edges: 3067bac72fa7d3c9
+fingerprint diags: b103304b60ad68e5
+fingerprint placed: 946c6a4e1de8ca5f

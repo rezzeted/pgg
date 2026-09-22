@@ -5,15 +5,17 @@
 import lib.parts
 import lib.blockwork
 
-def chimney(x: f32, z: f32, ridge_y: f32, rng: rng) -> (out: geo<mesh>) {
-    """Труба сечением 0.84 с центром (x, z), на правом скате (x > 0): низ утоплен в скат
-    (ridge_y − x − 0.9), верх на ridge_y + 1.25. Ряд грани — два блока с перевязкой
-    по чётности ряда, три длины через @variant, подрезка по рёбрам трубы `clip`
-    (на углах целый/половинка). Дым растёт вверх-вбок змейкой с боковыми клубами."""
+def chimney(x: f32, z: f32, top: f32, rng: rng) -> (out: geo<mesh>) {
+    """Труба сечением 0.84 с центром (x, z), на правом скате (x > 0): верх устья top
+    (правило конька chimney_rule в файле сцены; top − 1.25 восстанавливает отметку
+    конька ridge_y), низ утоплен в скат (top − 1.25 − x − 0.9: линия ската 45° ниже
+    конька на x, плюс запас 0.9). Ряд грани — два блока с перевязкой по чётности ряда,
+    три длины через @variant, подрезка по рёбрам трубы `clip` (на углах целый/
+    половинка). Дым растёт вверх-вбок змейкой с боковыми клубами."""
     chim_w = 0.84
     chim_course = 0.24
-    chim_base = ridge_y - x - 0.9
-    chim_top = ridge_y + 1.25
+    chim_base = top - 1.25 - x - 0.9
+    chim_top = top
     chim_n = int((chim_top - chim_base) / chim_course)
     chim_core = parts.piece(size = vec3(chim_w - 0.12, chim_top - chim_base, chim_w - 0.12), pos = vec3(x, (chim_base + chim_top) * 0.5, z), grp = "stone")
     chim_rows = blockwork.bond_anchors(len = chim_w, cols = 2, n_rows = chim_n, course_h = chim_course, y0 = chim_base, z = chim_w * 0.5 - 0.03)
