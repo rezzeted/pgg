@@ -43,7 +43,6 @@ facade_z = depth * 0.5
 tower_z = facade_z
 deck_hw = width * 0.5 - 0.8
 deck_hd = depth * 0.5 - 0.8
-f1_y = plinth_top + 0.35
 f2_y = b1_top + 0.35
 quoin_in = 0.74
 tower_half = shapes.ngon_circumradius(tower_w * 0.5, 6) + 0.065
@@ -62,7 +61,7 @@ upper = upper_floor.upper_floor(width = width, depth = depth, b1_top = b1_top, f
 bay_unit = bay.bay_window(facade_z = facade_z, f1_top = f1_top, b1_top = b1_top, f2_top = f2_top, f2_y = f2_y, crown_h = crown_h, rng = split_rng(root_rng, key = "bay"), tower_w = tower_w, tower_z = tower_z)
 porch_unit = porch.entrance_porch(door_x = door_x, facade_z = facade_z, plinth_h = plinth_h, rng = split_rng(root_rng, key = "porch"))
 door_unit = door.entrance_door(door_x = door_x, facade_z = facade_z, plinth_h = plinth_h, rng = split_rng(root_rng, key = "door"))
-windows_all = windows.wall_windows(width = width, depth = depth, facade_z = facade_z, f1_y = f1_y, f2_y = f2_y, wing_x = wing_x, n_wing = n_wing, win_step = win_step)
+windows_all = windows.wall_windows(width = width, depth = depth, plinth_h = plinth_h, floor1_h = floor1_h, belt_h = belt_h, floor2_h = floor2_h, wing_x = wing_x, n_wing = n_wing, win_step = win_step)
 roof_all = roof.mansard_roof(width = width, depth = depth, crown_top = crown_top, roof_h = roof_h, deck_hw = deck_hw, deck_hd = deck_hd, rng = split_rng(root_rng, key = "roof"))
 tower_all = tower.clock_tower(tower_w = tower_w, tower_h = floor2_h, spire_h = spire_h, tower_base = tower_base, spire_base = spire_base, tower_z = tower_z, crown_h = crown_h, rng = split_rng(root_rng, key = "tower"))
 

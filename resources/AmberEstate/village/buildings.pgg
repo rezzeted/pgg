@@ -54,7 +54,6 @@ def town_hall(rng: rng, w: f32 = 7.8, d: f32 = 5.2, plinth_h: f32 = 0.90, floor1
     tower_z = facade_z
     deck_hw = w * 0.5 - 0.8
     deck_hd = d * 0.5 - 0.8
-    f1_y = plinth_top + 0.35
     f2_y = b1_top + 0.35
     quoin_in = 0.74
     tower_half = shapes.ngon_circumradius(tower_w * 0.5, 6) + 0.065
@@ -65,7 +64,7 @@ def town_hall(rng: rng, w: f32 = 7.8, d: f32 = 5.2, plinth_h: f32 = 0.90, floor1
     bay_unit = hall_bay.bay_window(facade_z = facade_z, f1_top = f1_top, b1_top = b1_top, f2_top = f2_top, f2_y = f2_y, crown_h = crown_h, rng = split_rng(rng, key = "bay"), tower_w = tower_w, tower_z = tower_z)
     porch_unit = hall_porch.entrance_porch(door_x = door_x, facade_z = facade_z, plinth_h = plinth_h, rng = split_rng(rng, key = "porch"))
     door_unit = hall_door.entrance_door(door_x = door_x, facade_z = facade_z, plinth_h = plinth_h, rng = split_rng(rng, key = "door"))
-    windows_all = hall_windows.wall_windows(width = w, depth = d, facade_z = facade_z, f1_y = f1_y, f2_y = f2_y, wing_x = wing_x)
+    windows_all = hall_windows.wall_windows(width = w, depth = d, plinth_h = plinth_h, floor1_h = floor1_h, belt_h = belt_h, floor2_h = floor2_h, wing_x = wing_x)
     roof_all = hall_roof.mansard_roof(width = w, depth = d, crown_top = crown_top, roof_h = roof_h, deck_hw = deck_hw, deck_hd = deck_hd, rng = split_rng(rng, key = "roof"))
     tower_all = hall_tower.clock_tower(tower_w = tower_w, tower_h = floor2_h, spire_h = spire_h, tower_base = tower_base, spire_base = spire_base, tower_z = tower_z, crown_h = crown_h, rng = split_rng(rng, key = "tower"))
     out = hall_asm.assemble(ground = ground, upper = upper, bay_unit = bay_unit, porch_unit = porch_unit, door_unit = door_unit, windows_all = windows_all, roof_all = roof_all, tower_all = tower_all, root_rng = rng)
