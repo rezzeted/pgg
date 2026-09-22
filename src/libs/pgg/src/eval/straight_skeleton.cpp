@@ -507,6 +507,34 @@ struct Builder {
 
 }  // namespace
 
+std::vector<glm::vec2> offsetOutline(const std::vector<glm::vec2>& outline, float d) {
+    const size_t n = outline.size();
+    std::vector<glm::vec2> nIn(n);
+    for (size_t i = 0; i < n; ++i) {
+        const glm::vec2 e = outline[(i + 1) % n] - outline[i];
+        const float len = glm::length(e);
+        nIn[i] = len > 0.0f ? glm::vec2(e.y / len, -e.x / len) : glm::vec2(0.0f);
+    }
+    std::vector<glm::vec2> off(n);
+    for (size_t i = 0; i < n; ++i) {
+        const glm::vec2 nA = nIn[(i + n - 1) % n];
+        const glm::vec2 nB = nIn[i];
+        const glm::vec2 dA(-nA.y, nA.x);  // direction of edge (i-1)
+        const glm::vec2 pA = outline[(i + n - 1) % n] - nA * d;
+        const glm::vec2 pB = outline[i] - nB * d;
+        // vertex i: the point of line A (pA + s*dA) lying on the offset line
+        // of edge i: dot(pA + s*dA - pB, nB) = 0.
+        const float denom = glm::dot(dA, nB);
+        if (std::abs(denom) > 1e-9f) {
+            const float s = glm::dot(pB - pA, nB) / denom;
+            off[i] = pA + dA * s;
+        } else {
+            off[i] = pB;
+        }
+    }
+    return off;
+}
+
 StraightSkeleton buildStraightSkeleton(const SkeletonInput& in, float tMax) {
     StraightSkeleton out;
     if (in.outline.size() < 3 || in.outline.size() != in.speed.size()) return out;

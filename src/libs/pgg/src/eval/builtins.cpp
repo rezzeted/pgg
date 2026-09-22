@@ -467,9 +467,11 @@ const std::vector<BuiltinSig>& registry() {
             // arbitrary outline -> (panels, edges, top).
             BuiltinSig s = sig(BuiltinId::RoofWavefront, "roof_wavefront",
                                {geoArg("outline", GeoKind::Points), valDef("pitch", ScalarType::F32, Value(45.0f)),
-                                valDef("rise_max", ScalarType::F32, Value(0.0f)), valDef("y0", ScalarType::F32, Value(0.0f))},
+                                valDef("rise_max", ScalarType::F32, Value(0.0f)), valDef("y0", ScalarType::F32, Value(0.0f)),
+                                valDef("overhang", ScalarType::F32, Value(0.0f))},
                                Type{});
             s.results = {Type{ScalarType::Geo, false, GeoKind::Mesh},
+                         Type{ScalarType::Geo, false, GeoKind::Points},
                          Type{ScalarType::Geo, false, GeoKind::Points},
                          Type{ScalarType::Geo, false, GeoKind::Points}};
             r.push_back(s);

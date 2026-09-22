@@ -1,22 +1,31 @@
-# A4 (docs/pgg/architecture_library_plan.md §6.5, spec §8 L1): roof_wavefront —
+# A4 (docs/pgg/architecture_library_plan.md §6.5, spec §8.12): roof_wavefront —
 # прямой скелет произвольного контура. rect: скелет против аналитики roof_rect(hip)
 # (те же 14 вершин панелей и конёк 3.0 на y = 5.5); Т и крест — крыши, недоступные
-# аналитике A3; rect + rise_max — мансардный срез (top-контур 4 точки на y = 1.5).
-# Точные проверки — в roof_wavefront_test.cpp.
+# аналитике A3; rect + rise_max — мансардный срез (top-контур 4 точки на y = 1.5);
+# overhang — свес оффсет-контуром; planes — граничные плоскости панелей, вход
+# tile_anchors (якоря покрытия на скелетной крыше). Точные проверки — в
+# roof_wavefront_test.cpp.
+import lib.layout.scope as ls
 import lib.arch.plan as ap
 import lib.arch.roof as ar
+import lib.arch.terminals_basic as tb
 
 rect = ap.plan_rect(w = 8.0, d = 5.0)
-wf_p, wf_e, wf_t = roof_wavefront(outline = rect, pitch = 45.0, y0 = 3.0)
+wf_p, wf_e, wf_t, wf_pl = roof_wavefront(outline = rect, pitch = 45.0, y0 = 3.0)
 hip_s, hip_e, hip_p = ar.roof_rect(w = 8.0, d = 5.0, kind = hip, pitch = 45.0, overhang = 0.0, y0 = 3.0)
 
 tee = ap.plan_t(w = 9.0, d = 6.5, stem_w = 3.0, bar_d = 2.0)
-t_p, t_e, t_t = roof_wavefront(outline = tee, pitch = 45.0, y0 = 0.0)
+t_p, t_e, t_t, t_pl = roof_wavefront(outline = tee, pitch = 45.0, y0 = 0.0)
 
 cross = ap.plan_cross(w = 9.0, d = 7.0, arm_w = 3.0, arm_d = 3.0)
-c_p, c_e, c_t = roof_wavefront(outline = cross, pitch = 45.0, y0 = 0.0)
+c_p, c_e, c_t, c_pl = roof_wavefront(outline = cross, pitch = 45.0, y0 = 0.0)
 
-man_p, man_e, man_t = roof_wavefront(outline = rect, pitch = 45.0, rise_max = 1.5, y0 = 0.0)
+man_p, man_e, man_t, man_pl = roof_wavefront(outline = rect, pitch = 45.0, rise_max = 1.5, y0 = 0.0)
+
+# Свес оффсет-контуром и покрытие по якорям tile_anchors на скелетных панелях.
+oh_p, oh_e, oh_t, oh_pl = roof_wavefront(outline = rect, pitch = 45.0, overhang = 0.4, y0 = 0.0)
+anchors = ar.tile_anchors(slopes = oh_p, planes = oh_pl)
+tiles = ls.stamp(scopes = anchors, source = tb.tile_plain())
 
 output wf_p
 output wf_e
@@ -25,3 +34,6 @@ output t_p
 output c_p
 output man_p
 output man_t
+output oh_p
+output oh_pl
+output anchors

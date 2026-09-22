@@ -55,4 +55,8 @@ struct StraightSkeleton {
 // the live wavefront rings are sealed into cut nodes/arcs (mansard decks).
 StraightSkeleton buildStraightSkeleton(const SkeletonInput& in, float tMax = 0.0f);
 
+// Offsets every edge line outward by d and re-intersects neighbours (roof
+// overhang): the polygon structure (vertex count, winding) is preserved.
+std::vector<glm::vec2> offsetOutline(const std::vector<glm::vec2>& outline, float d);
+
 }  // namespace pgg

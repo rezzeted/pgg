@@ -6,3 +6,6 @@ fingerprint t_p: 794fc311c412a30f
 fingerprint c_p: 193169e6e69b3622
 fingerprint man_p: 876b5094cce4cd7b
 fingerprint man_t: d1c4dc1733399c62
+fingerprint oh_p: 5bcd40f1cefa47b4
+fingerprint oh_pl: ee5aabc78046fb93
+fingerprint anchors: 88342304cf55f371
