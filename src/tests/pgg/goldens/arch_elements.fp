@@ -6,6 +6,6 @@ fingerprint eaves: 220cc8a894cc451f
 fingerprint ridges: bdfa796ab6a9d635
 fingerprint ends: 83bf092df7a833f5
 fingerprint ds: 539b7491066dde3f
-fingerprint chim: 5445dfc89f188772
-fingerprint dorm: 02931c4b2c3df64b
-fingerprint house: 6a1d0d0e874cb3e3
+fingerprint chim: a96422330ff6cbc7
+fingerprint dorm: 43ca9bbe24b8c619
+fingerprint house: 2db970026ca9ff6c
