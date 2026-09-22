@@ -9,6 +9,31 @@
 import lib.layout.scope as ls
 import lib.layout.edges as lse
 import lib.arch.kinds as k
+import lib.parts
+
+def belt_edges(edges: geo<points>, h: f32, grp: string, over_lo: f32 = 0.22, over_hi: f32 = 0.30, split: f32 = 0.58, bevel: bool = true) -> (out: geo<mesh>) {
+    """Поясной карниз-периметр по набору рёбер горизонта (R_FLOOR_*): две ступенчатые
+    плиты по размаху рёбер + вынос over_lo/over_hi от стены на сторону; нижняя ступень
+    толще и уже (доля split высоты), верхняя шире и тоньше. bevel — плиты с фаской
+    (parts.piece, грани фаски в группе edge), иначе прямые parts.slab. Низ плиты —
+    на минимальном y рёбер. Периметр прямоугольный; для пояска по ломаному контуру —
+    ребровой терминал cornice_run (terminals_basic) по тем же рёбрам."""
+    expect h > 0.0: "belt_edges: высота положительная, в метрах"
+    expect count(edges) >= 4: "belt_edges: периметру нужно >= 4 рёбер (edges_of_polygon по плану)"
+    mn, mx = bbox(edges)
+    w = dot(mx - mn, (1, 0, 0))
+    d = dot(mx - mn, (0, 0, 1))
+    y0 = dot(mn, (0, 1, 0))
+    cx = (dot(mn, (1, 0, 0)) + dot(mx, (1, 0, 0))) * 0.5
+    cz = (dot(mn, (0, 0, 1)) + dot(mx, (0, 0, 1))) * 0.5
+    lo_sz = vec3(w + over_lo * 2.0, h * split, d + over_lo * 2.0)
+    lo_at = vec3(cx, y0 + h * split * 0.5, cz)
+    hi_sz = vec3(w + over_hi * 2.0, h * (1.0 - split), d + over_hi * 2.0)
+    hi_at = vec3(cx, y0 + h * (split + (1.0 - split) * 0.5), cz)
+    lo = select(bevel, a = parts.piece(size = lo_sz, pos = lo_at, grp = grp), b = parts.slab(size = lo_sz, pos = lo_at, grp = grp))
+    hi = select(bevel, a = parts.piece(size = hi_sz, pos = hi_at, grp = grp), b = parts.slab(size = hi_sz, pos = hi_at, grp = grp))
+    out = merge(lo, hi)
+}
 
 def chimney_rule(edges: geo<points>, h_min: f32, margin: f32 = 0.5) -> (out: f32) {
     """Правило конька: верх трубы — не ниже h_min и не ниже самого высокого конька
