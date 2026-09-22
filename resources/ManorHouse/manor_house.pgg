@@ -1,0 +1,138 @@
+# ManorHouse — арт-пример этапа A6 (docs/pgg/architecture_library_plan.md): дом
+# целиком на слое lib/layout + lib/arch. Т-план (стебель — парадная часть),
+# два этажа над цоколем, вальмовая крыша по прямому скелету (roof_wavefront —
+# аналитика Т-планов недоступна), черепица по якорям, карнизы по рёбрам полос,
+# желоба по карнизу, труба по правилу конька. Свои терминалы (окно с наличником,
+# дверь с порталом) живут в этом файле здания — библиотека не правится.
+# Материалы: brick (кладка), mortar, trim (наличники/тяги/карнизы), glass, wood
+# (дверь/портал), roof (настил), tile (черепица/коньки), iron (желоба), stone
+# (цоколь/ступени), wall (штукатурка парадного стебля).
+
+param seed: int = 11
+param roof_pitch: f32 = 42.0
+param detail: int = 1
+
+import lib.layout.scope as ls
+import lib.layout.split as lsp
+import lib.layout.edges as lse
+import lib.arch.kinds as k
+import lib.arch.plan as ap
+import lib.arch.facade as af
+import lib.arch.roof as ar
+import lib.arch.elements as ae
+import lib.arch.terminals_basic as tb
+import lib.parts
+
+rng = rng_from_seed(seed)
+
+# --- план, стиль, фасадное дерево ----------------------------------------------
+# Ритм фасада: ряд окон 1.1 с шагом ~2.25, ряд по центру каждого фасада
+# (pattern_row — «ряды окон на фасаде»; общая ось двух этажей бесплатно —
+# один паттерн на обе полосы). «Сменить ритм» — шаг pitch ниже.
+def fpat_for(L: f32) -> (out: geo<points>) {
+    """Фасадный паттерн manor: n окон 1.1 с шагом 2.25, ряд по центру фасада длины L."""
+    n = max(1, int(L / 2.25))
+    out = lsp.pattern_row(n = n, pitch = 2.25, size = 1.1, kind = k.K_WINDOW(), x0 = 0.0 - f32(n - 1) * 1.125, len = L)
+}
+
+plan = ap.plan_t(w = 9.0, d = 6.5, stem_w = 3.0, bar_d = 2.0)
+style = af.style_default()
+wall_h = 1.2 + 2.0 * 3.6 + 0.6
+faces = af.facades(plan = plan, y0 = 0.0, y1 = wall_h, t = 0.30)
+band_scopes = af.bands(faces = faces, pattern = af.band_pattern(plinth_h = value(@plinth_h, on = style), floor_h = value(@floor_h, on = style), floors = 2, crown_h = value(@crown_h, on = style)))
+fb = ls.pick(scopes = band_scopes, kind = k.K_FLOOR_BAND())
+slots0 = foreach b in fb {
+    b = af.tiles(bands_in = b, pattern = fpat_for(L = ls.frame_w(b)), slot_h = value(@win_h, on = style), slot_y = value(@sill_y, on = style))
+}
+# Парадная дверь — центральное окно первого этажа стебля (фасад ребра 3, z = +3.25).
+slots = ls.override_box(scopes = slots0, lo = vec3(0.0 - 0.7, 1.0, 3.0), hi = vec3(0.7, 2.4, 3.5), kind = k.K_DOOR())
+
+# --- свои терминалы здания (библиотека не правится) -----------------------------
+def win_manor(w: f32, h: f32) -> (out: geo<mesh>) {
+    """Окно усадьбы: утопленное стекло, рама с накладным наличником (полочки по
+    периметру), сандрик над верхом, подоконник с отливом. Низ на y = 0, лицо +Z."""
+    expect w > 0.4 & h > 0.6: "win_manor: окно от 0.4×0.6 м"
+    glass = parts.slab(size = vec3(w, h, 0.05), pos = vec3(0, h * 0.5, 0.02), grp = "glass")
+    jamb_l = parts.slab(size = vec3(0.10, h + 0.10, 0.09), pos = vec3(0.0 - w * 0.5 - 0.05, (h + 0.10) * 0.5, 0.04), grp = "trim")
+    jamb_r = parts.slab(size = vec3(0.10, h + 0.10, 0.09), pos = vec3(w * 0.5 + 0.05, (h + 0.10) * 0.5, 0.04), grp = "trim")
+    head = parts.slab(size = vec3(w + 0.20, 0.10, 0.09), pos = vec3(0, h + 0.05, 0.04), grp = "trim")
+    casing_t = parts.slab(size = vec3(w + 0.34, 0.08, 0.13), pos = vec3(0, h + 0.14, 0.05), grp = "trim")
+    casing_l = parts.slab(size = vec3(0.07, h + 0.06, 0.13), pos = vec3(0.0 - w * 0.5 - 0.135, (h + 0.06) * 0.5, 0.05), grp = "trim")
+    casing_r = parts.slab(size = vec3(0.07, h + 0.06, 0.13), pos = vec3(w * 0.5 + 0.135, (h + 0.06) * 0.5, 0.05), grp = "trim")
+    sill = parts.slab(size = vec3(w + 0.30, 0.09, 0.20), pos = vec3(0, 0.0 - 0.045, 0.07), grp = "trim")
+    drip = parts.slab(size = vec3(w + 0.26, 0.05, 0.10), pos = vec3(0, 0.0 - 0.115, 0.04), grp = "trim")
+    mull = parts.slab(size = vec3(0.04, h - 0.06, 0.03), pos = vec3(0, h * 0.5, 0.045), grp = "trim")
+    trans = parts.slab(size = vec3(w - 0.04, 0.04, 0.03), pos = vec3(0, h * 0.62, 0.045), grp = "trim")
+    out = merge(glass, jamb_l, jamb_r, head, casing_t, casing_l, casing_r, sill, drip, mull, trans)
+}
+
+def door_manor(w: f32, h: f32) -> (out: geo<mesh>) {
+    """Дверь с порталом: филёнчатая створка, пилястры по сторонам, прямой сандрик,
+    порог. Низ на y = 0, лицо +Z."""
+    expect w > 0.6 & h > 1.6: "door_manor: дверь от 0.6×1.6 м"
+    leaf = parts.slab(size = vec3(w, h, 0.07), pos = vec3(0, h * 0.5, 0.035), grp = "wood")
+    pan_t = parts.slab(size = vec3(w - 0.26, h * 0.34, 0.02), pos = vec3(0, h * 0.70, 0.075), grp = "trim")
+    pan_b = parts.slab(size = vec3(w - 0.26, h * 0.28, 0.02), pos = vec3(0, h * 0.25, 0.075), grp = "trim")
+    pil_l = parts.slab(size = vec3(0.18, h + 0.18, 0.16), pos = vec3(0.0 - w * 0.5 - 0.14, (h + 0.18) * 0.5, 0.06), grp = "trim")
+    pil_r = parts.slab(size = vec3(0.18, h + 0.18, 0.16), pos = vec3(w * 0.5 + 0.14, (h + 0.18) * 0.5, 0.06), grp = "trim")
+    ent = parts.slab(size = vec3(w + 0.60, 0.22, 0.20), pos = vec3(0, h + 0.29, 0.07), grp = "trim")
+    step1 = parts.slab(size = vec3(w + 0.70, 0.12, 0.55), pos = vec3(0, 0.0 - 0.06, 0.28), grp = "stone")
+    step2 = parts.slab(size = vec3(w + 1.10, 0.12, 0.85), pos = vec3(0, 0.0 - 0.18, 0.43), grp = "stone")
+    out = merge(leaf, pan_t, pan_b, pil_l, pil_r, ent, step1, step2)
+}
+
+# --- стены и терминалы -----------------------------------------------------------
+walls = af.walls(faces = faces, scopes = slots, rng = split_rng(rng, key = "walls"))
+wins = foreach s in ls.pick(scopes = slots, kind = k.K_WINDOW()) {
+    s = ls.place(g = win_manor(w = ls.frame_w(s), h = ls.frame_h(s)), s = s)
+}
+door_slot = ls.pick(scopes = slots, kind = k.K_DOOR())
+door = select(count(door_slot) > 0, a = ls.place(g = door_manor(w = 1.0, h = 2.3), s = door_slot), b = empty_mesh())
+
+# --- крыша по прямому скелету ----------------------------------------------------
+sl, ed, top, pl = roof_wavefront(outline = plan, pitch = roof_pitch, overhang = 0.45, y0 = wall_h)
+tiles = ls.stamp(scopes = ar.tile_anchors(slopes = sl, planes = pl), source = tb.tile_plain())
+ridges = foreach e in lse.pick_role(edges = ed, role = k.R_RIDGE()) {
+    e = lse.place_edge(g = tb.ridge_cap(len = lse.edge_len(e)), e = e)
+}
+hips = foreach e in lse.pick_role(edges = ed, role = k.R_HIP()) {
+    e = lse.place_edge(g = tb.ridge_cap(len = lse.edge_len(e)), e = e)
+}
+
+# --- элементы на рёбрах (A5) -----------------------------------------------------
+bed = af.band_edges(bands_in = band_scopes)
+cornice = foreach e in lse.pick_role(edges = bed, role = k.R_FLOOR_TOP()) {
+    e = lse.place_edge(g = tb.cornice_run(len = lse.edge_len(e)), e = e)
+}
+gut = foreach e in lse.pick_role(edges = ed, role = k.R_EAVE()) {
+    e = lse.place_edge(g = tb.gutter_run(len = lse.edge_len(e)), e = e)
+}
+gutters = select(detail > 0, a = gut, b = empty_mesh())
+chim_top = ae.chimney_rule(edges = ed, h_min = wall_h + 2.0)
+chim = transform(tb.chimney_stack(w = 0.7, d = 0.7, h = chim_top - wall_h), translate = vec3(2.8, wall_h, 0.0 - 1.6))
+
+# Слуховое окно на заднем скате балки (ребро 7) и навершия на концах коньков.
+ds = ae.dormer_scope(slopes = sl, planes = pl, island = 7, u = 0.0 - 1.6, t = 0.45, w = 0.9, h = 1.2, dep = 0.60)
+dorm = select(detail > 0, a = ls.place(g = tb.dormer_gable(w = 0.9, h = 1.2, dep = 0.60), s = ds), b = empty_mesh())
+fin_anchors = lse.edge_ends(edges = lse.pick_role(edges = ed, role = k.R_RIDGE()))
+fins = select(detail > 0, a = ls.stamp(scopes = fin_anchors, source = tb.finial_ball()), b = empty_mesh())
+
+house_raw = merge(walls, wins, door, sl, tiles, ridges, hips, cornice, gutters, chim, dorm, fins)
+
+# --- окраска: @Cd по группам-материалам + запечённая AO --------------------------
+c1 = ingroup("brick") ? vec3(0.42, 0.22, 0.14) * @tint : vec3(1.0, 0.0, 1.0)
+c2 = ingroup("mortar") ? vec3(0.16, 0.13, 0.11) * @tint : c1
+c3 = ingroup("trim") ? vec3(0.82, 0.78, 0.70) : c2
+c4 = ingroup("glass") ? vec3(0.15, 0.22, 0.30) : c3
+c5 = ingroup("wood") ? vec3(0.16, 0.09, 0.05) : c4
+c6 = ingroup("roof") ? vec3(0.05, 0.05, 0.06) : c5
+c7 = ingroup("tile") ? vec3(0.10, 0.11, 0.16) : c6
+c8 = ingroup("iron") ? vec3(0.03, 0.03, 0.035) : c7
+c9 = ingroup("stone") ? vec3(0.42, 0.40, 0.38) * @tint : c8
+edge_mul = ingroup("edge") ? vec3(1.35, 1.30, 1.20) : vec3(1.0)
+house_col = set(house_raw, "Cd", c9 * edge_mul, domain = faces)
+house = bake_ao(house_col, rays = 16, distance = 1.2, rng = split_rng(rng, key = "ao"), domain = points)
+
+output house
+output plan
+output top
