@@ -8,6 +8,7 @@
 
 import lib.layout.scope as ls
 import lib.layout.split as lsp
+import lib.layout.edges as lse
 import lib.layout.record as lrec
 import lib.arch.kinds as k
 import lib.blockwork
@@ -65,6 +66,42 @@ def bands(faces: geo<points>, pattern: geo<points>) -> (out: geo<points>) {
     b = lsp.split(scopes = faces, pattern = pattern, axis = 1, cycle = false)
     f = set(b, "floor", @col, domain = points)
     out = set(f, "col", 0, domain = points)
+}
+
+def band_edges(bands_in: geo<points>) -> (out: geo<points>) {
+    """Рёбра полос фасада (§6.4): на каждую полосу — верх (R_FLOOR_TOP, пояса/карнизы)
+    и низ (R_FLOOR_BOTTOM, отливы/тяги) по линии полосы; ребро наследует @floor/@facade.
+    Граница двух полос даёт два ребра разных ролей — терминал выбирает pick_role.
+    Направление p0→p1 — против локального +X фасада, так что локальный +X терминала
+    после place_edge совпадает с @out (конвенция lib/layout/edges): выступ карниза
+    оказывается снаружи. Терминалы ставит файл здания (foreach + place_edge)."""
+    out = foreach b in bands_in {
+        b = band_edge_pair(b = b)
+    }
+}
+
+def band_edge_pair(b: geo<points>) -> (out: geo<points>) {
+    """Пара рёбер одной полосы (внутренность band_edges)."""
+    c = ls.frame_at(b)
+    yaw = ls.frame_yaw(b)
+    len = ls.frame_w(b)
+    h = ls.frame_h(b)
+    yb = dot(c, (0, 1, 0))
+    ux = cos(radians(yaw))
+    uz = 0.0 - sin(radians(yaw))
+    pa = vec3(dot(c, (1, 0, 0)) + ux * len * 0.5, yb, dot(c, (0, 0, 1)) + uz * len * 0.5)
+    pb = vec3(dot(c, (1, 0, 0)) - ux * len * 0.5, yb, dot(c, (0, 0, 1)) - uz * len * 0.5)
+    up = vec3(0, h, 0)
+    out_n = vec3(sin(radians(yaw)), 0.0, cos(radians(yaw)))
+    floor_i = value(@floor, on = b)
+    facade_i = value(@facade, on = b)
+    t0 = lse.edge(p0 = pa + up, p1 = pb + up, role = k.R_FLOOR_TOP(), out_n = out_n)
+    t1 = set(t0, "floor", floor_i, domain = points)
+    top = set(t1, "facade", facade_i, domain = points)
+    b0 = lse.edge(p0 = pa, p1 = pb, role = k.R_FLOOR_BOTTOM(), out_n = out_n)
+    b1 = set(b0, "floor", floor_i, domain = points)
+    bot = set(b1, "facade", facade_i, domain = points)
+    out = merge(top, bot)
 }
 
 def tiles(bands_in: geo<points>, pattern: geo<points>, slot_h: f32 = 0.0, slot_y: f32 = 0.0) -> (out: geo<points>) {

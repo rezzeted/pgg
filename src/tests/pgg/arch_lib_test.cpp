@@ -208,6 +208,85 @@ TEST(ArchLib, TerminalsBasic) {
         EXPECT_TRUE(row->faceGroups->find(grp) != nullptr) << "group missing: " << grp;
 }
 
+// A5 (§6.6): elements on edges and slopes. band_edges gives one cornice terminal
+// serving every floor band of both L-plan masses through pick_role; the gutter
+// follows every R_EAVE of the L-roof; the chimney top clears the highest ridge by
+// the 0.5 m rule; dormer_scope anchors a slot on a slope panel; edge_ends dedups
+// finial anchors at shared skeleton vertices.
+TEST(ArchLib, ElementsEdgeRules) {
+    pgg::RunResult r = pgg::runFile(corpusPath("arch_elements.pgg"), archParams());
+    expectNoErrors(r);
+    pggtest::expectGolden("arch_elements", r);
+
+    // band_edges: 6 facades x 4 bands (plinth|floor|floor|crown) x 2 roles.
+    pgg::GeoPtr bed = geoOutput(r, "bed");
+    ASSERT_TRUE(bed != nullptr);
+    ASSERT_EQ(bed->pointCount(), 48u);
+    pgg::GeoPtr tops = geoOutput(r, "tops");
+    ASSERT_TRUE(tops != nullptr);
+    ASSERT_EQ(tops->pointCount(), 24u);
+    expectCol(intCol(*tops, "role"), {5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5});
+    expectCol(intCol(*tops, "floor"), {0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3});
+    expectCol(f32Col(*tops, "y1"), {1.2f, 4.8f, 8.4f, 9.0f, 1.2f, 4.8f, 8.4f, 9.0f, 1.2f, 4.8f, 8.4f, 9.0f,
+                                    1.2f, 4.8f, 8.4f, 9.0f, 1.2f, 4.8f, 8.4f, 9.0f, 1.2f, 4.8f, 8.4f, 9.0f});
+    expectCol(f32Col(*tops, "len"), {9.0f, 9.0f, 9.0f, 9.0f, 6.0f, 6.0f, 6.0f, 6.0f, 2.5f, 2.5f, 2.5f, 2.5f,
+                                     3.0f, 3.0f, 3.0f, 3.0f, 6.5f, 6.5f, 6.5f, 6.5f, 9.0f, 9.0f, 9.0f, 9.0f});
+    pgg::GeoPtr bots = geoOutput(r, "bots");
+    ASSERT_TRUE(bots != nullptr);
+    ASSERT_EQ(bots->pointCount(), 24u);
+    expectCol(intCol(*bots, "role"), {6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6});
+
+    // The gutter follows every eave of the L-roof (wing A front/back 9.8, wing B 3.3);
+    // eaves are horizontal (tilt 0), gutter troughs hang below the eave line (y <= 9).
+    pgg::GeoPtr eaves = geoOutput(r, "eaves");
+    ASSERT_TRUE(eaves != nullptr);
+    ASSERT_EQ(eaves->pointCount(), 4u);
+    expectCol(f32Col(*eaves, "len"), {9.8f, 9.8f, 3.3f, 3.3f});
+    expectCol(f32Col(*eaves, "tilt"), {0.0f, 0.0f, 0.0f, 0.0f});
+
+    // Chimney rule: ridge A at 12.65, ridge B at 12.4 — the stack top clears the
+    // highest ridge + 0.5 (13.15; +0.06 flue lip above the cap).
+    pgg::GeoPtr ridges = geoOutput(r, "ridges");
+    ASSERT_TRUE(ridges != nullptr);
+    ASSERT_EQ(ridges->pointCount(), 2u);
+    expectCol(f32Col(*ridges, "len"), {9.8f, 5.9f});
+    expectCol(f32Col(*ridges, "y1"), {12.65f, 12.4f});
+    pgg::GeoPtr chim = geoOutput(r, "chim");
+    ASSERT_TRUE(chim != nullptr);
+    float chim_top = 0.0f;
+    for (const glm::vec3& p : *chim->positions) chim_top = std::max(chim_top, p.y);
+    expectF32Near(chim_top, 13.21f, 1e-2f);
+    EXPECT_GE(chim_top, 12.65f + 0.5f - 1e-3f);
+
+    // dormer_scope: one K_DORMER slot on slope island 1, between eave and ridge.
+    pgg::GeoPtr ds = geoOutput(r, "ds");
+    ASSERT_TRUE(ds != nullptr);
+    ASSERT_EQ(ds->pointCount(), 1u);
+    expectCol(intCol(*ds, "kind"), {8});
+    expectCol(intCol(*ds, "facade"), {1});
+    const float ds_y = (*ds->positions)[0].y;
+    EXPECT_GT(ds_y, 9.0f);
+    EXPECT_LT(ds_y, 12.65f);
+    pgg::GeoPtr dorm = geoOutput(r, "dorm");
+    ASSERT_TRUE(dorm != nullptr);
+    EXPECT_GT(dorm->faceCount(), 0u);
+
+    // edge_ends: four unique anchors at the ridge ends (two ridges, no dup at the
+    // wing-B ridge abutment — it sits below ridge A, so no position match anyway).
+    pgg::GeoPtr ends = geoOutput(r, "ends");
+    ASSERT_TRUE(ends != nullptr);
+    ASSERT_EQ(ends->pointCount(), 4u);
+    EXPECT_TRUE(findPoint(*ends, 4.9f, 12.65f, -1.25f) != nullptr);
+    EXPECT_TRUE(findPoint(*ends, -1.5f, 12.4f, 4.9f) != nullptr);
+
+    // The assembled house covers every element group.
+    pgg::GeoPtr house = geoOutput(r, "house");
+    ASSERT_TRUE(house != nullptr);
+    ASSERT_TRUE(house->faceGroups != nullptr);
+    for (const char* grp : {"brick", "glass", "iron", "roof", "tile", "trim"})
+        EXPECT_TRUE(house->faceGroups->find(grp) != nullptr) << "group missing: " << grp;
+}
+
 TEST(ArchLib, RoofRectKinds) {
     pgg::RunResult r = pgg::runFile(corpusPath("arch_roof.pgg"), archParams());
     expectNoErrors(r);
@@ -239,19 +318,28 @@ TEST(ArchLib, RoofRectKinds) {
     EXPECT_EQ(man_s->faceCount(), 8u);
 
     // roof_l cross: wing A slopes clipped at x=1.8 (wing B eave), one valley edge
-    // of len 3.3*sqrt(3) from the overhang corner to wing B's ridge.
+    // of len 3.3*sqrt(3) from the overhang corner to wing B's ridge. The edge model
+    // carries both wings' eaves/rakes (wing B ridge replaced by the visible stub):
+    // wing A (ridge+2 eaves+2 rakes) + wing B without its full ridge (4) + stub + valley.
     pgg::GeoPtr lc_s = geoOutput(r, "lc_s");
     ASSERT_TRUE(lc_s != nullptr);
     EXPECT_EQ(lc_s->faceCount(), 12u);
+    pgg::GeoPtr lc_e = geoOutput(r, "lc_e");
+    ASSERT_TRUE(lc_e != nullptr);
+    ASSERT_EQ(lc_e->pointCount(), 11u);
     pgg::GeoPtr lc_valley = geoOutput(r, "lc_valley");
     ASSERT_TRUE(lc_valley != nullptr);
     ASSERT_EQ(lc_valley->pointCount(), 1u);
     expectCol(f32Col(*lc_valley, "len"), {3.3f * 1.7320508f});
 
-    // roof_cross: 4 valleys, slopes clipped to 8 visible panels.
+    // roof_cross: 4 valleys, slopes clipped to 8 visible panels; edges = both wings
+    // without their full ridges (4+4) + 3 visible ridge runs + 4 valleys.
     pgg::GeoPtr cr_s = geoOutput(r, "cr_s");
     ASSERT_TRUE(cr_s != nullptr);
     EXPECT_EQ(cr_s->faceCount(), 8u);
+    pgg::GeoPtr cr_e = geoOutput(r, "cr_e");
+    ASSERT_TRUE(cr_e != nullptr);
+    EXPECT_EQ(cr_e->pointCount(), 15u);
     pgg::GeoPtr valleys = geoOutput(r, "valleys");
     ASSERT_TRUE(valleys != nullptr);
     EXPECT_EQ(valleys->pointCount(), 4u);

@@ -1,6 +1,7 @@
 import cottage.roof as cot_roof
 import cottage.chimney as cot_chimney
 import cottage.assemble as cot_asm
+import lib.arch.elements as ae
 import spire_house.ground_floor as hall_ground
 import spire_house.upper_floor as hall_upper
 import spire_house.bay as hall_bay
@@ -24,8 +25,8 @@ def cottage_gable(w: f32, d: f32, stone_h: f32, upper_h: f32, jetty: f32, overha
     uw = w + 2.0 * jetty
     eave_y = stone_h + upper_h - 0.1
     ridge_y = eave_y + uw * 0.5 + overhang
-    roof_all = cot_roof.gable(width = w, depth = d, stone_h = stone_h, upper_h = upper_h, jetty = jetty, overhang = overhang, rng = split_rng(rng, key = "tiles"))
-    chimney_all = cot_chimney.chimney(x = 1.35, z = 0.0 - 0.9, ridge_y = ridge_y, rng = split_rng(rng, key = "chimney"))
+    roof_all, roof_edges = cot_roof.gable(width = w, depth = d, stone_h = stone_h, upper_h = upper_h, jetty = jetty, overhang = overhang, rng = split_rng(rng, key = "tiles"))
+    chimney_all = cot_chimney.chimney(x = 1.35, z = 0.0 - 0.9, top = ae.chimney_rule(edges = roof_edges, h_min = ridge_y + 1.25), rng = split_rng(rng, key = "chimney"))
     out = cot_asm.assemble(width = w, depth = d, stone_h = stone_h, upper_h = upper_h, jetty = jetty, quoin_bricks = quoin_bricks, ridge_y = ridge_y, root_rng = rng, roof_all = roof_all, chimney_all = chimney_all)
 }
 
@@ -34,8 +35,8 @@ def cottage_mansard(w: f32, d: f32, stone_h: f32, upper_h: f32, jetty: f32, over
     uw = w + 2.0 * jetty
     eave_y = stone_h + upper_h - 0.1
     ridge_y = eave_y + uw * 0.5 + overhang
-    roof_all = cot_roof.multi_gable(width = w, depth = d, stone_h = stone_h, upper_h = upper_h, jetty = jetty, overhang = overhang, rng = split_rng(rng, key = "tiles"))
-    chimney_all = cot_chimney.chimney(x = 1.35, z = 0.0 - 1.8, ridge_y = ridge_y, rng = split_rng(rng, key = "chimney"))
+    roof_all, roof_edges = cot_roof.multi_gable(width = w, depth = d, stone_h = stone_h, upper_h = upper_h, jetty = jetty, overhang = overhang, rng = split_rng(rng, key = "tiles"))
+    chimney_all = cot_chimney.chimney(x = 1.35, z = 0.0 - 1.8, top = ae.chimney_rule(edges = roof_edges, h_min = ridge_y + 1.25), rng = split_rng(rng, key = "chimney"))
     out = cot_asm.assemble(width = w, depth = d, stone_h = stone_h, upper_h = upper_h, jetty = jetty, quoin_bricks = quoin_bricks, ridge_y = ridge_y, root_rng = rng, roof_all = roof_all, chimney_all = chimney_all)
 }
 

@@ -431,7 +431,7 @@ def roof_l(w: f32, d: f32, cut_w: f32, cut_d: f32, kind: enum {cross, hip} = cro
     # конёк крыла B (cross): видимый отрезок от южного конца до места, где он ныряет под скат A
     y_ridge_b = y0 + (wB * 0.5 + overhang) * tan_p
     kr = k.R_RIDGE()
-    gb_e_noridge = delete(gb_e, where = @role != kr)
+    gb_e_noridge = delete(gb_e, where = @role == kr)
     ridge_b = lse.edge(p0 = vec3(bcx, y_ridge_b, bcz - cut_d * 0.5 - wB * 0.5), p1 = vec3(bcx, y_ridge_b, bcz + cut_d * 0.5 + overhang), role = k.R_RIDGE(), out_n = vec3(0, 1, 0), pitch = 0.0)
     edges = select(kind == cross, a = merge(ga_e, gb_e_noridge, ridge_b, valley), b = merge(ha_e, hb_e, valley))
     # плоскости для якорей: свои границы + объёмы чужих крыльев
@@ -470,8 +470,8 @@ def roof_cross(w: f32, d: f32, pitch: f32 = 45.0, overhang: f32 = 0.4, y0: f32 =
     ridge_b_s = lse.edge(p0 = vec3(0.0, y_b, cv), p1 = vec3(0.0, y_b, hd), role = k.R_RIDGE(), out_n = vec3(0, 1, 0), pitch = 0.0)
     ridges = select(a_lower, a = merge(ridge_a_l, ridge_a_r, ridge_b_full), b = merge(ridge_a_full, ridge_b_n, ridge_b_s))
     kr = k.R_RIDGE()
-    ga_e_noridge = delete(ga_e, where = @role != kr)
-    gb_e_noridge = delete(gb_e, where = @role != kr)
+    ga_e_noridge = delete(ga_e, where = @role == kr)
+    gb_e_noridge = delete(gb_e, where = @role == kr)
     edges = merge(ga_e_noridge, gb_e_noridge, ridges, v0, v1, v2, v3)
     planes = merge(ga_pl, gb_pl, retarget(vol = ga_v, island = 11), retarget(vol = ga_v, island = 13), retarget(vol = gb_v, island = 1), retarget(vol = gb_v, island = 3))
 }

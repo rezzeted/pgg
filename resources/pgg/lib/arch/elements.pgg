@@ -1,0 +1,53 @@
+# lib/arch/elements.pgg — элементы на рёбрах и скатах
+# (docs/pgg/architecture_library_plan.md §6.6, этап A5): правила размещения
+# (chimney_rule — норматив конька) и слоты на скатах (dormer_scope). Рёбра — общая
+# модель §5.2 (lib/layout/edges): рёбра крыш дают roof_*, рёбра полос — band_edges,
+# концы рёбер под навершия — edge_ends. Библиотека даёт выборку (pick_role), рамку
+# (place_edge/place) и правила; сами терминалы — файл здания или наборы terminals_*,
+# установка — всегда код файла здания (принцип инверсии терминалов §3).
+
+import lib.layout.scope as ls
+import lib.layout.edges as lse
+import lib.arch.kinds as k
+
+def chimney_rule(edges: geo<points>, h_min: f32, margin: f32 = 0.5) -> (out: f32) {
+    """Правило конька: верх трубы — не ниже h_min и не ниже самого высокого конька
+    + margin (норматив §6.6: ≥ 0.5 м над коньком при привязке ≤ 1.5 м по горизонтали).
+    Коньки читаются из модели рёбер (pick_role R_RIDGE); без коньков (плоская крыша)
+    возвращает h_min. Близость привязки и выбор объёма — ответственность файла
+    здания: передавайте рёбра того крыла, над которым стоит труба."""
+    ridges = lse.pick_role(edges = edges, role = k.R_RIDGE())
+    pad = lse.edge(p0 = vec3(0, h_min - margin, 0), p1 = vec3(0, h_min - margin, 0), role = k.R_RIDGE())
+    out = max_of(@y1, on = merge(ridges, pad)) + margin
+}
+
+def dormer_scope(slopes: geo<mesh>, planes: geo<points>, island: int, u: f32, t: f32, w: f32, h: f32, dep: f32 = 0.60) -> (out: geo<points>) {
+    """Слот K_DORMER на скате island: u — смещение вдоль карниза от его середины (м),
+    t — доля пути от карниза к верху ската (0..1). Рамка ската — из eave-плоскости
+    островка (как tile_anchors): U вдоль карниза, N — нормаль, W — вверх по скату.
+    @P — низ-центр коробки, утоплен в скат на половину глубины (задняя стенка уходит
+    под покрытие); @yaw — азимут карниза (лицо вертикально, наружу); @size = (w, h, dep);
+    @facade = island ската (схема scope сохраняется, merge с фасадными слотами легален).
+    Терминал ставит файл здания: place(dormer_*(...), dormer_scope(...))."""
+    expect t >= 0.0 & t <= 1.0: "dormer_scope: t — доля 0..1 пути от карниза к верху ската"
+    expect count(delete(slopes, where = @island_id != island, domain = faces)) > 0: "dormer_scope: нет панели с таким island_id"
+    expect count(delete(planes, where = (@island_id != island) | (@eave == false))) > 0: "dormer_scope: у островка нет eave-плоскости (плоская крыша / палуба?)"
+    p = delete(slopes, where = @island_id != island, domain = faces)
+    pl0 = delete(planes, where = @island_id != island)
+    ev = delete(pl0, where = @eave == false)
+    mid = value(@o, on = ev)
+    w_max = value(@w_len, on = ev)
+    pitch = max_of(@slope_pitch, on = p)
+    yaw = max_of(@eave_yaw, on = p)
+    sy = sin(radians(yaw))
+    cy = cos(radians(yaw))
+    sp = sin(radians(pitch))
+    cp = cos(radians(pitch))
+    U = vec3(cy, 0.0, 0.0 - sy)
+    N = vec3(sp * sy, cp, sp * cy)
+    W = cross(N, U)
+    sink = dep * 0.5 * sp + 0.02
+    at = mid + U * u + W * (t * w_max) - N * sink
+    s = ls.scope(at = at, yaw = yaw, size = vec3(w, h, dep), kind = k.K_DORMER())
+    out = set(s, "facade", island, domain = points)
+}
