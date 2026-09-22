@@ -4,6 +4,10 @@ import lib.parts
 import lib.blockwork
 import lib.shapes as shapes
 import lib.masonry as masonry
+import lib.layout.edges as lse
+import lib.arch.kinds as ak
+import lib.arch.plan as ap
+import lib.arch.elements as ae
 
 
 def brick_prism(w: f32, d: f32, h: f32, y0: f32) -> (out: geo<mesh>) {
@@ -111,14 +115,13 @@ def hexa_brick_clock_face(h: f32, r_in: f32, cy: f32, circ_r: f32, rng: rng) -> 
 }
 
 def belt(w: f32, d: f32, h: f32, over_lo: f32 = 0.22, over_hi: f32 = 0.30) -> (out: geo<mesh>) {
-    """Светлый поясной карниз по периметру w×d: две ступенчатые плиты (нижняя уже
-    и толще, верхняя шире и тоньше), центр в 0, низ на y = 0. over_lo / over_hi —
-    вынос каждой ступени от стены на сторону (квойны quoin_stack выпускаются на
-    0.20: межэтажный пояс должен чуть перекрывать их, венчающий — ещё на шаг).
-    Группа stone."""
-    lo = parts.piece(size = vec3(w + over_lo * 2.0, h * 0.58, d + over_lo * 2.0), pos = vec3(0, h * 0.29, 0), grp = "stone")
-    hi = parts.piece(size = vec3(w + over_hi * 2.0, h * 0.42, d + over_hi * 2.0), pos = vec3(0, h * 0.79, 0), grp = "stone")
-    out = merge(lo, hi)
+    """Светлый поясной карниз по периметру w×d, центр в 0, низ на y = 0: терминал
+    belt_edges (lib/arch/elements) на рёбрах горизонта R_FLOOR_TOP — габарит плит
+    читается из модели рёбер. over_lo / over_hi — вынос каждой ступени от стены на
+    сторону (квойны quoin_stack выпускаются на 0.20: межэтажный пояс должен чуть
+    перекрывать их, венчающий — ещё на шаг). Группа stone, плиты с фаской."""
+    bed = lse.edges_of_polygon(plan = ap.plan_rect(w = w, d = d), role = ak.R_FLOOR_TOP())
+    out = ae.belt_edges(edges = bed, h = h, grp = "stone", over_lo = over_lo, over_hi = over_hi, split = 0.58, bevel = true)
 }
 
 def dentils(w: f32, d: f32, y: f32) -> (out: geo<mesh>) {
