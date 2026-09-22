@@ -1,0 +1,7 @@
+[
+  {"name": "hero", "node": "house", "orbit": [30, 22], "chrome": "off"},
+  {"name": "front", "node": "house", "orbit": [0, 12], "zoom": 0.85, "chrome": "off"},
+  {"name": "back", "node": "house", "orbit": [175, 25], "chrome": "off"},
+  {"name": "roof", "node": "house", "orbit": [25, 55], "chrome": "off"},
+  {"name": "window", "node": "house", "target": "1.5, 5.5, 3.4", "orbit": [15, 12], "zoom": 0.35, "chrome": "off"}
+]

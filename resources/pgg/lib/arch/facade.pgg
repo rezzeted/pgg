@@ -104,12 +104,13 @@ def band_edge_pair(b: geo<points>) -> (out: geo<points>) {
     out = merge(top, bot)
 }
 
-def tiles(bands_in: geo<points>, pattern: geo<points>, slot_h: f32 = 0.0, slot_y: f32 = 0.0) -> (out: geo<points>) {
+def tiles(bands_in: geo<points>, pattern: geo<points>, slot_h: f32 = 0.0, slot_y: f32 = 0.0, cycle: bool = false) -> (out: geo<points>) {
     """Горизонтальная раскладка полос паттерном (проёмы по осям). Один и тот же паттерн
     на всех полосах — общая ось окон между этажами автоматически; отклонения — override_*.
     slot_h > 0 — высота слота (иначе полная высота полосы), slot_y — подъём низа слота
-    от низа полосы (подоконная высота)."""
-    t = lsp.split(scopes = bands_in, pattern = pattern, axis = 0, cycle = false)
+    от низа полосы (подоконная высота). cycle = true — паттерн повторяется по длине
+    фасада (ритм окон на длинных стенах; стыковка «стена|стена» сливается сама)."""
+    t = lsp.split(scopes = bands_in, pattern = pattern, axis = 0, cycle = cycle)
     h = set(t, "h", slot_h > 0.0 ? slot_h : @h, domain = points)
     out = set_position(h, offset = vec3(0.0, slot_y, 0.0))
 }
@@ -124,10 +125,11 @@ def band_pattern(plinth_h: f32, floor_h: f32, floors: int, crown_h: f32) -> (out
     out = lsp.pattern_add(pat = p1, size = crown_h, kind = k.K_CROWN_BAND())
 }
 
-def facade_tree(plan: geo<points>, style: geo<points>, floors: int, facade_pattern: geo<points>) -> (slots: geo<points>, band_scopes: geo<points>) {
+def facade_tree(plan: geo<points>, style: geo<points>, floors: int, facade_pattern: geo<points>, tile_cycle: bool = false) -> (slots: geo<points>, band_scopes: geo<points>) {
     """Стандартный фасад: facades → bands(«цоколь|этажи|венец» из стиля) → tiles
-    (facade_pattern на полосах этажей, высота/подоконник из стиля). Редкие членения
-    (тяги между этажами, свой ритм цоколя) — собрать facades/bands/tiles вручную."""
+    (facade_pattern на полосах этажей, высота/подоконник из стиля; tile_cycle = true —
+    повтор паттерна по длине фасада). Редкие членения (тяги между этажами, свой ритм
+    цоколя) — собрать facades/bands/tiles вручную."""
     expect style has @plinth_h: "facade_tree: стилю не хватает @plinth_h (возьмите style_default)"
     expect style has @floor_h: "facade_tree: стилю не хватает @floor_h"
     expect style has @crown_h: "facade_tree: стилю не хватает @crown_h"
@@ -141,7 +143,7 @@ def facade_tree(plan: geo<points>, style: geo<points>, floors: int, facade_patte
     f0 = facades(plan = plan, y0 = 0.0, y1 = y1, t = value(@wall_t, on = style))
     b = bands(faces = f0, pattern = band_pattern(plinth_h = plinth_h, floor_h = floor_h, floors = floors, crown_h = crown_h))
     fb = ls.pick(scopes = b, kind = k.K_FLOOR_BAND())
-    slots = tiles(bands_in = fb, pattern = facade_pattern, slot_h = value(@win_h, on = style), slot_y = value(@sill_y, on = style))
+    slots = tiles(bands_in = fb, pattern = facade_pattern, slot_h = value(@win_h, on = style), slot_y = value(@sill_y, on = style), cycle = tile_cycle)
     band_scopes = b
 }
 
