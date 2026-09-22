@@ -316,4 +316,24 @@ TEST(RoofWavefront, RiseMaxCutSealsRings) {
     pggtest::expectF32Near(total, signedArea(outline), 1e-3f);
 }
 
+TEST(RoofWavefront, ShedRoofThreeGables) {
+    // Shed (single slope) 4 x 6: three gable walls (speed 0), one sloped edge
+    // on the low side (x = 4): one rectangular slope panel from x = 4 up to the
+    // high edge x = 0, three vertical walls, faces tile the outline.
+    std::vector<glm::vec2> outline = {{0, -3}, {0, 3}, {4, 3}, {4, -3}};
+    SkeletonInput in;
+    in.outline = outline;
+    in.speed = {0.0f, 0.0f, 1.0f, 0.0f};
+    StraightSkeleton sk = pgg::buildStraightSkeleton(in);
+    expectSkeletonSane(sk, outline);
+    // slope face (edge 2, the low edge): quad from the low edge to the high one.
+    ASSERT_EQ(sk.faces.size(), 4u);
+    EXPECT_EQ(sk.faces[2].nodes.size(), 4u);
+    // the high edge (edge 0) is a 6 x 4 vertical wall quad; the two short
+    // sides are gable triangles pinned to their walls.
+    EXPECT_EQ(sk.faces[0].nodes.size(), 4u);
+    EXPECT_EQ(sk.faces[1].nodes.size(), 3u);
+    EXPECT_EQ(sk.faces[3].nodes.size(), 3u);
+}
+
 }  // namespace
