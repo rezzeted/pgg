@@ -74,7 +74,7 @@ Linux-флоу — Ninja (single-config) + CMake Presets, триплет `x64-li
 
 - Unit-тесты (gtest) — `src/tests/pgg/<name>_test.cpp`, подхватываются GLOB'ом; бинарь `pgg_tests`.
 - Корпус эталонов — `src/tests/pgg/corpus/`; голдены фингерпринтов — `src/tests/pgg/goldens/` (перезапись: `PggTool run <file> --update-goldens` из корня репо).
-- Продуктовые/арт-примеры — `resources/pgg/` (`lib/` и оставшиеся сцены) и минипроекты `resources/AmberEstate/`, `resources/ShreterMansion/`, `resources/ManorHouse/` (этюд A6: дом целиком на `lib/arch`) и `resources/Roads/`; не путать с тестовым корпусом.
+- Продуктовые/арт-примеры — `resources/pgg/` (`lib/` и оставшиеся сцены) и минипроекты `resources/AmberEstate/`, `resources/ManorHouse/` (этюд A6: дом целиком на `lib/arch`) и `resources/Roads/`; не путать с тестовым корпусом.
 
 ## PGG
 
