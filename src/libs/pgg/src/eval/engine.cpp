@@ -469,6 +469,15 @@ private:
             run_.report("E606", Span{}, "probe '" + spec.path + "': limit applies to the table and check inspectors");
             return;
         }
+        if (spec.inspector == "hist") {
+            bool hasAttr = false;
+            for (const auto& [name, value] : spec.params) hasAttr |= name == "attr" && !value.empty();
+            if (!hasAttr) {
+                run_.report("E606", Span{},
+                            "probe '" + spec.path + "': hist needs attr=<scalar field> (e.g. hist[attr=@P.y, bins=8])");
+                return;
+            }
+        }
         if (spec.inspector == "find") {
             bool hasWhere = false;
             for (const auto& [name, value] : spec.params) hasWhere |= name == "where";
@@ -533,8 +542,10 @@ private:
         std::string echo;
     };
 
-    bool compileWherePredicate(const std::string& text, const std::string& specPath, Document& docKeepAlive,
-                               WherePlan& out) {
+    // Compiles one probe parameter expression (where=, hist attr=) in the
+    // file's environment. false = E606 already reported.
+    bool compileProbeExpr(const std::string& text, const std::string& specPath, const char* what,
+                          Document& docKeepAlive, TypedValue& out) {
         docKeepAlive = parse("__where__ = (" + text + ")\n");
         const Binding* b = nullptr;
         if (!docKeepAlive.hasErrors() && docKeepAlive.file)
@@ -550,24 +561,30 @@ private:
                     msg = d.message;
                     break;
                 }
-            run_.report("E606", Span{}, "probe '" + specPath + "': bad where expression '" + text + "'" +
+            run_.report("E606", Span{}, "probe '" + specPath + "': bad " + what + " expression '" + text + "'" +
                                             (msg.empty() ? "" : " (" + msg + ")"));
             return false;
         }
         const size_t diagBefore = result_.diagnostics.size();
-        const TypedValue tv =
-            compileExpr(b->value, run_, [this](const std::string& n, Span s) { return resolveIdent(n, s); });
-        if (!tv) {
+        out = compileExpr(b->value, run_, [this](const std::string& n, Span s) { return resolveIdent(n, s); });
+        if (!out) {
             std::string msg;
             for (size_t i = diagBefore; i < result_.diagnostics.size(); ++i)
                 if (!result_.diagnostics[i].isWarning) {
                     msg = result_.diagnostics[i].message;
                     break;
                 }
-            run_.report("E606", Span{}, "probe '" + specPath + "': where expression '" + text + "' failed" +
+            run_.report("E606", Span{}, "probe '" + specPath + "': " + what + " expression '" + text + "' failed" +
                                             (msg.empty() ? "" : " (" + msg + ")"));
             return false;
         }
+        return true;
+    }
+
+    bool compileWherePredicate(const std::string& text, const std::string& specPath, Document& docKeepAlive,
+                               WherePlan& out) {
+        TypedValue tv;
+        if (!compileProbeExpr(text, specPath, "where", docKeepAlive, tv)) return false;
         if (tv.field) {
             out.field = tv.field;
         } else {
@@ -585,13 +602,14 @@ private:
 
     // The where mask of one target: the predicate field on the points domain
     // (constant predicates broadcast). false = E606 already reported.
-    bool whereMask(const WherePlan& wp, const std::string& recordPath, const Geo& g, BoolColumn& out) {
-        const size_t n = g.pointCount();
+    bool whereMask(const WherePlan& wp, const std::string& recordPath, const Geo& g, BoolColumn& out,
+                   Domain domain = Domain::Points) {
+        const size_t n = domain == Domain::Faces ? g.faceCount() : g.pointCount();
         if (!wp.field) {
             out.assign(n, wp.constValue ? 1 : 0);
             return true;
         }
-        ConstBufferPtr buf = evalField(wp.field, g, Domain::Points, run_);
+        ConstBufferPtr buf = evalField(wp.field, g, domain, run_);
         ConstBufferPtr asBoolBuf = buf ? convertBuffer(buf, ScalarType::Bool) : nullptr;
         if (!asBoolBuf) {
             run_.report("E606", Span{},
@@ -818,6 +836,69 @@ private:
                 }
                 std::string text, err;
                 if (!probeLattice(*asSdf(p.value), rp.params, text, err)) {
+                    run_.report("E606", Span{}, "probe target '" + p.target->recordPath + "': " + err);
+                    continue;
+                }
+                result_.probes.push_back({rp.origin, p.target->recordPath, rp.inspector, std::move(text)});
+            }
+            return;
+        }
+
+        if (rp.inspector == "hist") {
+            std::string attrText, whereText, domainText = "points";
+            int bins = 10;
+            bool binsGiven = false;
+            for (const auto& [name, value] : rp.params) {
+                if (name == "attr") attrText = value;
+                if (name == "where") whereText = value;
+                if (name == "domain") domainText = value;
+                if (name == "bins") {
+                    if (value.empty() || value.find_first_not_of("0123456789") != std::string::npos ||
+                        std::stoi(value) < 1 || std::stoi(value) > 200) {
+                        run_.report("E606", Span{}, "probe '" + rp.specPath + "': bins must be an integer 1..200");
+                        return;
+                    }
+                    bins = std::stoi(value);
+                    binsGiven = true;
+                }
+            }
+            if (domainText != "points" && domainText != "faces") {
+                run_.report("E606", Span{}, "probe '" + rp.specPath + "': hist domain must be points or faces");
+                return;
+            }
+            const Domain domain = domainText == "faces" ? Domain::Faces : Domain::Points;
+            Document attrDoc, whereDoc;
+            TypedValue attr;
+            if (!compileProbeExpr(attrText, rp.specPath, "attr", attrDoc, attr)) return;
+            WherePlan wp;
+            if (!whereText.empty() && !compileWherePredicate(whereText, rp.specPath, whereDoc, wp)) return;
+            for (const Pulled& p : pulled) {
+                if (!p.target->terminal.empty()) {
+                    run_.report("E606", Span{},
+                                "probe target '" + p.target->recordPath +
+                                    "': hist takes the value as attr=, not a terminal (probe g:hist[attr=@" +
+                                    p.target->terminal + "])");
+                    continue;
+                }
+                if (valueBase(p.value) != ScalarType::Geo) {
+                    run_.report("E606", Span{}, "probe target '" + p.target->recordPath + "': hist needs a geo value");
+                    continue;
+                }
+                const Geo& g = *asGeo(p.value);
+                const size_t n = domain == Domain::Faces ? g.faceCount() : g.pointCount();
+                ConstBufferPtr buf = attr.field ? evalField(attr.field, g, domain, run_) : makeConstBuffer(attr.value, n);
+                if (!buf) {
+                    run_.report("E606", Span{}, "probe target '" + p.target->recordPath + "': attr '" + attrText +
+                                                    "' does not evaluate on " + domainText);
+                    continue;
+                }
+                BoolColumn mask;
+                if (!whereText.empty() && !whereMask(wp, p.target->recordPath, g, mask, domain)) continue;
+                std::string text, err;
+                const std::string echo = attrText + (binsGiven ? ",bins=" + std::to_string(bins) : "") +
+                                         (whereText.empty() ? "" : ",where=" + whereText) +
+                                         (domain == Domain::Faces ? ",domain=faces" : "");
+                if (!probeHist(*buf, whereText.empty() ? nullptr : &mask, bins, binsGiven, echo, text, err)) {
                     run_.report("E606", Span{}, "probe target '" + p.target->recordPath + "': " + err);
                     continue;
                 }

@@ -302,9 +302,9 @@ bool parseProbeSpec(const std::string& text, ProbeSpec& out, std::string& err) {
     if (!out.inspector.empty() && out.inspector != "schema" && out.inspector != "stats" &&
         out.inspector != "coverage" && out.inspector != "table" && out.inspector != "sample" &&
         out.inspector != "slice" && out.inspector != "check" && out.inspector != "lattice" &&
-        out.inspector != "find" && out.inspector != "bbox" && out.inspector != "gap") {
+        out.inspector != "find" && out.inspector != "bbox" && out.inspector != "gap" && out.inspector != "hist") {
         err = "unknown inspector '" + out.inspector +
-              "' (schema|stats|coverage|table|sample|slice|check|lattice|find|bbox|gap)";
+              "' (schema|stats|coverage|table|sample|slice|check|lattice|find|bbox|gap|hist)";
         return false;
     }
     // Param names: limit/aggregate are generic typed fields; every other name
@@ -359,6 +359,9 @@ bool parseProbeSpec(const std::string& text, ProbeSpec& out, std::string& err) {
         } else if (out.inspector == "gap") {
             validForInspector = "a|b|axis";
             known = name == "a" || name == "b" || name == "axis";
+        } else if (out.inspector == "hist") {
+            validForInspector = "attr|bins|where|domain";
+            known = name == "attr" || name == "bins" || name == "where" || name == "domain";
         }
         if (!known) {
             err = "unknown probe parameter '" + name + "' (" + validForInspector + ")";
@@ -641,6 +644,58 @@ std::string probeGeoFind(const Geo& g, const BoolColumn& mask, const std::string
         }
     }
     return out;
+}
+
+bool probeHist(const Buffer& values, const BoolColumn* mask, int bins, bool binsGiven, const std::string& echo,
+               std::string& out, std::string& err) {
+    std::vector<double> v;
+    bool discrete = false;
+    auto selected = [&](size_t i) { return !mask || (i < mask->size() && (*mask)[i]); };
+    if (const auto* f = std::get_if<F32Buf>(&values)) {
+        for (size_t i = 0; i < f->size(); ++i)
+            if (selected(i)) v.push_back((*f)[i]);
+    } else if (const auto* n = std::get_if<IntBuf>(&values)) {
+        discrete = true;
+        for (size_t i = 0; i < n->size(); ++i)
+            if (selected(i)) v.push_back(static_cast<double>((*n)[i]));
+    } else if (const auto* b = std::get_if<BoolBuf>(&values)) {
+        discrete = true;
+        for (size_t i = 0; i < b->size(); ++i)
+            if (selected(i)) v.push_back((*b)[i] ? 1.0 : 0.0);
+    } else {
+        err = "hist needs a scalar per element; take a component (attr=@P.y) or a length (attr=length(@N))";
+        return false;
+    }
+    const size_t total = std::visit([](const auto& buf) { return buf.size(); }, values);
+    out = "hist[attr=" + echo + "] n=" + std::to_string(v.size()) + " of " + std::to_string(total);
+    if (v.empty()) return true;
+    const auto [mnIt, mxIt] = std::minmax_element(v.begin(), v.end());
+    const double mn = *mnIt, mx = *mxIt;
+    out += ", min " + fmtG(mn) + " max " + fmtG(mx);
+    auto bar = [&](size_t count) { return std::string((count * 40 + v.size() - 1) / v.size(), '#'); };
+    if (discrete && !binsGiven) {
+        std::map<double, size_t> counts;
+        for (double x : v) ++counts[x];
+        if (counts.size() <= 64) {
+            for (const auto& [x, c] : counts) out += "\n" + fmtG(x) + ": " + std::to_string(c) + " " + bar(c);
+            return true;
+        }
+    }
+    bins = std::max(1, bins);
+    if (mx <= mn) {
+        out += "\n[" + fmtG(mn) + "]: " + std::to_string(v.size()) + " " + bar(v.size());
+        return true;
+    }
+    std::vector<size_t> counts(static_cast<size_t>(bins), 0);
+    const double w = (mx - mn) / bins;
+    for (double x : v) ++counts[static_cast<size_t>(std::min(bins - 1, static_cast<int>((x - mn) / w)))];
+    for (int k = 0; k < bins; ++k) {
+        const bool last = k + 1 == bins;
+        const size_t c = counts[static_cast<size_t>(k)];
+        out += "\n[" + fmtG(mn + w * k) + ", " + fmtG(last ? mx : mn + w * (k + 1)) + (last ? "]" : ")") + ": " +
+               std::to_string(c) + " " + bar(c);
+    }
+    return true;
 }
 
 // --- L2: sample / slice shared field access (§9.6) ------------------------------

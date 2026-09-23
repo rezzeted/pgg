@@ -215,6 +215,8 @@ def pgg_probe(spec: Optional[str] = None, specs: Optional[list[str]] = None,
     mesh_from_sdf; bbox[group=<grp>] — min/max/center/size группы (без group —
     весь geo); gap[a=group:…, b=group:…, axis=x|y|z] — зазор bbox по оси
     (перекрытие отрицательное). table[where=<expr>,limit=N] / find[where=<expr>].
+    hist[attr=<expr>,bins=N,where=<expr>,domain=points|faces] — распределение
+    скаляра (int/bool — строка на значение), например "roof:hist[attr=@island_id]".
     specs — список таких строк: все пробники за ОДИН прогон графа (дешевле,
     чем N вызовов; записи идут в порядке specs). spec и specs можно сочетать.
     file — слот; передайте, если load был не в этом ходе.
