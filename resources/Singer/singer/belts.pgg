@@ -1,0 +1,111 @@
+# Singer — пояс C1 и лопатка D1. Тяга: вдоль X, центр в 0, лицо стены z = 0,
+# вынос в +Z, низ на y = 0. el/er — продление концов на вынос (стык угла).
+
+import lib.parts
+import singer.common as sc
+
+def c1(len: f32, el: f32 = 0, er: f32 = 0) -> (out: geo<mesh>) {
+    """C1 — пояс над красным гранитом, высота BELT_H (0,50): две красные ступени
+    и серая крышка со скатом. Обходит фасад; на выпуклом углу концы продлеваются."""
+    expect len > 0.2: "c1: длина от 0.2 м"
+    s1 = sc.profile_run(len = len, q0 = vec3(0, 0, 0), q1 = vec3(0.10, 0, 0), q2 = vec3(0.10, 0.16, 0), q3 = vec3(0, 0.16, 0), grp = "granite_red", el = el, er = er)
+    s2 = sc.profile_run(len = len, q0 = vec3(0, 0.16, 0), q1 = vec3(0.20, 0.16, 0), q2 = vec3(0.20, 0.32, 0), q3 = vec3(0, 0.32, 0), grp = "granite_red", el = el, er = er)
+    cap = sc.profile_run(len = len, q0 = vec3(0, 0.32, 0), q1 = vec3(0.32, 0.32, 0), q2 = vec3(0.32, 0.40, 0), q3 = vec3(0, 0.50, 0), grp = "granite_gray", el = el, er = er)
+    out = merge(s1, s2, cap)
+}
+
+def d1(h: f32, w: f32 = 0.42) -> (out: geo<mesh>) {
+    """D1 — лопатка серого гранита высоты h (низ на y = 0): ствол с выносом 6 см,
+    база и капитель чуть шире. Ставится на верх C1, между осями окон."""
+    expect h > 0.8: "d1: лопатка выше 0.8 м"
+    shaft = parts.slab(size = vec3(w, h - 0.22, 0.06), pos = vec3(0, 0.12 + (h - 0.22) * 0.5, 0.03), grp = "granite_gray")
+    base = parts.slab(size = vec3(w + 0.10, 0.12, 0.09), pos = vec3(0, 0.06, 0.045), grp = "granite_gray")
+    cap = parts.slab(size = vec3(w + 0.14, 0.10, 0.11), pos = vec3(0, h - 0.05, 0.055), grp = "granite_gray")
+    out = merge(shaft, base, cap)
+}
+
+def d3(len: f32, h: f32 = 0.78) -> (out: geo<mesh>) {
+    """D3 — балкончик перед окном: плита с выносом 0,36 и бронзовая решётка высотой h.
+    Центр по X в 0, верх плиты около y = 0.08, лицо стены z = 0, вынос в +Z."""
+    expect len > 0.4: "d3: ширина от 0.4 м"
+    slab = parts.slab(size = vec3(len, 0.08, 0.36), pos = vec3(0, 0.04, 0.14), grp = "granite_gray")
+    n = max(int(len / 0.13), 4)
+    pitch = (len - 0.10) / f32(n - 1)
+    bar = parts.slab(size = vec3(0.018, h - 0.14, 0.018), pos = vec3(0, 0.10 + (h - 0.14) * 0.5, 0.30), grp = "bronze")
+    pts = transform(mesh_line(count = n, length = f32(n - 1) * pitch, dir = (1, 0, 0)), translate = vec3(0.0 - f32(n - 1) * pitch * 0.5, 0, 0))
+    bars = realize(instance_on_points(pts, source = bar))
+    top = parts.slab(size = vec3(len, 0.028, 0.028), pos = vec3(0, h, 0.30), grp = "bronze")
+    bot = parts.slab(size = vec3(len, 0.022, 0.022), pos = vec3(0, 0.12, 0.30), grp = "bronze")
+    out = merge(slab, bars, top, bot)
+}
+
+def c2(len: f32, el: f32 = 0, er: f32 = 0) -> (out: geo<mesh>) {
+    """C2 — венчающий карниз под балюстрадой, тяжелее C1: три серых уступа,
+    нижний с бронзовой полосой. Высота 0,50, низ на y = 0, максимальный вынос 0,48."""
+    expect len > 0.2: "c2: длина от 0.2 м"
+    b0 = sc.profile_run(len = len, q0 = vec3(0, 0, 0), q1 = vec3(0.16, 0, 0), q2 = vec3(0.16, 0.10, 0), q3 = vec3(0, 0.10, 0), grp = "granite_gray", el = el, er = er)
+    lip = sc.profile_run(len = len, q0 = vec3(0.16, 0.10, 0), q1 = vec3(0.22, 0.10, 0), q2 = vec3(0.22, 0.16, 0), q3 = vec3(0.16, 0.16, 0), grp = "bronze", el = el, er = er)
+    b1 = sc.profile_run(len = len, q0 = vec3(0, 0.16, 0), q1 = vec3(0.34, 0.16, 0), q2 = vec3(0.34, 0.32, 0), q3 = vec3(0, 0.32, 0), grp = "granite_gray", el = el, er = er)
+    cap = sc.profile_run(len = len, q0 = vec3(0, 0.32, 0), q1 = vec3(0.48, 0.32, 0), q2 = vec3(0.48, 0.42, 0), q3 = vec3(0.06, 0.50, 0), grp = "granite_gray", el = el, er = er)
+    out = merge(b0, lip, b1, cap)
+}
+
+def c3(len: f32) -> (out: geo<mesh>) {
+    """C3 — каменная балюстрада мансарды (не бронза D3): цоколь, тумбы и поручень.
+    Низ на y = 0, вынос в +Z. Высота 0,96."""
+    expect len > 0.4: "c3: длина от 0.4 м"
+    plinth = parts.slab(size = vec3(len, 0.16, 0.28), pos = vec3(0, 0.08, 0.10), grp = "stone")
+    n = max(int(len / 0.42), 3)
+    pitch = (len - 0.16) / f32(n - 1)
+    post = parts.slab(size = vec3(0.11, 0.62, 0.11), pos = vec3(0, 0.16 + 0.31, 0.16), grp = "stone")
+    pts = transform(mesh_line(count = n, length = f32(n - 1) * pitch, dir = (1, 0, 0)), translate = vec3(0.0 - f32(n - 1) * pitch * 0.5, 0, 0))
+    posts = realize(instance_on_points(pts, source = post))
+    rail = parts.slab(size = vec3(len, 0.12, 0.16), pos = vec3(0, 0.90, 0.14), grp = "stone")
+    out = merge(plinth, posts, rail)
+}
+
+def c4(w: f32 = 1.55) -> (out: geo<mesh>) {
+    """C4 — люкарна: малое окно и волнистый щипец. Низ окна на y = 0, лицо z = 0."""
+    expect w > 0.8: "c4: ширина от 0.8 м"
+    ww = w * 0.46
+    wh = w * 0.62
+    frame = parts.slab(size = vec3(ww, wh, 0.08), pos = vec3(0, wh * 0.5, 0.06), grp = "wood")
+    glass = parts.slab(size = vec3(ww - 0.12, wh - 0.14, 0.02), pos = vec3(0, wh * 0.48, 0.02), grp = "glass")
+    jamb_l = parts.slab(size = vec3(0.10, wh + 0.16, 0.18), pos = vec3(0.0 - ww * 0.5, wh * 0.5, 0.08), grp = "granite_gray")
+    jamb_r = parts.slab(size = vec3(0.10, wh + 0.16, 0.18), pos = vec3(ww * 0.5, wh * 0.5, 0.08), grp = "granite_gray")
+    ped = parts.slab(size = vec3(w * 0.92, 0.48, 0.12), pos = vec3(0, wh + 0.28, 0.05), grp = "stone")
+    n = 7
+    crest = repeat (empty_mesh(), iterations = n) |acc| {
+        t = f32(@iteration) / f32(n - 1)
+        x = (t - 0.5) * w * 0.92
+        wave = sin(t * 6.2831853 * 2.0)
+        y = wh + 0.42 + 0.16 * wave
+        piece = parts.slab(size = vec3(w / f32(n) + 0.16, 0.20, 0.14), pos = vec3(x, y, 0.12), grp = "stone")
+        acc = merge(acc, piece)
+    }
+    bed = parts.slab(size = vec3(w, 0.10, 0.20), pos = vec3(0, wh + 0.02, 0.06), grp = "granite_gray")
+    out = merge(frame, glass, jamb_l, jamb_r, ped, crest, bed)
+}
+
+def d4() -> (out: geo<mesh>) {
+    """D4 — маскарон: упрощённая маска в замке арки. Лицо в +Z, низ на y = 0.
+    Бронзовое лицо, более широкий венок сверху."""
+    face = parts.slab(size = vec3(0.46, 0.52, 0.10), pos = vec3(0, 0.30, 0.05), grp = "bronze")
+    brow = parts.slab(size = vec3(0.50, 0.10, 0.14), pos = vec3(0, 0.58, 0.06), grp = "bronze")
+    hair = parts.slab(size = vec3(0.62, 0.22, 0.12), pos = vec3(0, 0.74, 0.04), grp = "bronze")
+    nose = parts.slab(size = vec3(0.08, 0.16, 0.10), pos = vec3(0, 0.30, 0.12), grp = "bronze")
+    eye_l = mark(transform(ico_sphere(subdiv = 1, radius = 0.045), translate = vec3(0.0 - 0.11, 0.40, 0.10)), "bronze", where = true, domain = faces)
+    eye_r = mark(transform(ico_sphere(subdiv = 1, radius = 0.045), translate = vec3(0.11, 0.40, 0.10)), "bronze", where = true, domain = faces)
+    chin = parts.slab(size = vec3(0.22, 0.08, 0.12), pos = vec3(0, 0.08, 0.08), grp = "bronze")
+    out = merge(face, brow, hair, nose, eye_l, eye_r, chin)
+}
+
+def mansard_slope(len: f32, run: f32, rise: f32) -> (out: geo<mesh>) {
+    """Крутой скат мансарды: низ на линии карниза (y = 0, z = 0), верх уходит
+    внутрь здания на run и вверх на rise. Длина вдоль X, центр в 0."""
+    expect len > 0.4 & run > 0.2 & rise > 0.2: "mansard_slope: размеры положительные"
+    hyp = sqrt(run * run + rise * rise)
+    th = degrees(atan2(rise, run))
+    raw = parts.slab(size = vec3(len, 0.16, hyp), pos = vec3(0, 0.08, hyp * 0.5), grp = "slate")
+    out = transform(raw, rotate = vec3(0.0 - th, 0, 0))
+}
