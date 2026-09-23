@@ -51,7 +51,10 @@ def plane_of(o: vec3, n: vec3, island: int, eave: bool, len: f32, w_len: f32, rk
     интерьера панели. eave = true — это карнизная плоскость: тогда o — середина карниза,
     len — длина карниза, w_len — протяжённость ската (рамка для tile_anchors).
     cls: 0 — boundary (своя граница: якорь снаружи выколот), 1 — subtract (объём чужого
-    крыла: якорь внутри ВСЕХ плоскостей набора выколот — ендовы Г/П/Т)."""
+    крыла: якорь внутри ВСЕХ плоскостей набора выколот — ендовы Г/П/Т), 2 — диагональ
+    между выпуклыми частями невыпуклой панели (roof_wavefront, без отступа margin).
+    @part — выпуклая часть панели: якорь внутри панели, если он внутри хоть одной части
+    (аналитические панели выпуклые — одна часть 0)."""
     p0 = set_position(mesh_line(count = 1, length = 0.0), pos = o)
     p1 = set(p0, "o", o, domain = points, typeinfo = point)
     p2 = set(p1, "n", n, domain = points, typeinfo = vector)
@@ -60,7 +63,8 @@ def plane_of(o: vec3, n: vec3, island: int, eave: bool, len: f32, w_len: f32, rk
     p5 = set(p4, "len", len, domain = points)
     p6 = set(p5, "w_len", w_len, domain = points)
     p7 = set(p6, "rk", rk, domain = points)
-    out = set(p7, "cls", cls, domain = points)
+    p8 = set(p7, "part", 0, domain = points)
+    out = set(p8, "cls", cls, domain = points)
 }
 
 def slope_plane(at: vec3, pitch: f32, yaw: f32, island: int, cls: int = 0) -> (out: geo<points>) {
@@ -254,14 +258,17 @@ def anchors_of_island(ev: geo<points>, slopes: geo<mesh>, planes: geo<points>, r
 def anchors_of_panel(p: geo<mesh>, planes: geo<points>, row_pitch: f32, col_pitch: f32, lift: f32, margin: f32, top: f32, eave_over: f32) -> (out: geo<points>) {
     """Якоря одной панели (внутренность tile_anchors). Рамка из eave-плоскости островка:
     U вдоль карниза, N — нормаль из @slope_pitch/@eave_yaw, W — вверх по скату."""
-    isl = max_of(@island_id, on = p)
+    # delete(domain = faces) keeps the other panels' points, which read face attrs
+    # as 0: aggregates go over the panel's own points only (@eave_yaw may be < 0).
+    pv = set(p, "live", 1.0, domain = faces)
+    isl = max_of(@island_id, on = pv, where = @live > 0.5)
     pl0 = delete(planes, where = @island_id != isl)
     ev = delete(pl0, where = @eave == false)
     mid = value(@o, on = ev)
     elen = value(@len, on = ev)
     w_max = value(@w_len, on = ev)
-    pitch = max_of(@slope_pitch, on = p)
-    yaw = max_of(@eave_yaw, on = p)
+    pitch = max_of(@slope_pitch, on = pv, where = @live > 0.5)
+    yaw = max_of(@eave_yaw, on = pv, where = @live > 0.5)
     sy = sin(radians(yaw))
     cy = cos(radians(yaw))
     sp = sin(radians(pitch))
@@ -271,26 +278,49 @@ def anchors_of_panel(p: geo<mesh>, planes: geo<points>, row_pitch: f32, col_pitc
     W = cross(N, U)
     n_rows = max(int(w_max / row_pitch), 1)
     n_cols = max(int(elen / col_pitch), 1)
-    cpitch = elen / f32(n_cols)
-    a0 = mesh_line(count = n_rows * n_cols, length = 0.0)
-    a1 = set_position(a0, pos = mid + U * ((f32(@index % n_cols) - f32(n_cols - 1) * 0.5 + 0.5 * f32((@index / n_cols) % 2 == 1)) * cpitch) + W * (f32(@index / n_cols) * row_pitch) + N * lift)
+    cpitch = elen >= col_pitch ? elen / f32(n_cols) : col_pitch
+    # A panel may be wider than its eave (a gable slope over a short risalit side edge,
+    # a main slope widening behind a valley): extra columns cover its U extent.
+    u_lo = min_of(dot(@P - mid, U), on = pv, where = @live > 0.5)
+    u_hi = max_of(dot(@P - mid, U), on = pv, where = @live > 0.5)
+    ex_l = max(int(ceil((0.0 - u_lo - elen * 0.5 - 0.01) / cpitch)), 0)
+    ex_r = max(int(ceil((u_hi - elen * 0.5 - 0.01) / cpitch)), 0)
+    n_tot = n_cols + ex_l + ex_r
+    a0 = mesh_line(count = n_rows * n_tot, length = 0.0)
+    a1 = set_position(a0, pos = mid + U * ((f32(@index % n_tot - ex_l) - f32(n_cols - 1) * 0.5 + 0.5 * f32((@index / n_tot) % 2 == 1)) * cpitch) + W * (f32(@index / n_tot) * row_pitch) + N * lift)
     a2 = set(a1, "orient", orient_from_euler(vec3(pitch, yaw, 0.0)), domain = points)
     a3 = set(a2, "variant", 0, domain = points)
     a4 = set(a3, "bad", false, domain = points)
     a5 = set(a4, "sub", true, domain = points)
     a6 = set(a5, "hsub", false, domain = points)
-    pl = set(pl0, "i", @index, domain = points)
-    a7 = repeat (a6, iterations = count(pl0)) |acc| {
-        cur = delete(pl, where = @i != @iteration)
-        is_sub = value(@cls, on = cur) == 1
-        is_eave = value(@eave, on = cur) == true
-        lim = is_sub ? 0.001 : (is_eave ? eave_over : 0.0 - margin)
-        outside = dot(@P - value(@o, on = cur), value(@n, on = cur)) > lim
-        b0 = set(acc, "bad", (@bad == true) | ((is_sub == false) & outside))
-        b1 = set(b0, "sub", (@sub == true) & ((is_sub == false) | (outside == false)))
-        acc = set(b1, "hsub", (@hsub == true) | is_sub)
+    # Boundary rows per convex part (cls 0/2): inside the panel = inside any part.
+    n_parts = int(max_of(f32(@part), on = pl0)) + 1
+    a6p = set(a6, "inpart", false, domain = points)
+    a7p = repeat (a6p, iterations = n_parts) |acc| {
+        rows0 = delete(pl0, where = (@part != @iteration) | (@cls == 1))
+        rows = set(rows0, "j", @index, domain = points)
+        c0 = set(acc, "cur_in", true, domain = points)
+        c1 = repeat (c0, iterations = count(rows)) |acc2| {
+            cur = delete(rows, where = @j != @iteration)
+            is_diag = value(@cls, on = cur) == 2
+            is_eave = value(@eave, on = cur) == true
+            lim = is_diag ? 0.001 : (is_eave ? eave_over : 0.0 - margin)
+            outside = dot(@P - value(@o, on = cur), value(@n, on = cur)) > lim
+            c2 = set(acc2, "cur_in", (@cur_in == true) & (outside == false))
+            acc2 = c2
+        }
+        acc = set(c1, "inpart", (@inpart == true) | (@cur_in == true))
     }
-    a8 = delete(a7, where = (@bad == true) | ((@hsub == true) & (@sub == true)))
+    # Subtract rows (cls 1): inside ALL of them = under another wing.
+    sub0 = delete(pl0, where = @cls != 1)
+    subs = set(sub0, "i", @index, domain = points)
+    a7 = repeat (a7p, iterations = count(subs)) |acc| {
+        cur = delete(subs, where = @i != @iteration)
+        outside = dot(@P - value(@o, on = cur), value(@n, on = cur)) > 0.001
+        b1 = set(acc, "sub", (@sub == true) & (outside == false))
+        acc = set(b1, "hsub", true)
+    }
+    a8 = delete(a7, where = (@inpart == false) | ((@hsub == true) & (@sub == true)))
     out = delete(a8, where = dot(@P - mid, W) > w_max - top)
 }
 

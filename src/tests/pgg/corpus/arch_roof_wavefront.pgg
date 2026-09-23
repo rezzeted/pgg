@@ -3,7 +3,7 @@
 # (те же 14 вершин панелей и конёк 3.0 на y = 5.5); Т и крест — крыши, недоступные
 # аналитике A3; rect + rise_max — мансардный срез (top-контур 4 точки на y = 1.5);
 # overhang — свес оффсет-контуром; planes — граничные плоскости панелей, вход
-# tile_anchors (якоря покрытия на скелетной крыше). Точные проверки — в
+# tile_anchors (якоря покрытия на скелетной крыше, в т.ч. невыпуклые панели креста). Точные проверки — в
 # roof_wavefront_test.cpp.
 import lib.layout.scope as ls
 import lib.arch.plan as ap
@@ -26,6 +26,19 @@ man_p, man_e, man_t, man_pl = roof_wavefront(outline = rect, pitch = 45.0, rise_
 oh_p, oh_e, oh_t, oh_pl = roof_wavefront(outline = rect, pitch = 45.0, overhang = 0.4, y0 = 0.0)
 anchors = ar.tile_anchors(slopes = oh_p, planes = oh_pl)
 tiles = ls.stamp(scopes = anchors, source = tb.tile_plain())
+# Крест: невыпуклые панели за ендовами (части @part) — якоря по всей площади скатов.
+c_anchors = ar.tile_anchors(slopes = c_p, planes = c_pl)
+
+# Ризалит со щипцом (фронт выступа @pitch = 90) под срезом выше его конька: встречные
+# боковые рёбра выступа сходятся на коньке раньше среза — панели обязаны остаться
+# плоскими (без вертикальной ступеньки конёк → срез).
+def rp_pt(x: f32, z: f32) -> (out: geo<points>) {
+    """Одна вершина контура."""
+    out = set_position(mesh_line(count = 1, length = 0.0), pos = vec3(x, 0.0, z))
+}
+ris0 = merge(rp_pt(x = -5.0, z = -4.0), rp_pt(x = -5.0, z = 4.0), rp_pt(x = -1.5, z = 4.0), rp_pt(x = -1.5, z = 4.5), rp_pt(x = 1.5, z = 4.5), rp_pt(x = 1.5, z = 4.0), rp_pt(x = 5.0, z = 4.0), rp_pt(x = 5.0, z = -4.0))
+ris = set(ap.plan_finish(pts = ris0), "pitch", @index == 3 ? 90.0 : 45.0, domain = points)
+ris_p, ris_e, ris_t, ris_pl = roof_wavefront(outline = ris, pitch = 45.0, rise_max = 2.0, y0 = 0.0)
 
 output wf_p
 output wf_e
@@ -37,3 +50,6 @@ output man_t
 output oh_p
 output oh_pl
 output anchors
+output c_anchors
+output ris_p
+output ris_e

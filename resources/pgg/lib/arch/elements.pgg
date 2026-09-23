@@ -57,13 +57,14 @@ def dormer_scope(slopes: geo<mesh>, planes: geo<points>, island: int, u: f32, t:
     expect t >= 0.0 & t <= 1.0: "dormer_scope: t — доля 0..1 пути от карниза к верху ската"
     expect count(delete(slopes, where = @island_id != island, domain = faces)) > 0: "dormer_scope: нет панели с таким island_id"
     expect count(delete(planes, where = (@island_id != island) | (@eave == false))) > 0: "dormer_scope: у островка нет eave-плоскости (плоская крыша / палуба?)"
-    p = delete(slopes, where = @island_id != island, domain = faces)
+    # delete(domain = faces) keeps the other panels' points (face attrs read as 0 there).
+    p = set(delete(slopes, where = @island_id != island, domain = faces), "live", 1.0, domain = faces)
     pl0 = delete(planes, where = @island_id != island)
     ev = delete(pl0, where = @eave == false)
     mid = value(@o, on = ev)
     w_max = value(@w_len, on = ev)
-    pitch = max_of(@slope_pitch, on = p)
-    yaw = max_of(@eave_yaw, on = p)
+    pitch = max_of(@slope_pitch, on = p, where = @live > 0.5)
+    yaw = max_of(@eave_yaw, on = p, where = @live > 0.5)
     sy = sin(radians(yaw))
     cy = cos(radians(yaw))
     sp = sin(radians(pitch))

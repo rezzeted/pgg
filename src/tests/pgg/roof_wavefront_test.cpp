@@ -203,6 +203,14 @@ const std::vector<int64_t>* intCol(const pgg::Geo& g, const char* name) {
     return buf ? buf->get() : nullptr;
 }
 
+const std::vector<glm::vec3>* vec3Col(const pgg::Geo& g, const char* name) {
+    if (!g.pointAttrs) return nullptr;
+    const pgg::AttrColumn* c = g.pointAttrs->find(name);
+    if (!c) return nullptr;
+    const auto* buf = std::get_if<std::shared_ptr<const std::vector<glm::vec3>>>(&c->data);
+    return buf ? buf->get() : nullptr;
+}
+
 std::vector<glm::vec3> sortedPositions(const pgg::Geo& g) {
     std::vector<glm::vec3> v = *g.positions;
     std::sort(v.begin(), v.end(), [](const glm::vec3& a, const glm::vec3& b) {
@@ -281,7 +289,8 @@ TEST(RoofWavefront, BuiltinMatchesAnalyticHip) {
     EXPECT_EQ(oh_pl->pointCount(), 14u);  // 4 panels x their polygon edges
     pgg::GeoPtr anchors = pggtest::geoOutput(r, "anchors");
     ASSERT_TRUE(anchors != nullptr);
-    ASSERT_GT(anchors->pointCount(), 400u);
+    // Same rect + overhang as the analytic hip in arch_roof.pgg: same lattice.
+    EXPECT_EQ(anchors->pointCount(), 804u);
     for (const glm::vec3& p : *anchors->positions) {
         EXPECT_GE(p.x, -4.5f);
         EXPECT_LE(p.x, 4.5f);
@@ -289,6 +298,57 @@ TEST(RoofWavefront, BuiltinMatchesAnalyticHip) {
         EXPECT_LE(p.z, 3.0f);
         EXPECT_GE(p.y, -0.01f);
         EXPECT_LE(p.y, 3.0f);
+    }
+
+    // Cross plan: the panels behind the valleys are non-convex (ear-clipped into
+    // @part pieces, diagonals cls = 2). Anchors cover the whole slope area:
+    // 39 m2 of plan / cos 45 at 0.28 x 0.32 is ~615 lattice sites, minus the
+    // margin strips along hips/valleys/ridges and the partial top rows.
+    pgg::GeoPtr c_an = pggtest::geoOutput(r, "c_anchors");
+    ASSERT_TRUE(c_an != nullptr);
+    EXPECT_GT(c_an->pointCount(), 500u);
+    EXPECT_LT(c_an->pointCount(), 615u);
+    for (const glm::vec3& p : *c_an->positions) {
+        // Inside the cross (arms 9 x 3 and 3 x 7) and on or just above a slope
+        // (max roof height 1.5 over the arm half-width).
+        const bool inBar = std::abs(p.z) <= 1.5f + 0.02f && std::abs(p.x) <= 4.5f + 0.02f;
+        const bool inStem = std::abs(p.x) <= 1.5f + 0.02f && std::abs(p.z) <= 3.5f + 0.02f;
+        EXPECT_TRUE(inBar || inStem) << p.x << "," << p.z;
+        EXPECT_LE(p.y, 1.5f + 0.02f);
+    }
+
+    // Risalit gable (front @pitch = 90) under a cut above its ridge (1.5 < 2.0):
+    // the bump's side edges meet on the ridge first; their panels stay planar
+    // (no vertical ridge -> cut step, which bulges over the coverage) and the
+    // sliver leaves no vertical edge between two slopes.
+    pgg::GeoPtr ris_p = pggtest::geoOutput(r, "ris_p");
+    ASSERT_TRUE(ris_p != nullptr);
+    const auto& rpos = *ris_p->positions;
+    for (size_t f = 0; f + 1 < ris_p->faceOffsets->size(); ++f) {
+        const int32_t b = (*ris_p->faceOffsets)[f], e = (*ris_p->faceOffsets)[f + 1];
+        ASSERT_GE(e - b, 3);
+        glm::vec3 nrm(0.0f);
+        for (int32_t c = b; c < e; ++c) {
+            const glm::vec3& p = rpos[static_cast<size_t>((*ris_p->cornerVerts)[static_cast<size_t>(c)])];
+            const glm::vec3& q = rpos[static_cast<size_t>((*ris_p->cornerVerts)[static_cast<size_t>(c + 1 < e ? c + 1 : b)])];
+            nrm += glm::vec3((p.y - q.y) * (p.z + q.z), (p.z - q.z) * (p.x + q.x), (p.x - q.x) * (p.y + q.y));
+        }
+        nrm = glm::normalize(nrm);
+        const glm::vec3 o = rpos[static_cast<size_t>((*ris_p->cornerVerts)[static_cast<size_t>(b)])];
+        for (int32_t c = b; c < e; ++c)
+            EXPECT_NEAR(glm::dot(rpos[static_cast<size_t>((*ris_p->cornerVerts)[static_cast<size_t>(c)])] - o, nrm), 0.0f, 1e-4f)
+                << "face " << f << " not planar";
+    }
+    pgg::GeoPtr ris_e = pggtest::geoOutput(r, "ris_e");
+    ASSERT_TRUE(ris_e != nullptr);
+    const std::vector<int64_t>* rroles = intCol(*ris_e, "role");
+    const std::vector<glm::vec3>* rp0 = vec3Col(*ris_e, "p0");
+    const std::vector<glm::vec3>* rp1 = vec3Col(*ris_e, "p1");
+    ASSERT_TRUE(rroles != nullptr && rp0 != nullptr && rp1 != nullptr);
+    for (size_t i = 0; i < rroles->size(); ++i) {
+        if ((*rroles)[i] == 4 /*R_RAKE*/) continue;
+        const glm::vec3 d = (*rp1)[i] - (*rp0)[i];
+        EXPECT_GT(d.x * d.x + d.z * d.z, 1e-6f) << "vertical edge, role " << (*rroles)[i];
     }
 }
 
