@@ -1,0 +1,135 @@
+# Mansion — детали фасада (analysis.md §3, коды P*): консоли эркера P5, балкон
+# второго этажа P3, полукруглый балкончик щипца P4, стрельчатый портал с вимпергом
+# P2, филёнка-розетка P6. Конвенция mansion/common: лицо стены z = 0, наружу +Z,
+# ось детали x = 0; для балконов y = 0 — верх плиты (пол балкона).
+
+import lib.parts
+import lib.ironwork
+import lib.fixtures
+import lib.arch.terminals_victorian as tv
+import mansion.common as mc
+
+def p5(w: f32 = 0.45, d: f32 = 0.62, h: f32 = 0.95) -> (out: geo<mesh>) {
+    """P5 — крупная ступенчатая консоль (эркер, балкон): 4 напуска сверху вниз, под
+    верхом — полка-абака, снизу — гирька. Верх на y = 0 (опирает вынос), тело ниже."""
+    body = tv.corbel(w = w, d = d, h = h, grp = "terra", steps = 4)
+    aba = parts.slab(size = vec3(w + 0.06, 0.08, d + 0.04), pos = vec3(0, h - 0.04, (d + 0.04) * 0.5), grp = "terra")
+    drop = parts.slab(size = vec3(w * 0.45, 0.10, d * 0.30), pos = vec3(0, 0.0 - 0.05, d * 0.15), grp = "terra")
+    out = transform(merge(body, aba, drop), translate = vec3(0, 0.0 - h, 0))
+}
+
+def railing_straight(len: f32, h: f32 = 1.0, pitch: f32 = 0.12, post_every: int = 7) -> (out: geo<mesh>) {
+    """Кованая решётка вдоль X (центр x = 0, низ y = 0, ось в плоскости z = 0): поручень,
+    нижняя тяга, прутья с шагом pitch, столбики с шариками-навершиями через post_every прутьев."""
+    expect len > 0.3 & h > 0.4: "railing_straight: длина от 0.3, высота от 0.4"
+    n = max(int(len / pitch), 2)
+    top = parts.slab(size = vec3(len, 0.04, 0.05), pos = vec3(0, h, 0), grp = "iron")
+    bot = parts.slab(size = vec3(len, 0.03, 0.03), pos = vec3(0, 0.10, 0), grp = "iron")
+    mid = parts.slab(size = vec3(len, 0.02, 0.02), pos = vec3(0, h - 0.22, 0), grp = "iron")
+    pk = parts.slab(size = vec3(0.018, h - 0.02, 0.018), pos = vec3(0, (h - 0.02) * 0.5, 0), grp = "iron")
+    pts = transform(mesh_line(count = n, length = f32(n - 1) * pitch, dir = (1, 0, 0)), translate = vec3(0.0 - f32(n - 1) * pitch * 0.5, 0, 0))
+    pickets = realize(instance_on_points(pts, source = pk))
+    ring = transform(fixtures.ring(center = (0, 0, 0), radius = 0.07, r = 0.008, yaw_deg = 0), translate = vec3(0, h - 0.11, 0))
+    np = max(n / post_every, 1)
+    ppitch = len / f32(np)
+    rpts = transform(mesh_line(count = np, length = f32(np - 1) * ppitch, dir = (1, 0, 0)), translate = vec3(0.0 - f32(np - 1) * ppitch * 0.5, 0, 0))
+    rings = realize(instance_on_points(rpts, source = ring))
+    post = merge(parts.slab(size = vec3(0.04, h + 0.12, 0.04), pos = vec3(0, (h + 0.12) * 0.5, 0), grp = "iron"), mark(transform(ico_sphere(subdiv = 1, radius = 0.045), translate = vec3(0, h + 0.16, 0)), "iron", where = true, domain = faces))
+    ppts = transform(mesh_line(count = np + 1, length = len - 0.04, dir = (1, 0, 0)), translate = vec3(0.0 - (len - 0.04) * 0.5, 0, 0))
+    posts = realize(instance_on_points(ppts, source = post))
+    out = merge(top, bot, mid, pickets, rings, posts)
+}
+
+def p3(len: f32 = 2.6, dep: f32 = 0.85, detail: int = 1) -> (out: geo<mesh>) {
+    """P3 — балкон второго этажа над порталом: плита len×dep (верх y = 0, задний край
+    на лице стены), торец плиты с рядом сухариков, прямая кованая решётка по трём
+    сторонам, две крупные консоли P5 под плитой."""
+    slab = parts.slab(size = vec3(len, 0.20, dep), pos = vec3(0, 0.0 - 0.10, dep * 0.5), grp = "terra")
+    cap = parts.slab(size = vec3(len + 0.06, 0.04, dep + 0.03), pos = vec3(0, 0.02, (dep + 0.03) * 0.5), grp = "tin")
+    den0 = parts.slab(size = vec3(0.08, 0.08, 0.05), pos = vec3(0, 0.0 - 0.24, 0), grp = "terra")
+    nd = max(int(len / 0.20), 1)
+    dp = transform(mesh_line(count = nd, length = f32(nd - 1) * 0.20, dir = (1, 0, 0)), translate = vec3(0.0 - f32(nd - 1) * 0.10, 0, dep - 0.03))
+    den = select(detail > 0, a = realize(instance_on_points(dp, source = den0)), b = empty_mesh())
+    band = parts.slab(size = vec3(len, 0.08, dep), pos = vec3(0, 0.0 - 0.24, dep * 0.5 - 0.04), grp = "terra")
+    front = transform(railing_straight(len = len - 0.08), translate = vec3(0, 0.04, dep - 0.06))
+    side = transform(railing_straight(len = dep - 0.10, post_every = 20), rotate = vec3(0, 90, 0))
+    sides = merge(transform(side, translate = vec3(0.0 - len * 0.5 + 0.06, 0.04, dep * 0.5 - 0.02)), transform(side, translate = vec3(len * 0.5 - 0.06, 0.04, dep * 0.5 - 0.02)))
+    cons = merge(transform(p5(), translate = vec3(0.0 - len * 0.5 + 0.40, 0.0 - 0.28, 0)), transform(p5(), translate = vec3(len * 0.5 - 0.40, 0.0 - 0.28, 0)))
+    out = merge(slab, cap, den, band, front, sides, cons)
+}
+
+def p4(r: f32 = 0.72, h: f32 = 1.0, detail: int = 1) -> (out: geo<mesh>) {
+    """P4 — полукруглый балкончик щипца: плита-полудиск радиуса r (верх y = 0,
+    диаметр по лицу стены), снизу конусный поддон-«корзина» с поясками, «пузатая»
+    кованая решётка: прутья-дуги с выгибом наружу, поручень и нижнее кольцо."""
+    expect r > 0.3: "p4: радиус от 0.3 м"
+    disc = ironwork.spool(p0 = vec3(0, 0.0 - 0.16, 0), p1 = vec3(0, 0, 0), r0 = r, r1 = r, sides = 24)
+    bowl = ironwork.spool(p0 = vec3(0, 0.0 - 0.62, 0), p1 = vec3(0, 0.0 - 0.16, 0), r0 = r * 0.22, r1 = r * 0.92, sides = 24)
+    ring1 = ironwork.spool(p0 = vec3(0, 0.0 - 0.30, 0), p1 = vec3(0, 0.0 - 0.24, 0), r0 = r * 0.72, r1 = r * 0.78, sides = 24)
+    knob = ironwork.spool(p0 = vec3(0, 0.0 - 0.74, 0), p1 = vec3(0, 0.0 - 0.62, 0), r0 = 0.03, r1 = r * 0.22, sides = 16)
+    base0 = parts.to_group(g = merge(disc, bowl, ring1, knob), src = "iron", dst = "terra")
+    base = clip(base0, origin = (0, 0, 0), normal = (0, 0, 1))
+    bulge = 0.16
+    pk = fixtures.rod(p0 = vec3(0, 0.02, r - 0.04), p1 = vec3(0, h * 0.30, r + bulge), p2 = vec3(0, h * 0.70, r + bulge), p3 = vec3(0, h, r), r = 0.012, n = 8)
+    na = 13
+    pp0 = mesh_line(count = na, length = 0.0)
+    pp = set(pp0, "orient", orient_from_euler(vec3(0, f32(@index) * (180.0 / f32(na - 1)) - 90.0, 0)))
+    pickets = select(detail > 0, a = realize(instance_on_points(pp, source = pk)), b = empty_mesh())
+    rail0 = transform(fixtures.ring(center = (0, 0, 0), radius = r, r = 0.022, yaw_deg = 0), rotate = vec3(90, 0, 0), translate = vec3(0, h, 0))
+    low0 = transform(fixtures.ring(center = (0, 0, 0), radius = r - 0.04, r = 0.015, yaw_deg = 0), rotate = vec3(90, 0, 0), translate = vec3(0, 0.03, 0))
+    belly0 = transform(fixtures.ring(center = (0, 0, 0), radius = r + bulge * 0.95, r = 0.012, yaw_deg = 0), rotate = vec3(90, 0, 0), translate = vec3(0, h * 0.5, 0))
+    rails = clip(merge(rail0, low0, belly0), origin = (0, 0, 0), normal = (0, 0, 1))
+    out = merge(base, pickets, rails)
+}
+
+def p2(w: f32 = 1.30, h: f32 = 2.75, detail: int = 1) -> (out: geo<mesh>) {
+    """P2 — стрельчатый портал входа: проём w (высота до вершины h, подъём 0.70·w),
+    перспективный архивольт из трёх уступов (каждый шире и выше предыдущего), под
+    уступами — колонки-тяги; над порталом вимперг — треугольный щипец с тягами по
+    скатам и пиком. Двустворчатая дверь со стрельчатым верхом в глубине 0.30."""
+    expect w > 0.8 & h > w * 0.7 + 1.6: "p2: проём от 0.8 м, прямая часть от 1.6 м"
+    f = w * 0.70
+    y_s = h - f
+    n = 10
+    lining = mc.arch_band(s = w, f = f, y0 = 0.0, y_s = y_s, n = n, q0 = vec3(0.0 - 0.30, 0.006, 0), q1 = vec3(0.0 - 0.004, 0.006, 0), q2 = vec3(0.0 - 0.004, 0.0 - 0.50, 0), q3 = vec3(0.0 - 0.30, 0.0 - 0.50, 0), grp = "terra")
+    o1 = mc.arch_band(s = w, f = f, y0 = 0.0, y_s = y_s, n = n, q0 = vec3(0.0, 0.0, 0), q1 = vec3(0.08, 0.0, 0), q2 = vec3(0.08, 0.0 - 0.12, 0), q3 = vec3(0.0, 0.0 - 0.12, 0), grp = "terra")
+    o2 = mc.arch_band(s = w, f = f, y0 = 0.0, y_s = y_s, n = n, q0 = vec3(0.0, 0.0 - 0.12, 0), q1 = vec3(0.16, 0.0 - 0.12, 0), q2 = vec3(0.16, 0.0 - 0.24, 0), q3 = vec3(0.0, 0.0 - 0.24, 0), grp = "terra")
+    o3 = mc.arch_band(s = w, f = f, y0 = 0.0, y_s = y_s, n = n, q0 = vec3(0.0, 0.0 - 0.24, 0), q1 = vec3(0.24, 0.0 - 0.25, 0), q2 = vec3(0.24, 0.0 - 0.36, 0), q3 = vec3(0.0, 0.0 - 0.38, 0), grp = "terra")
+    col = tv.column(h = y_s, r = 0.05, grp = "terra")
+    cols0 = merge(transform(col, translate = vec3(0.0 - w * 0.5 - 0.12, 0, 0.10)), transform(col, translate = vec3(w * 0.5 + 0.12, 0, 0.10)))
+    cols = select(detail > 0, a = unmark(mark(cols0, "terra", where = true, domain = faces), "brass"), b = empty_mesh())
+    door = mc.arch_slab(s = w, f = f, y0 = 0.0, y_s = y_s, n = n, z0 = 0.0 - 0.34, z1 = 0.0 - 0.28, grp = "wood")
+    split = parts.slab(size = vec3(0.04, h - 0.02, 0.03), pos = vec3(0, (h - 0.02) * 0.5, 0.0 - 0.265), grp = "iron")
+    pan = parts.slab(size = vec3(w * 0.36, y_s * 0.55, 0.02), pos = vec3(0, y_s * 0.35, 0.0 - 0.27), grp = "wood")
+    pans = merge(transform(pan, translate = vec3(0.0 - w * 0.23, 0, 0)), transform(pan, translate = vec3(w * 0.23, 0, 0)))
+    gw = w + 0.95
+    gy = y_s + f * 0.35
+    gh = gw * 0.62
+    tymp = mc.prism_xy(p0 = vec3(0.0 - gw * 0.5, gy, 0), p1 = vec3(gw * 0.5, gy, 0), p2 = vec3(0.01, gy + gh, 0), p3 = vec3(0.0 - 0.01, gy + gh, 0), z0 = 0.0, z1 = 0.03, grp = "terra")
+    sl = degrees(atan2(gh, gw * 0.5))
+    rl = sqrt(gh * gh + gw * gw * 0.25)
+    rake0 = parts.slab(size = vec3(rl + 0.10, 0.12, 0.14), pos = vec3(0, 0.06, 0.07), grp = "terra")
+    rake_l = transform(rake0, rotate = vec3(0, 0, sl), translate = vec3(0.0 - gw * 0.25, gy + gh * 0.5, 0))
+    rake_r = transform(rake0, rotate = vec3(0, 0, 0.0 - sl), translate = vec3(gw * 0.25, gy + gh * 0.5, 0))
+    pin = merge(parts.slab(size = vec3(0.14, 0.34, 0.14), pos = vec3(0, 0.17, 0.07), grp = "terra"), transform(tv.pyramid(hw = 0.09, hd = 0.09, h = 0.26, top = 0.005, grp = "terra"), translate = vec3(0, 0.34, 0.07)))
+    pins = merge(transform(pin, translate = vec3(0, gy + gh, 0)), transform(pin, translate = vec3(0.0 - gw * 0.5 - 0.02, gy - 0.20, 0)), transform(pin, translate = vec3(gw * 0.5 + 0.02, gy - 0.20, 0)))
+    step = parts.slab(size = vec3(w + 0.60, 0.16, 0.45), pos = vec3(0, 0.0 - 0.08, 0.10), grp = "stone")
+    out = merge(lining, o1, o2, o3, cols, door, split, pans, tymp, rake_l, rake_r, pins, step)
+}
+
+def p6(s: f32 = 0.95, detail: int = 1) -> (out: geo<mesh>) {
+    """P6 — квадратная филёнка-розетка s×s (центр в (0, s/2)): профилированная рама,
+    утопленное поле, круглый медальон с кольцом и пятиконечной звездой из хорд."""
+    fw = 0.10
+    fr_t = parts.slab(size = vec3(s, fw, 0.06), pos = vec3(0, s - fw * 0.5, 0.03), grp = "terra")
+    fr_b = parts.slab(size = vec3(s, fw, 0.06), pos = vec3(0, fw * 0.5, 0.03), grp = "terra")
+    fr_l = parts.slab(size = vec3(fw, s, 0.06), pos = vec3(0.0 - (s - fw) * 0.5, s * 0.5, 0.03), grp = "terra")
+    fr_r = parts.slab(size = vec3(fw, s, 0.06), pos = vec3((s - fw) * 0.5, s * 0.5, 0.03), grp = "terra")
+    field = parts.slab(size = vec3(s - 2.0 * fw, s - 2.0 * fw, 0.015), pos = vec3(0, s * 0.5, 0.0075), grp = "terra")
+    rr = s * 0.32
+    ring = parts.to_group(g = fixtures.ring(center = vec3(0, s * 0.5, 0.03), radius = rr, r = 0.02, yaw_deg = 0), src = "iron", dst = "terra")
+    chord = parts.slab(size = vec3(2.0 * rr * 0.951, 0.022, 0.03), pos = vec3(0, rr * 0.309, 0.03), grp = "terra")
+    sp = set(set_position(mesh_line(count = 5, length = 0.0), pos = vec3(0, s * 0.5, 0)), "orient", orient_from_euler(vec3(0, 0, f32(@index) * 72.0)))
+    star = select(detail > 0, a = realize(instance_on_points(sp, source = chord)), b = empty_mesh())
+    out = merge(fr_t, fr_b, fr_l, fr_r, field, ring, star)
+}

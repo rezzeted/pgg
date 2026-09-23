@@ -1,0 +1,107 @@
+# Mansion — погонные элементы фасада (analysis.md §3, коды C*, P1): цокольный
+# отлив C1, межэтажный пояс C2, венчающий карниз C3 с аркатурой, плоская лента C5,
+# рустованная лопатка P1. Рамка тяги: вдоль X с центром в x = 0 (длина len), лицо
+# стены z = 0, вынос в +Z, низ тяги на y = 0. el/er ∈ {0, 1} — продлить левый/правый
+# конец на вынос своего яруса (выпуклый угол: две тяги сходятся «в ус» без щели).
+
+import lib.parts
+import lib.arch.terminals_victorian as tv
+import mansion.common as mc
+
+def profile_run(len: f32, q0: vec3, q1: vec3, q2: vec3, q3: vec3, grp: string, el: f32 = 0, er: f32 = 0) -> (out: geo<mesh>) {
+    """Ярус тяги: сечение q0..q3 = (вынос, y, 0) (обход против часовой в плоскости
+    «вынос → вверх»), протянутое вдоль X. Концы продлены на el/er × макс. вынос сечения."""
+    expect len > 0.0: "profile_run: длина положительная"
+    pm = max(max(dot(q0, (1, 0, 0)), dot(q1, (1, 0, 0))), max(dot(q2, (1, 0, 0)), dot(q3, (1, 0, 0))))
+    z0 = 0.0 - len * 0.5 - er * pm
+    z1 = len * 0.5 + el * pm
+    raw = mc.prism_xy(p0 = q0, p1 = q1, p2 = q2, p3 = q3, z0 = z0, z1 = z1, grp = grp)
+    out = transform(raw, rotate = vec3(0, -90, 0))
+}
+
+def block_row(len: f32, y0: f32, bw: f32, bh: f32, bd: f32, pitch: f32, grp: string, yaw: f32 = 0) -> (out: geo<mesh>) {
+    """Ряд одинаковых блоков bw×bh×bd (вынос bd от лица) с шагом pitch, по центру
+    длины len, низ на y0. yaw = 45 — поребрик (кирпич, поставленный углом наружу)."""
+    n = max(int(len / pitch), 1)
+    blk0 = parts.slab(size = vec3(bw, bh, bd), pos = vec3(0, bh * 0.5, 0), grp = grp)
+    blk = transform(blk0, rotate = vec3(0, yaw, 0))
+    pts = transform(mesh_line(count = n, length = f32(n - 1) * pitch, dir = (1, 0, 0)), translate = vec3(0.0 - f32(n - 1) * pitch * 0.5, y0, yaw > 0.0 ? 0.0 : bd * 0.5))
+    out = realize(instance_on_points(pts, source = blk))
+}
+
+def c1(len: f32, el: f32 = 0, er: f32 = 0) -> (out: geo<mesh>) {
+    """C1 — цокольный отлив (высота 0.30): две штукатурные ступени и жестяной скат
+    с выносом 0.17. Верх цоколя = низ светлой кладки первого этажа."""
+    s1 = profile_run(len = len, q0 = vec3(0, 0, 0), q1 = vec3(0.06, 0, 0), q2 = vec3(0.06, 0.14, 0), q3 = vec3(0, 0.14, 0), grp = "plaster", el = el, er = er)
+    s2 = profile_run(len = len, q0 = vec3(0, 0.14, 0), q1 = vec3(0.12, 0.14, 0), q2 = vec3(0.12, 0.23, 0), q3 = vec3(0, 0.23, 0), grp = "plaster", el = el, er = er)
+    cap = profile_run(len = len, q0 = vec3(0, 0.23, 0), q1 = vec3(0.17, 0.23, 0), q2 = vec3(0.17, 0.25, 0), q3 = vec3(0, 0.30, 0), grp = "tin", el = el, er = er)
+    out = merge(s1, s2, cap)
+}
+
+def c2(len: f32, el: f32 = 0, er: f32 = 0, detail: int = 1) -> (out: geo<mesh>) {
+    """C2 — межэтажный пояс (высота 0.36): нижняя полка, ряд сухариков (блоки 0.09 с
+    шагом 0.20, detail > 0), выносная плита 0.10 и жестяной скат-покрытие 0.15."""
+    b1 = profile_run(len = len, q0 = vec3(0, 0, 0), q1 = vec3(0.035, 0, 0), q2 = vec3(0.035, 0.09, 0), q3 = vec3(0, 0.09, 0), grp = "terra", el = el, er = er)
+    den0 = block_row(len = len, y0 = 0.09, bw = 0.09, bh = 0.10, bd = 0.085, pitch = 0.20, grp = "terra")
+    den = select(detail > 0, a = den0, b = profile_run(len = len, q0 = vec3(0, 0.09, 0), q1 = vec3(0.05, 0.09, 0), q2 = vec3(0.05, 0.19, 0), q3 = vec3(0, 0.19, 0), grp = "terra", el = el, er = er))
+    b2 = profile_run(len = len, q0 = vec3(0, 0.19, 0), q1 = vec3(0.10, 0.19, 0), q2 = vec3(0.10, 0.27, 0), q3 = vec3(0, 0.27, 0), grp = "terra", el = el, er = er)
+    cap = profile_run(len = len, q0 = vec3(0, 0.27, 0), q1 = vec3(0.15, 0.27, 0), q2 = vec3(0.15, 0.295, 0), q3 = vec3(0, 0.36, 0), grp = "tin", el = el, er = er)
+    out = merge(b1, den, b2, cap)
+}
+
+def arcade_bay(s: f32, y_s: f32, y_top: f32, dep: f32) -> (out: geo<mesh>) {
+    """Один пролёт аркатуры: пазухи над малой стрельчатой аркой пролёта s (пяты на y_s,
+    подъём 0.75·s) до верха y_top, глубина dep. Центр пролёта x = 0."""
+    f = s * 0.75
+    band = mc.arch_band(s = s, f = f, y0 = y_s - 0.02, y_s = y_s, n = 6, q0 = vec3(0, 0, 0), q1 = vec3(dep, 0, 0), q2 = vec3(dep, 0.0 - 0.40, 0), q3 = vec3(0, 0.0 - 0.40, 0), grp = "terra")
+    k0 = clip(band, origin = vec3(0, y_top, 0), normal = (0, -1, 0))
+    k1 = clip(k0, origin = vec3(s * 0.5, 0, 0), normal = (-1, 0, 0))
+    out = clip(k1, origin = vec3(0.0 - s * 0.5, 0, 0), normal = (1, 0, 0))
+}
+
+def c3(len: f32, el: f32 = 0, er: f32 = 0, pitch: f32 = 0.36, detail: int = 1) -> (out: geo<mesh>) {
+    """C3 — венчающий карниз (высота 0.86): гладкий фриз; аркатура — малые стрельчатые
+    арочки между подвесными ступенчатыми консольками («гирьки» снизу) с шагом pitch;
+    поребрик (кирпич углом наружу); полка; выносная корона 0.30 и жестяной скат.
+    detail = 0 — аркатура и поребрик заменены гладкими ярусами."""
+    expect pitch > 0.2: "c3: шаг аркатуры от 0.2 м"
+    fr = profile_run(len = len, q0 = vec3(0, 0, 0), q1 = vec3(0.02, 0, 0), q2 = vec3(0.02, 0.12, 0), q3 = vec3(0, 0.12, 0), grp = "terra", el = el, er = er)
+    n = max(int(len / pitch), 1)
+    x0 = 0.0 - f32(n) * pitch * 0.5
+    cb = tv.corbel(w = 0.10, d = 0.11, h = 0.24, grp = "terra", steps = 3)
+    drop = parts.slab(size = vec3(0.06, 0.07, 0.07), pos = vec3(0, 0.0 - 0.035, 0.05), grp = "terra")
+    pend = merge(cb, drop)
+    cp = transform(mesh_line(count = n + 1, length = f32(n) * pitch, dir = (1, 0, 0)), translate = vec3(x0, 0.20, 0))
+    pends = realize(instance_on_points(cp, source = pend))
+    bay = arcade_bay(s = pitch - 0.10, y_s = 0.30, y_top = 0.54, dep = 0.11)
+    bp = transform(mesh_line(count = n, length = f32(n - 1) * pitch, dir = (1, 0, 0)), translate = vec3(x0 + pitch * 0.5, 0, 0))
+    bays = realize(instance_on_points(bp, source = bay))
+    arc_s = profile_run(len = len, q0 = vec3(0, 0.30, 0), q1 = vec3(0.11, 0.30, 0), q2 = vec3(0.11, 0.54, 0), q3 = vec3(0, 0.54, 0), grp = "terra", el = el, er = er)
+    arcade = select(detail > 0, a = merge(pends, bays), b = arc_s)
+    por0 = block_row(len = len, y0 = 0.54, bw = 0.12, bh = 0.077, bd = 0.12, pitch = 0.17, grp = "terra", yaw = 45)
+    por_s = profile_run(len = len, q0 = vec3(0, 0.54, 0), q1 = vec3(0.07, 0.54, 0), q2 = vec3(0.07, 0.617, 0), q3 = vec3(0, 0.617, 0), grp = "terra", el = el, er = er)
+    por = select(detail > 0, a = por0, b = por_s)
+    shelf = profile_run(len = len, q0 = vec3(0, 0.617, 0), q1 = vec3(0.14, 0.617, 0), q2 = vec3(0.14, 0.70, 0), q3 = vec3(0, 0.70, 0), grp = "terra", el = el, er = er)
+    crown = profile_run(len = len, q0 = vec3(0, 0.70, 0), q1 = vec3(0.30, 0.70, 0), q2 = vec3(0.30, 0.80, 0), q3 = vec3(0, 0.80, 0), grp = "terra", el = el, er = er)
+    cap = profile_run(len = len, q0 = vec3(0, 0.80, 0), q1 = vec3(0.33, 0.80, 0), q2 = vec3(0.33, 0.82, 0), q3 = vec3(0, 0.86, 0), grp = "tin", el = el, er = er)
+    out = merge(fr, arcade, por, shelf, crown, cap)
+}
+
+def c5(len: f32, h: f32 = 0.23) -> (out: geo<mesh>) {
+    """C5 — плоская оранжевая лента в плоскости стены (3 ряда кладки, вынос 12 мм):
+    на уровнях подоконников и перемычек, делит поле стены на светлые филёнки."""
+    out = parts.slab(size = vec3(len, h, 0.012), pos = vec3(0, h * 0.5, 0.006), grp = "terra")
+}
+
+def p1(h: f32, w: f32 = 0.52, proj: f32 = 0.04, detail: int = 1) -> (out: geo<mesh>) {
+    """P1 — лопатка: вертикальная полоса terra шириной w (2 кирпича), вынос proj,
+    от y = 0 до h. detail > 0 — рустовка: блоки по 4 ряда кладки со швом 12 мм."""
+    expect h > 0.3: "p1: высота от 0.3 м"
+    step = mc.COURSE() * 4.0
+    n = max(int(h / step), 1)
+    bh = h / f32(n)
+    blk = parts.slab(size = vec3(w, bh - 0.012, proj), pos = vec3(0, bh * 0.5, proj * 0.5), grp = "terra")
+    rust = realize(instance_on_points(mesh_line(count = n, length = f32(n - 1) * bh, dir = (0, 1, 0)), source = blk))
+    core = parts.slab(size = vec3(w - 0.02, h, proj - 0.01), pos = vec3(0, h * 0.5, (proj - 0.01) * 0.5), grp = "terra")
+    out = select(detail > 0, a = merge(rust, core), b = parts.slab(size = vec3(w, h, proj), pos = vec3(0, h * 0.5, proj * 0.5), grp = "terra"))
+}

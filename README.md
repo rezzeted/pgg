@@ -19,6 +19,7 @@ How the shots were framed and how to regenerate them: [`docs/gallery/README.md`]
 | `src/tests/pgg` | gtest + `corpus/` fixtures and `goldens/` fingerprints |
 | `resources/pgg` | Shared `lib/` and remaining art examples (inn_hotel, clocktower, …) |
 | `resources/AmberEstate` | Estate mini-project: cottages, spire house, church, stone arch, props |
+| `resources/Mansion` | Brick-style mansion built from photo references (`reference/`, `analysis.md`) |
 | `docs/pgg` | Language spec, implementation notes, cheatsheet, RPC contract |
 | `docs/gallery` | README hero shots of the art examples |
 

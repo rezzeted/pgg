@@ -1,0 +1,95 @@
+# Mansion — стенд элементов особняка: каждый элемент отдельно на куске стены
+# (иерархия «от частного к общему», analysis.md §6). Узлы *_unit — для
+# изолированного рендера и сравнения с референсами reference/*.jpg;
+# windows_row — все окна в ряд на одном кадре.
+
+import mansion.common as mc
+import mansion.windows as mw
+import mansion.belts as mb
+import mansion.details as md
+import mansion.units as mu
+
+# --- W1: рядовое окно (три створки, 1-й этаж бокового фасада) -------------------
+w1_w = 1.25
+w1_h = 1.85
+w1_win = mw.w1(w = w1_w, h = w1_h, cols = 3)
+w1_wall = mc.wall_with_hole(w = w1_w + 1.6, y0 = -0.5, y1 = w1_h + 1.1, hw = w1_w, hh = w1_h)
+w1_unit = mc.paint(merge(w1_wall, w1_win))
+
+# --- W1n: узкое двухстворчатое окно (2-й этаж входного фасада) --------------------
+w1n_w = 0.95
+w1n_h = 2.05
+w1n_win = mw.w1(w = w1n_w, h = w1n_h, cols = 2)
+w1n_wall = mc.wall_with_hole(w = w1n_w + 1.6, y0 = -0.5, y1 = w1n_h + 1.1, hw = w1n_w, hh = w1n_h)
+w1n_unit = mc.paint(merge(w1n_wall, w1n_win))
+
+# --- W1b: низкое широкое окно без фрамуги (1-й этаж бокового ризалита) ------------
+w1b_w = 1.45
+w1b_h = 1.05
+w1b_win = mw.w1(w = w1b_w, h = w1b_h, cols = 3, fan_k = 0.0)
+w1b_wall = mc.wall_with_hole(w = w1b_w + 1.6, y0 = -0.5, y1 = w1b_h + 1.1, hw = w1b_w, hh = w1b_h)
+w1b_unit = mc.paint(merge(w1b_wall, w1b_win))
+
+# --- W2: стрельчатое окно ризалита ------------------------------------------------
+w2_w = 1.30
+w2_h = 2.45
+w2_win = mw.w2(w = w2_w, h = w2_h)
+w2_wall = mc.wall_with_hole(w = w2_w + 1.6, y0 = -0.5, y1 = w2_h + 0.9, hw = w2_w, hh = w2_h)
+w2_unit = mc.paint(merge(w2_wall, w2_win))
+
+# --- W3: окно эркера под люнетом (стена эркера — terra) ----------------------------
+w3_w = 0.62
+w3_h = 1.85
+w3_win = mw.w3(w = w3_w, h = w3_h)
+w3_wall = mc.wall_with_hole(w = w3_w + 1.0, y0 = -0.5, y1 = w3_h + 0.9, hw = w3_w, hh = w3_h, grp = "terra")
+w3_unit = mc.paint(merge(w3_wall, w3_win))
+
+# --- W6: окно полуподвала в штукатурном цоколе -------------------------------------
+w6_w = 0.55
+w6_h = 0.62
+w6_win = mw.w6(w = w6_w, h = w6_h)
+w6_wall = mc.wall_with_hole(w = w6_w + 1.0, y0 = -0.4, y1 = w6_h + 0.5, hw = w6_w, hh = w6_h, grp = "plaster")
+w6_unit = mc.paint(merge(w6_wall, w6_win))
+
+# --- обзорный ряд окон (низ проёмов на y = 0, шаг по X) -----------------------------
+windows_row = merge(transform(w1_unit, translate = vec3(-7.6, 0, 0)), transform(w1n_unit, translate = vec3(-4.6, 0, 0)), transform(w1b_unit, translate = vec3(-1.6, 0, 0)), transform(w2_unit, translate = vec3(1.6, 0, 0)), transform(w3_unit, translate = vec3(4.2, 0, 0)), transform(w6_unit, translate = vec3(6.1, 0, 0)))
+
+# --- тяги на выпуклом углу: стена A вдоль X (лицо +Z), стена B вдоль −Z (лицо +X) ---
+# Сверху вниз: C3 венец, лента C5, C2 пояс, C1 цокольный отлив; лопатка P1 на A.
+# Тяга A продлена правым концом (er = 1), тяга B — левым (el = 1): стык «в ус».
+bl = 3.0
+def corner_b(g: geo<mesh>) -> (out: geo<mesh>) {
+    """Перенести элемент стены A на стену B того же угла (поворот +90° вокруг Y)."""
+    out = transform(g, rotate = vec3(0, 90, 0), translate = vec3(1.5, 0, -1.5))
+}
+wall_a = merge(mc.wall_patch(w = bl, y0 = 0.0, y1 = 4.2), mc.wall_patch(w = bl, y0 = -1.0, y1 = 0.0, grp = "plaster"))
+belts_a = merge(mb.c1(len = bl, er = 1), transform(mb.c2(len = bl, er = 1), translate = vec3(0, 1.4, 0)), transform(mb.c5(len = bl), translate = vec3(0, 2.4, 0)), transform(mb.c3(len = bl, er = 1), translate = vec3(0, 3.34, 0)), transform(mb.p1(h = 3.34), translate = vec3(-0.9, 0, 0)))
+belts_b = merge(mb.c1(len = bl, el = 1), transform(mb.c2(len = bl, el = 1), translate = vec3(0, 1.4, 0)), transform(mb.c3(len = bl, el = 1), translate = vec3(0, 3.34, 0)))
+belts_unit = mc.paint(merge(wall_a, belts_a, corner_b(g = wall_a), corner_b(g = belts_b)))
+
+# --- детали: портал P2 с балконом P3 над ним, балкончик P4, розетка P6, консоль P5 --
+p2_w = 1.30
+p2_h = 2.75
+portal_wall = mc.wall_with_hole(w = 3.6, y0 = -0.3, y1 = 5.4, hw = p2_w, hh = p2_h)
+portal_unit = mc.paint(merge(portal_wall, md.p2(w = p2_w, h = p2_h), transform(md.p3(), translate = vec3(0, 4.35, 0))))
+p4_unit = mc.paint(merge(mc.wall_patch(w = 2.2, y0 = -1.0, y1 = 1.6), md.p4()))
+p6_unit = mc.paint(merge(mc.wall_patch(w = 1.5, y0 = -0.3, y1 = 1.3), md.p6()))
+p5_unit = mc.paint(merge(mc.wall_patch(w = 1.2, y0 = -1.3, y1 = 0.3, grp = "terra"), md.p5()))
+details_row = merge(transform(portal_unit, translate = vec3(-3.0, 0, 0)), transform(p4_unit, translate = vec3(0.4, 3.6, 0)), transform(p6_unit, translate = vec3(0.4, 0.8, 0)), transform(p5_unit, translate = vec3(2.4, 2.2, 0)))
+
+# --- агрегаты (mansion/units): участки фасада во всю высоту -----------------------
+# Боковой фасад у эркера слева направо: простенок, ризалит, ось, угловой объём
+# (рамка угла — плоскость лица z = 0 и x = 0 справа, как в здании).
+axis_w = 3.4
+ris_w = 4.2
+side_row = merge(transform(mu.end_pier(), translate = vec3(0.0 - axis_w - ris_w - 0.25, 0, 0)), transform(mu.risalit_side(w = ris_w), translate = vec3(0.0 - axis_w - ris_w * 0.5, 0, 0)), transform(mu.axis_bay(w = axis_w), translate = vec3(0.0 - axis_w * 0.5, 0, 0)))
+corner_unit = mc.paint(merge(side_row, transform(mu.corner_block(), translate = vec3(3.0, 0, 0)), transform(mu.turret(), translate = vec3(3.0, mc.Y_EAVE(), 0))))
+entr_unit = mc.paint(merge(mu.risalit_entr(w = ris_w), transform(mu.axis_bay(w = 3.0, win_w = 0.95, win_h = 2.05, cols = 2), translate = vec3(ris_w * 0.5 + 1.5, 0, 0)), transform(mu.triple_bay(), translate = vec3(0.0 - ris_w * 0.5 - 1.95, 0, 0))))
+w5_unit = mc.paint(mu.w5())
+
+output windows_row
+output belts_unit
+output details_row
+output corner_unit
+output entr_unit
+output w5_unit
