@@ -1,0 +1,247 @@
+# Mansion — общие константы, материалы и геометрические хелперы особняка.
+# Разбор здания — resources/Mansion/analysis.md.
+#
+# Конвенция элементов (терминалов) особняка: низ-центр проёма в origin, лицо +Z,
+# вверх +Y; плоскость z = 0 — ЛИЦО СТЕНЫ (светлая кладка). Рельеф (наличники,
+# лопатки, карнизы) — в +z, переплёты и стекло утоплены в −z (четверть проёма).
+# Группы-материалы: brick (светлая кладка поля стены и откосы), terra (оранжевый
+# лицевой кирпич: наличники, лопатки, ленты, карнизы), plaster (цоколь), tin
+# (отливы, покрытия поясов), wood (переплёты), glass, slate (ромбовидный шифер),
+# tile (фигурная плитка шатра), iron (ковка), stone (ступени), redbrick (трубы).
+
+import lib.parts
+import lib.masonry as masonry
+
+def COURSE() -> (out: f32) {
+    """Высота ряда кладки: кирпич 65 мм + шов 12 мм."""
+    out = 0.077
+}
+
+# --- вертикальные отметки (analysis.md §5, по side_facade.jpg, ≈ 65 px/м) ---------
+def Y_PLINTH() -> (out: f32) {
+    """Верх штукатурного цоколя = низ светлой кладки 1-го этажа (C1 — под ней)."""
+    out = 1.40
+}
+
+def Y_SILL1() -> (out: f32) {
+    """Низ проёмов 1-го этажа (W1, W1b)."""
+    out = 2.00
+}
+
+def Y_BELT() -> (out: f32) {
+    """Низ межэтажного пояса C2 (высота 0.36)."""
+    out = 4.94
+}
+
+def Y_F2() -> (out: f32) {
+    """Верх пояса C2 = низ стены 2-го этажа."""
+    out = 5.30
+}
+
+def Y_SILL2() -> (out: f32) {
+    """Низ проёмов 2-го этажа (W1, W3)."""
+    out = 5.86
+}
+
+def Y_CROWN() -> (out: f32) {
+    """Низ венчающего карниза C3 (высота 0.86)."""
+    out = 8.80
+}
+
+def Y_EAVE() -> (out: f32) {
+    """Верх карниза C3 = линия свеса кровли и низ щипцов."""
+    out = 9.66
+}
+
+def WALL_T() -> (out: f32) {
+    """Толщина наружной стены (2.5 кирпича)."""
+    out = 0.60
+}
+
+def seg_place(g: geo<mesh>, p0: vec3, p1: vec3) -> (out: geo<mesh>) {
+    """Поставить панель (локально: вдоль X с центром в 0, лицо +Z) на отрезок плана
+    p0→p1 (y игнорируется): обход контура CCW вид сверху — лицо смотрит наружу
+    (наружная нормаль (−dir.z, 0, dir.x), как у lib/arch/plan)."""
+    dx = dot(p1, (1, 0, 0)) - dot(p0, (1, 0, 0))
+    dz = dot(p1, (0, 0, 1)) - dot(p0, (0, 0, 1))
+    yaw = degrees(atan2(0.0 - dz, dx))
+    mid = vec3((dot(p0, (1, 0, 0)) + dot(p1, (1, 0, 0))) * 0.5, 0.0, (dot(p0, (0, 0, 1)) + dot(p1, (0, 0, 1))) * 0.5)
+    out = transform(g, rotate = vec3(0, yaw, 0), translate = mid)
+}
+
+def seg_len(p0: vec3, p1: vec3) -> (out: f32) {
+    """Длина отрезка плана p0→p1 (по XZ)."""
+    dx = dot(p1, (1, 0, 0)) - dot(p0, (1, 0, 0))
+    dz = dot(p1, (0, 0, 1)) - dot(p0, (0, 0, 1))
+    out = sqrt(dx * dx + dz * dz)
+}
+
+def plan_slab(p0: vec3, p1: vec3, p2: vec3, p3: vec3, y0: f32, y1: f32, grp: string) -> (out: geo<mesh>) {
+    """Горизонтальная плита по выпуклому четырёхугольнику плана p0..p3 (x, z; обход CCW
+    вид сверху) от y0 до y1: пол эркера, плита балкона."""
+    q0 = vec3(dot(p0, (1, 0, 0)), dot(p0, (0, 0, 1)), 0)
+    q1 = vec3(dot(p1, (1, 0, 0)), dot(p1, (0, 0, 1)), 0)
+    q2 = vec3(dot(p2, (1, 0, 0)), dot(p2, (0, 0, 1)), 0)
+    q3 = vec3(dot(p3, (1, 0, 0)), dot(p3, (0, 0, 1)), 0)
+    raw = prism_xy(p0 = q3, p1 = q2, p2 = q1, p3 = q0, z0 = 0.0 - y1, z1 = 0.0 - y0, grp = grp)
+    out = transform(raw, rotate = vec3(90, 0, 0))
+}
+
+def prism_xy(p0: vec3, p1: vec3, p2: vec3, p3: vec3, z0: f32, z1: f32, grp: string) -> (out: geo<mesh>) {
+    """Четырёхугольник p0..p3 в плоскости XY (обход против часовой, если смотреть с +Z;
+    z точек игнорируется), выдавленный вдоль Z от z0 до z1. Фасеточные нормали, группа grp."""
+    expect z1 > z0: "prism_xy: z1 > z0"
+    q0 = vec3(dot(p0, (1, 0, 0)), dot(p0, (0, 1, 0)), 0.0)
+    q1 = vec3(dot(p1, (1, 0, 0)), dot(p1, (0, 1, 0)), 0.0)
+    q2 = vec3(dot(p2, (1, 0, 0)), dot(p2, (0, 1, 0)), 0.0)
+    q3 = vec3(dot(p3, (1, 0, 0)), dot(p3, (0, 1, 0)), 0.0)
+    prof = set_position(mesh_line(count = 4, length = 0.0), pos = @index == 0 ? q0 : (@index == 1 ? q1 : (@index == 2 ? q2 : q3)))
+    path = transform(mesh_line(count = 2, length = z1 - z0, dir = (0, 0, 1)), translate = vec3(0, 0, z0))
+    out = mark(compute_normals(sweep(path, profile = prof), mode = flat), grp, where = true, domain = faces)
+}
+
+def arch_wedge(r: f32, t: f32, half_deg: f32, z0: f32, z1: f32, grp: string) -> (out: geo<mesh>) {
+    """Клин арки (радиальный кирпич) с центром окружности в origin, ось клина — +Y:
+    интрадос радиуса r, экстрадос r + t, полуугол half_deg."""
+    s = sin(radians(half_deg))
+    c = cos(radians(half_deg))
+    out = prism_xy(p0 = vec3(0.0 - r * s, r * c, 0), p1 = vec3(r * s, r * c, 0), p2 = vec3((r + t) * s, (r + t) * c, 0), p3 = vec3(0.0 - (r + t) * s, (r + t) * c, 0), z0 = z0, z1 = z1, grp = grp)
+}
+
+def segment_arch(span: f32, rise: f32, t: f32, z0: f32, z1: f32, n: int, joint: f32, grp: string, clip_hw: f32 = 0) -> (out: geo<mesh>) {
+    """Лучковая (сегментная) арка из n одинаковых радиальных клиньев со швами joint.
+    Хорда интрадоса span лежит на y = 0 (пяты в ±span/2), подъём интрадоса rise,
+    толщина кольца t, глубина z0..z1. clip_hw > 0 — торцы подрезаны вертикалями
+    x = ±clip_hw («уши» наличника). Нечётное n — замковый клин по оси."""
+    expect rise > 0.0 & span > rise * 2.0: "segment_arch: пологая дуга — 0 < rise < span/2"
+    expect n >= 3: "segment_arch: минимум три клина"
+    R = (span * span * 0.25 + rise * rise) / (2.0 * rise)
+    a_deg = degrees(asin(span * 0.5 / R))
+    step = 2.0 * a_deg / f32(n)
+    half = step * 0.5 - degrees(joint * 0.5 / R)
+    wedge = arch_wedge(r = R, t = t, half_deg = half, z0 = z0, z1 = z1, grp = grp)
+    p0 = set_position(mesh_line(count = n, length = 0.0), pos = vec3(0, rise - R, 0))
+    pts = set(p0, "orient", orient_from_euler(vec3(0, 0, a_deg - (f32(@index) + 0.5) * step)))
+    ring = realize(instance_on_points(pts, source = wedge))
+    cl = clip(clip(ring, origin = vec3(clip_hw, 0, 0), normal = (-1, 0, 0)), origin = vec3(0.0 - clip_hw, 0, 0), normal = (1, 0, 0))
+    out = select(clip_hw > 0.0, a = cl, b = ring)
+}
+
+def arch_path(s: f32, f: f32, y0: f32, y_s: f32, n: int) -> (out: geo<points>) {
+    """Контур проёма с арочной головой (упорядоченные точки в плоскости XY): от низа
+    левой пяты (−s/2, y0) вверх до пяты (−s/2, y_s), по дуге через вершину (0, y_s + f)
+    и вниз до (s/2, y0). f = s/2 — полуциркульная арка, f > s/2 — стрельчатая
+    двухцентровая (центры дуг на линии пят в ±c). n — отрезков на полудугу.
+    Путь для sweep (архивольт, коробка) и профиль для выдавливания (стекло): выпуклый."""
+    expect f >= s * 0.5 - 0.0001: "arch_path: подъём не меньше полупролёта (f >= s/2)"
+    expect y_s > y0: "arch_path: пяты выше низа (y_s > y0); для тимпана — y0 чуть ниже y_s"
+    c = (f * f - s * s * 0.25) / s
+    r = c + s * 0.5
+    ta = atan2(f, 0.0 - c)
+    nn = f32(n)
+    last = f32(2 * n + 2)
+    i = f32(@index)
+    k = i - 1.0
+    kk = k <= nn ? k : 2.0 * nn - k
+    phi = 3.14159265 + (ta - 3.14159265) * kk / nn
+    xa = c + r * cos(phi)
+    ya = y_s + r * sin(phi)
+    x = i < 0.5 ? 0.0 - s * 0.5 : (i > last - 0.5 ? s * 0.5 : (k <= nn ? xa : 0.0 - xa))
+    y = (i < 0.5) | (i > last - 0.5) ? y0 : ya
+    out = set_position(mesh_line(count = 2 * n + 3, length = 0.0), pos = vec3(x, y, 0.0))
+}
+
+def arch_y(s: f32, f: f32, y_s: f32, x: f32) -> (out: f32) {
+    """Высота интрадоса arch_path над точкой x (|x| <= s/2) — верх средника/стойки."""
+    c = (f * f - s * s * 0.25) / s
+    r = c + s * 0.5
+    d = abs(x) + c
+    out = y_s + sqrt(max(r * r - d * d, 0.0))
+}
+
+def arch_band(s: f32, f: f32, y0: f32, y_s: f32, n: int, q0: vec3, q1: vec3, q2: vec3, q3: vec3, grp: string) -> (out: geo<mesh>) {
+    """Тяга по контуру arch_path: четырёхугольный профиль q0..q3 протянут по контуру.
+    Точки профиля — (z, u, 0): z — глубина от лица стены (+ наружу), u — сдвиг от линии
+    проёма (+ внутрь проёма, − наружу, в кладку). Архивольт — u < 0, коробка — u > 0."""
+    path = arch_path(s = s, f = f, y0 = y0, y_s = y_s, n = n)
+    prof = set_position(mesh_line(count = 4, length = 0.0), pos = @index == 0 ? q0 : (@index == 1 ? q1 : (@index == 2 ? q2 : q3)))
+    band = sweep(path, profile = prof)
+    out = mark(compute_normals(band, mode = auto, angle = 40), grp, where = true, domain = faces)
+}
+
+def arch_slab(s: f32, f: f32, y0: f32, y_s: f32, n: int, z0: f32, z1: f32, grp: string) -> (out: geo<mesh>) {
+    """Плита по контуру arch_path (заполнение проёма: стекло, тимпан) толщиной z0..z1."""
+    expect z1 > z0: "arch_slab: z1 > z0"
+    prof = arch_path(s = s, f = f, y0 = y0, y_s = y_s, n = n)
+    path = transform(mesh_line(count = 2, length = z1 - z0, dir = (0, 0, 1)), translate = vec3(0, 0, z0))
+    out = mark(compute_normals(sweep(path, profile = prof), mode = flat), grp, where = true, domain = faces)
+}
+
+def sash(w: f32, h: f32, cols: int, fan: f32, bar: f32 = 0.06, depth: f32 = 0.07) -> (out: geo<mesh>) {
+    """Оконный блок w×h (низ в y = 0, лицо коробки на z = 0, тело в −z): коробка,
+    фрамуга высотой fan над импостом (fan = 0 — без фрамуги), cols = 3 — «узкая |
+    широкая | узкая» створки (средники на ±0.26·w), cols = 2 — средник по оси.
+    Стекло утоплено. wood + glass."""
+    expect cols == 2 | cols == 3: "sash: cols = 2 или 3"
+    zc = 0.0 - depth * 0.5
+    left = parts.slab(size = vec3(bar, h, depth), pos = vec3(0.0 - (w - bar) * 0.5, h * 0.5, zc), grp = "wood")
+    right = parts.slab(size = vec3(bar, h, depth), pos = vec3((w - bar) * 0.5, h * 0.5, zc), grp = "wood")
+    bot = parts.slab(size = vec3(w, bar * 1.3, depth), pos = vec3(0, bar * 0.65, zc), grp = "wood")
+    top = parts.slab(size = vec3(w, bar, depth), pos = vec3(0, h - bar * 0.5, zc), grp = "wood")
+    tr = parts.slab(size = vec3(w, bar * 0.9, depth), pos = vec3(0, fan > 0.0 ? h - fan : h - bar * 0.5, zc), grp = "wood")
+    mx = cols == 3 ? w * 0.26 : 0.0
+    m_l = parts.slab(size = vec3(bar * 0.8, h, depth * 0.8), pos = vec3(0.0 - mx, h * 0.5, zc), grp = "wood")
+    m_r = parts.slab(size = vec3(bar * 0.8, h, depth * 0.8), pos = vec3(mx, h * 0.5, zc), grp = "wood")
+    glass = parts.slab(size = vec3(w - 0.02, h - 0.02, 0.01), pos = vec3(0, h * 0.5, 0.0 - depth * 0.6), grp = "glass")
+    out = merge(left, right, bot, top, tr, m_l, m_r, glass)
+}
+
+def wall_patch(w: f32, y0: f32, y1: f32, t: f32 = 0.5, grp: string = "brick") -> (out: geo<mesh>) {
+    """Кусок стены для стендов: ширина w (центр x = 0), от y0 до y1, лицо на z = 0,
+    тело в −z на толщину t. Группа grp (brick — поле стены, terra — угловой объём)."""
+    out = parts.slab(size = vec3(w, y1 - y0, t), pos = vec3(0, (y0 + y1) * 0.5, 0.0 - t * 0.5), grp = grp)
+}
+
+def wall_with_hole(w: f32, y0: f32, y1: f32, hw: f32, hh: f32, t: f32 = 0.5, grp: string = "brick") -> (out: geo<mesh>) {
+    """wall_patch с прямоугольным проёмом hw×hh (низ проёма y = 0, ось x = 0). Откосы
+    среза — группа brick (clip_rect_hole), поэтому стенка строится в brick и целиком
+    переводится в grp: mark присваивает членство, to_group в уже занятую группу
+    снял бы её с остальных граней."""
+    holed = masonry.clip_rect_hole(g = wall_patch(w = w, y0 = y0, y1 = y1, t = t), cx = 0.0, y0 = 0.0, w = hw, h = hh, gap = 0.0)
+    out = select(grp == "brick", a = holed, b = parts.to_group(g = holed, src = "brick", dst = grp))
+}
+
+def cut(g: geo<mesh>, cx: f32, y0: f32, w: f32, h: f32) -> (out: geo<mesh>) {
+    """Сквозной прямоугольный проём w×h (низ y0, ось x = cx) в стене; откосы — brick.
+    Несколько проёмов — цепочкой cut(cut(...))."""
+    out = masonry.clip_rect_hole(g = g, cx = cx, y0 = y0, w = w, h = h, gap = 0.0)
+}
+
+def as_group(g: geo<mesh>, grp: string) -> (out: geo<mesh>) {
+    """Стена, построенная в brick (с откосами cut), целиком в группу grp."""
+    out = select(grp == "brick", a = g, b = parts.to_group(g = g, src = "brick", dst = grp))
+}
+
+def paint(g: geo<mesh>) -> (out: geo<mesh>) {
+    """Окраска @Cd по группам-материалам особняка. Все группы палитры объявлены на
+    пустом меше-заглушке и подмешаны merge'ем, поэтому paint подходит любому элементу
+    (иначе ingroup по отсутствующей группе — E305). mark(where = false) по самому g
+    не годится: mark перезаписывает членство и снял бы группу с граней."""
+    e = empty_mesh()
+    s0 = mark(mark(mark(mark(mark(e, "brick", where = false, domain = faces), "terra", where = false, domain = faces), "plaster", where = false, domain = faces), "tin", where = false, domain = faces), "wood", where = false, domain = faces)
+    s1 = mark(mark(mark(mark(mark(mark(s0, "glass", where = false, domain = faces), "slate", where = false, domain = faces), "tile", where = false, domain = faces), "iron", where = false, domain = faces), "stone", where = false, domain = faces), "redbrick", where = false, domain = faces)
+    g1 = merge(g, s1)
+    c0 = vec3(1.0, 0.0, 1.0)
+    c1 = ingroup("brick") ? vec3(0.86, 0.74, 0.52) : c0
+    c2 = ingroup("terra") ? vec3(0.78, 0.50, 0.26) : c1
+    c3 = ingroup("plaster") ? vec3(0.66, 0.55, 0.42) : c2
+    c4 = ingroup("tin") ? vec3(0.52, 0.54, 0.55) : c3
+    c5 = ingroup("wood") ? vec3(0.20, 0.14, 0.10) : c4
+    c6 = ingroup("glass") ? vec3(0.30, 0.36, 0.40) : c5
+    c7 = ingroup("slate") ? vec3(0.30, 0.32, 0.36) : c6
+    c8 = ingroup("tile") ? vec3(0.36, 0.20, 0.17) : c7
+    c9 = ingroup("iron") ? vec3(0.06, 0.06, 0.065) : c8
+    c10 = ingroup("stone") ? vec3(0.55, 0.53, 0.50) : c9
+    c11 = ingroup("redbrick") ? vec3(0.62, 0.30, 0.22) : c10
+    out = set(g1, "Cd", c11, domain = faces)
+}

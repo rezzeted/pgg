@@ -1,0 +1,366 @@
+# Mansion — агрегаты второго уровня (analysis.md §4): участки фасада во всю высоту
+# стены, собранные из элементов windows/belts/details. Рамка участка — рамка фасадного
+# scope'а lib/layout: низ-центр на земле (y = 0), вдоль локального X ширина w, лицо
+# фасада z = 0, наружу +Z; тело стены — в −z на WALL_T. Ризалит выступает лицом на
+# z = rp, его боковые грани — торцы того же тела. el/er — продлить тяги на левом/правом
+# конце участка (выпуклый угол здания), см. mansion/belts.
+#
+# Участки: end_pier — угловой простенок с лопаткой; axis_bay — рядовая ось (окно
+# на двух этажах, пара окон подвала); triple_bay — группа из трёх узких окон;
+# risalit_side — лестничный ризалит бокового фасада (окна в полуэтажах); risalit_entr —
+# входной ризалит (портал, балкон, стрельчатая дверь); gable — щипец ризалита;
+# corner_block — угловой объём с эркером на консолях; turret — шатёр над эркером;
+# w5 — слуховое окно основной кровли.
+
+import lib.parts
+import lib.ironwork
+import lib.fixtures
+import lib.arch.terminals_victorian as tv
+import mansion.common as mc
+import mansion.windows as mw
+import mansion.belts as mb
+import mansion.details as md
+
+def wall_body(w: f32, y0: f32, y1: f32, front: f32 = 0.0, grp: string = "brick") -> (out: geo<mesh>) {
+    """Тело стены участка: ширина w (центр x = 0), от y0 до y1, лицо на z = front,
+    тыл на z = −WALL_T (у ризалита front = rp — выступ цельным телом)."""
+    t = mc.WALL_T() + front
+    out = parts.slab(size = vec3(w, y1 - y0, t), pos = vec3(0, (y0 + y1) * 0.5, front - t * 0.5), grp = grp)
+}
+
+def at(g: geo<mesh>, x: f32, y: f32, z: f32 = 0.0) -> (out: geo<mesh>) {
+    """Сдвиг элемента в точку участка."""
+    out = transform(g, translate = vec3(x, y, z))
+}
+
+def pair(g: geo<mesh>, dx: f32, y: f32, z: f32 = 0.0) -> (out: geo<mesh>) {
+    """Два экземпляра элемента симметрично оси участка (x = ±dx)."""
+    out = merge(at(g = g, x = 0.0 - dx, y = y, z = z), at(g = g, x = dx, y = y, z = z))
+}
+
+def belts_run(len: f32, el: f32, er: f32, detail: int, z: f32 = 0.0) -> (out: geo<mesh>) {
+    """Горизонтальные тяги участка: цокольный отлив C1, пояс C2, венец C3."""
+    t1 = at(g = mb.c1(len = len, el = el, er = er), x = 0.0, y = mc.Y_PLINTH() - 0.30, z = z)
+    t2 = at(g = mb.c2(len = len, el = el, er = er, detail = detail), x = 0.0, y = mc.Y_BELT(), z = z)
+    t3 = at(g = mb.c3(len = len, el = el, er = er, detail = detail), x = 0.0, y = mc.Y_CROWN(), z = z)
+    out = merge(t1, t2, t3)
+}
+
+def pier_bands(w: f32, ob: f32, y: f32, lop: f32 = 0.0, z: f32 = 0.0) -> (out: geo<mesh>) {
+    """Лента C5 на простенках по обе стороны проёма: от наличника (полуширина ob) до
+    края участка (минус лопатка lop), низ ленты на y."""
+    expect w * 0.5 - lop - ob > 0.05: "pier_bands: простенок уже 5 см — ленту некуда класть"
+    len = w * 0.5 - lop - ob
+    out = pair(g = mb.c5(len = len), dx = ob + len * 0.5, y = y, z = z)
+}
+
+def plinth_wall(w: f32, front: f32 = 0.0) -> (out: geo<mesh>) {
+    """Сплошной штукатурный цоколь участка (от −0.3 до Y_PLINTH)."""
+    out = mc.as_group(g = wall_body(w = w, y0 = -0.3, y1 = mc.Y_PLINTH(), front = front), grp = "plaster")
+}
+
+# --- простенки и оси ---------------------------------------------------------------
+def end_pier(w: f32 = 0.5, right: bool = false, detail: int = 1) -> (out: geo<mesh>) {
+    """Угловой простенок фасада: гладкая кладка с рустованной лопаткой P1 во всю высоту
+    этажей. right = false — левый конец фасада (тяги продлены влево), true — правый."""
+    el = right ? 0.0 : 1.0
+    er = right ? 1.0 : 0.0
+    wall = merge(wall_body(w = w, y0 = mc.Y_PLINTH(), y1 = mc.Y_EAVE()), plinth_wall(w = w))
+    lop = at(g = mb.p1(h = mc.Y_CROWN() - mc.Y_PLINTH(), w = w, detail = detail), x = 0.0, y = mc.Y_PLINTH())
+    out = merge(wall, lop, belts_run(len = w, el = el, er = er, detail = detail))
+}
+
+def axis_bay(w: f32 = 3.4, win_w: f32 = 1.25, win_h: f32 = 1.85, cols: int = 3, detail: int = 1) -> (out: geo<mesh>) {
+    """Рядовая ось: окно W1 (win_w×win_h, cols створок) на обоих этажах по одной
+    вертикали, под ним пара окон подвала W6; ленты C5 на простенках — на уровне
+    подоконников и импостов; тяги C1/C2/C3 во всю ширину участка."""
+    ob = win_w * 0.5 + 0.34
+    bx = max(win_w * 0.32, 0.33)
+    w0 = wall_body(w = w, y0 = mc.Y_PLINTH(), y1 = mc.Y_EAVE())
+    wall = mc.cut(g = mc.cut(g = w0, cx = 0.0, y0 = mc.Y_SILL1(), w = win_w, h = win_h), cx = 0.0, y0 = mc.Y_SILL2(), w = win_w, h = win_h)
+    p0 = wall_body(w = w, y0 = -0.3, y1 = mc.Y_PLINTH())
+    pl = mc.as_group(g = mc.cut(g = mc.cut(g = p0, cx = 0.0 - bx, y0 = 0.32, w = 0.55, h = 0.62), cx = bx, y0 = 0.32, w = 0.55, h = 0.62), grp = "plaster")
+    win = mw.w1(w = win_w, h = win_h, cols = cols, detail = detail)
+    wins = merge(at(g = win, x = 0.0, y = mc.Y_SILL1()), at(g = win, x = 0.0, y = mc.Y_SILL2()))
+    bsm = pair(g = mw.w6(w = 0.55, h = 0.62), dx = bx, y = 0.32)
+    th = win_h * 0.73 - 0.115
+    bands = merge(pier_bands(w = w, ob = ob, y = mc.Y_SILL1() - 0.23), pier_bands(w = w, ob = ob, y = mc.Y_SILL1() + th), pier_bands(w = w, ob = ob, y = mc.Y_SILL2() - 0.23), pier_bands(w = w, ob = ob, y = mc.Y_SILL2() + th))
+    out = merge(wall, pl, wins, bsm, bands, belts_run(len = w, el = 0.0, er = 0.0, detail = detail))
+}
+
+def triple_bay(w: f32 = 3.9, win_w: f32 = 0.66, pitch: f32 = 1.30, detail: int = 1) -> (out: geo<mesh>) {
+    """Группа из трёх узких окон (дальний конец бокового фасада): три W1 на двух
+    створках с шагом pitch — наличники смыкаются в сплошную аркаду; под каждым
+    окном — окно подвала."""
+    h = 1.85
+    w0 = wall_body(w = w, y0 = mc.Y_PLINTH(), y1 = mc.Y_EAVE())
+    f1 = mc.cut(g = mc.cut(g = mc.cut(g = w0, cx = 0.0 - pitch, y0 = mc.Y_SILL1(), w = win_w, h = h), cx = 0.0, y0 = mc.Y_SILL1(), w = win_w, h = h), cx = pitch, y0 = mc.Y_SILL1(), w = win_w, h = h)
+    wall = mc.cut(g = mc.cut(g = mc.cut(g = f1, cx = 0.0 - pitch, y0 = mc.Y_SILL2(), w = win_w, h = h), cx = 0.0, y0 = mc.Y_SILL2(), w = win_w, h = h), cx = pitch, y0 = mc.Y_SILL2(), w = win_w, h = h)
+    p0 = wall_body(w = w, y0 = -0.3, y1 = mc.Y_PLINTH())
+    pl = mc.as_group(g = mc.cut(g = mc.cut(g = mc.cut(g = p0, cx = 0.0 - pitch, y0 = 0.32, w = 0.45, h = 0.62), cx = 0.0, y0 = 0.32, w = 0.45, h = 0.62), cx = pitch, y0 = 0.32, w = 0.45, h = 0.62), grp = "plaster")
+    win = mw.w1(w = win_w, h = h, cols = 2, detail = detail)
+    col = merge(at(g = win, x = 0.0, y = mc.Y_SILL1()), at(g = win, x = 0.0, y = mc.Y_SILL2()), at(g = mw.w6(w = 0.45, h = 0.62), x = 0.0, y = 0.32))
+    wins = merge(at(g = col, x = 0.0 - pitch, y = 0.0), col, at(g = col, x = pitch, y = 0.0))
+    out = merge(wall, pl, wins, belts_run(len = w, el = 0.0, er = 0.0, detail = detail))
+}
+
+# --- ризалиты ------------------------------------------------------------------------
+def returns(w: f32, rp: f32, with_c2: int) -> (out: geo<mesh>) {
+    """Тяги на боковых гранях ризалита (длина rp): C1, C3 и при with_c2 > 0 — C2.
+    Наружный конец продлён «в ус» с тягой лица ризалита, внутренний упирается в фасад."""
+    hw = w * 0.5
+    c2l = select(with_c2 > 0, a = at(g = mb.c2(len = rp, er = 1.0, detail = 0), x = 0.0, y = mc.Y_BELT()), b = empty_mesh())
+    c2r = select(with_c2 > 0, a = at(g = mb.c2(len = rp, el = 1.0, detail = 0), x = 0.0, y = mc.Y_BELT()), b = empty_mesh())
+    left = merge(at(g = mb.c1(len = rp, er = 1.0), x = 0.0, y = mc.Y_PLINTH() - 0.30), c2l, at(g = mb.c3(len = rp, er = 1.0, detail = 0), x = 0.0, y = mc.Y_CROWN()))
+    right = merge(at(g = mb.c1(len = rp, el = 1.0), x = 0.0, y = mc.Y_PLINTH() - 0.30), c2r, at(g = mb.c3(len = rp, el = 1.0, detail = 0), x = 0.0, y = mc.Y_CROWN()))
+    out = merge(mc.seg_place(g = left, p0 = vec3(0.0 - hw, 0, 0), p1 = vec3(0.0 - hw, 0, rp)), mc.seg_place(g = right, p0 = vec3(hw, 0, rp), p1 = vec3(hw, 0, 0)))
+}
+
+def gable(w: f32 = 4.2, rp: f32 = 0.25, pitch: f32 = 60.0, detail: int = 1) -> (out: geo<mesh>) {
+    """Щипец ризалита над венцом (низ y = 0 — верх C3): треугольная стена лицом на
+    z = rp, окно W4 с полукруглым балкончиком P4; по скатам — тяга C4 (две ступени) с
+    рядом подвесных ступенчатых консолек. Кровлю щипца даёт скелет крыши здания
+    (ребро фронтона @pitch = 90), свес — её overhang."""
+    hw = w * 0.5
+    ca = cos(radians(pitch))
+    sa = sin(radians(pitch))
+    H = hw * sa / ca
+    L = hw / ca
+    tri = mc.prism_xy(p0 = vec3(0.0 - hw, 0, 0), p1 = vec3(hw, 0, 0), p2 = vec3(0.01, H - 0.02, 0), p3 = vec3(0.0 - 0.01, H - 0.02, 0), z0 = 0.0 - mc.WALL_T(), z1 = rp, grp = "brick")
+    wall = mc.cut(g = tri, cx = 0.0, y0 = 0.45, w = 0.62, h = 1.0)
+    win = at(g = mw.w1(w = 0.62, h = 1.0, cols = 2, fan_k = 0.3, detail = 0), x = 0.0, y = 0.45, z = rp)
+    bal = at(g = md.p4(detail = detail), x = 0.0, y = 0.45, z = rp)
+    t1 = mb.profile_run(len = L, q0 = vec3(0, 0.0 - 0.36, 0), q1 = vec3(0.07, 0.0 - 0.36, 0), q2 = vec3(0.07, 0.0 - 0.14, 0), q3 = vec3(0, 0.0 - 0.14, 0), grp = "terra")
+    t2 = mb.profile_run(len = L, q0 = vec3(0, 0.0 - 0.14, 0), q1 = vec3(0.15, 0.0 - 0.14, 0), q2 = vec3(0.15, 0.0, 0), q3 = vec3(0, 0.0, 0), grp = "terra")
+    band = merge(t1, t2)
+    bl = clip(transform(band, rotate = vec3(0, 0, pitch), translate = vec3(0.0 - hw * 0.5, H * 0.5, rp)), origin = vec3(0, 0, 0), normal = (-1, 0, 0))
+    br = clip(transform(band, rotate = vec3(0, 0, 0.0 - pitch), translate = vec3(hw * 0.5, H * 0.5, rp)), origin = vec3(0, 0, 0), normal = (1, 0, 0))
+    bands = clip(merge(bl, br), origin = vec3(0, 0, 0), normal = (0, 1, 0))
+    n = max(int((L - 0.9) / 0.30), 1)
+    cb = tv.corbel(w = 0.09, d = 0.10, h = 0.18, grp = "terra", steps = 3)
+    sl = vec3(0.0 - hw + 0.45 * ca + 0.36 * sa, 0.45 * sa - 0.36 * ca - 0.18, rp)
+    sr = vec3(hw - 0.45 * ca - 0.36 * sa, 0.45 * sa - 0.36 * ca - 0.18, rp)
+    pl = transform(mesh_line(count = n, length = f32(n - 1) * 0.30, dir = vec3(ca, sa, 0)), translate = sl)
+    pr = transform(mesh_line(count = n, length = f32(n - 1) * 0.30, dir = vec3(0.0 - ca, sa, 0)), translate = sr)
+    cbs0 = realize(instance_on_points(merge(pl, pr), source = cb))
+    cbs = select(detail > 0, a = cbs0, b = empty_mesh())
+    out = merge(wall, win, bal, bands, cbs)
+}
+
+def risalit_side(w: f32 = 4.2, rp: f32 = 0.25, detail: int = 1) -> (out: geo<mesh>) {
+    """Лестничный ризалит бокового фасада: окна в полуэтажах — низкое W1b над цоколем,
+    высокое стрельчатое W2 через уровень пояса, под венцом — розетка P6; пояс C2 на
+    ризалите заменён плоскими лентами C5; по углам — лопатки P1; наверху — щипец."""
+    hw = w * 0.5
+    lop = 0.52
+    w0 = wall_body(w = w, y0 = mc.Y_PLINTH(), y1 = mc.Y_EAVE(), front = rp)
+    wall = mc.cut(g = mc.cut(g = w0, cx = 0.0, y0 = mc.Y_SILL1(), w = 1.45, h = 1.05), cx = 0.0, y0 = 4.0, w = 1.30, h = 3.10)
+    p0 = wall_body(w = w, y0 = -0.3, y1 = mc.Y_PLINTH(), front = rp)
+    pl = mc.as_group(g = mc.cut(g = mc.cut(g = p0, cx = -0.55, y0 = 0.32, w = 0.55, h = 0.62), cx = 0.55, y0 = 0.32, w = 0.55, h = 0.62), grp = "plaster")
+    f_w1b = at(g = mw.w1(w = 1.45, h = 1.05, cols = 3, fan_k = 0.0, detail = detail), x = 0.0, y = mc.Y_SILL1(), z = rp)
+    f_w2 = at(g = mw.w2(w = 1.30, h = 3.10, detail = detail), x = 0.0, y = 4.0, z = rp)
+    f_p6 = at(g = md.p6(detail = detail), x = 0.0, y = 7.72, z = rp)
+    bsm = pair(g = mw.w6(w = 0.55, h = 0.62), dx = 0.55, y = 0.32, z = rp)
+    lops = pair(g = mb.p1(h = mc.Y_CROWN() - mc.Y_PLINTH(), detail = detail), dx = hw - 0.26, y = mc.Y_PLINTH(), z = rp)
+    band = mb.c5(len = w - 2.0 * lop)
+    bands = merge(at(g = band, x = 0.0, y = mc.Y_SILL1() - 0.23, z = rp), at(g = band, x = 0.0, y = 3.70, z = rp), pier_bands(w = w, ob = 0.98, y = mc.Y_BELT() + 0.06, lop = lop, z = rp), at(g = band, x = 0.0, y = 7.45, z = rp))
+    belts = merge(at(g = mb.c1(len = w, el = 1.0, er = 1.0), x = 0.0, y = mc.Y_PLINTH() - 0.30, z = rp), at(g = mb.c3(len = w, el = 1.0, er = 1.0, detail = detail), x = 0.0, y = mc.Y_CROWN(), z = rp))
+    gab = at(g = gable(w = w, rp = rp, detail = detail), x = 0.0, y = mc.Y_EAVE())
+    out = merge(wall, pl, f_w1b, f_w2, f_p6, bsm, lops, bands, belts, returns(w = w, rp = rp, with_c2 = 0), gab)
+}
+
+def risalit_entr(w: f32 = 4.2, rp: f32 = 0.25, detail: int = 1) -> (out: geo<mesh>) {
+    """Входной ризалит: стрельчатый портал P2 с вимпергом от земли, над ним балкон P3
+    на консолях и стрельчатая балконная дверь W2; пояс C2 разорван пиком вимперга,
+    отлив C1 — порталом; лопатки P1 по углам, наверху — щипец."""
+    hw = w * 0.5
+    y_d = 0.16
+    w0 = wall_body(w = w, y0 = mc.Y_PLINTH(), y1 = mc.Y_EAVE(), front = rp)
+    wall = mc.cut(g = mc.cut(g = w0, cx = 0.0, y0 = y_d, w = 1.30, h = 3.40), cx = 0.0, y0 = 5.60, w = 1.30, h = 2.45)
+    p0 = wall_body(w = w, y0 = -0.3, y1 = mc.Y_PLINTH(), front = rp)
+    pl = mc.as_group(g = mc.cut(g = mc.cut(g = mc.cut(g = p0, cx = 0.0, y0 = y_d, w = 1.30, h = 3.40), cx = -1.55, y0 = 0.32, w = 0.45, h = 0.62), cx = 1.55, y0 = 0.32, w = 0.45, h = 0.62), grp = "plaster")
+    portal = at(g = md.p2(w = 1.30, h = 3.40, detail = detail), x = 0.0, y = y_d, z = rp)
+    bal = at(g = md.p3(len = 3.4, dep = 0.85, detail = detail), x = 0.0, y = 5.55, z = rp)
+    door = at(g = mw.w2(w = 1.30, h = 2.45, detail = detail), x = 0.0, y = 5.60, z = rp)
+    bsm = pair(g = mw.w6(w = 0.45, h = 0.62), dx = 1.55, y = 0.32, z = rp)
+    lops = pair(g = mb.p1(h = mc.Y_CROWN() - mc.Y_PLINTH(), detail = detail), dx = hw - 0.26, y = mc.Y_PLINTH(), z = rp)
+    lc1 = hw - 1.20
+    c1s = merge(at(g = mb.c1(len = lc1, el = 1.0), x = 0.0 - hw + lc1 * 0.5, y = mc.Y_PLINTH() - 0.30, z = rp), at(g = mb.c1(len = lc1, er = 1.0), x = hw - lc1 * 0.5, y = mc.Y_PLINTH() - 0.30, z = rp))
+    lc2 = hw - 0.25
+    c2s = merge(at(g = mb.c2(len = lc2, el = 1.0, detail = detail), x = 0.0 - hw + lc2 * 0.5, y = mc.Y_BELT(), z = rp), at(g = mb.c2(len = lc2, er = 1.0, detail = detail), x = hw - lc2 * 0.5, y = mc.Y_BELT(), z = rp))
+    c3 = at(g = mb.c3(len = w, el = 1.0, er = 1.0, detail = detail), x = 0.0, y = mc.Y_CROWN(), z = rp)
+    gab = at(g = gable(w = w, rp = rp, detail = detail), x = 0.0, y = mc.Y_EAVE())
+    out = merge(wall, pl, portal, bal, door, bsm, lops, c1s, c2s, c3, returns(w = w, rp = rp, with_c2 = 1), gab)
+}
+
+# --- угловой объём -------------------------------------------------------------------
+# Рамка угла: фасад бокового крыла — плоскость z = 0 (лицо +Z, тянется в −X), входного —
+# x = 0 (лицо +X, тянется в −Z); внутренность здания x < 0, z < 0. Объём выступает на p
+# из обоих фасадов и занимает lc вдоль каждого. План 1-го этажа срезан катетом c1
+# (широкая диагональ с окном W8), 2-го — катетом c2 < c1: диагональ эркера нависает
+# на (c1 − c2)/√2 на консолях P5. Контур обходится CCW (вид сверху): r1 → a → b → k → d → r2.
+def panel(g: geo<mesh>, p0: vec3, p1: vec3) -> (out: geo<mesh>) {
+    """Элемент грани (локально: ось грани x = 0, лицо z = 0) — на отрезок плана p0→p1."""
+    out = mc.seg_place(g = g, p0 = p0, p1 = p1)
+}
+
+def face_wall(p0: vec3, p1: vec3, y0: f32, y1: f32, grp: string) -> (out: geo<mesh>) {
+    """Глухая стенка грани p0→p1 от y0 до y1."""
+    out = panel(g = mc.as_group(g = wall_body(w = mc.seg_len(p0 = p0, p1 = p1), y0 = y0, y1 = y1), grp = grp), p0 = p0, p1 = p1)
+}
+
+def ring_belt(r1: vec3, a: vec3, b: vec3, k: vec3, d: vec3, r2: vec3, y: f32, kind: int, detail: int) -> (out: geo<mesh>) {
+    """Тяга по контуру углового объёма на высоте y: kind 1 = C1, 2 = C2, 3 = C3.
+    Прямые углы — «в ус» (продление 1), тупые 135° диагонали — на tan 22.5°."""
+    m = 0.41421
+    la = mc.seg_len(p0 = a, p1 = b)
+    lk = mc.seg_len(p0 = b, p1 = k)
+    lr = mc.seg_len(p0 = r1, p1 = a)
+    s_r1 = select(kind == 1, a = mb.c1(len = lr, er = 1.0), b = select(kind == 2, a = mb.c2(len = lr, er = 1.0, detail = 0), b = mb.c3(len = lr, er = 1.0, detail = 0)))
+    s_a = select(kind == 1, a = mb.c1(len = la, el = 1.0, er = m), b = select(kind == 2, a = mb.c2(len = la, el = 1.0, er = m, detail = detail), b = mb.c3(len = la, el = 1.0, er = m, detail = detail)))
+    s_k = select(kind == 1, a = mb.c1(len = lk, el = m, er = m), b = select(kind == 2, a = mb.c2(len = lk, el = m, er = m, detail = detail), b = mb.c3(len = lk, el = m, er = m, detail = detail)))
+    s_d = select(kind == 1, a = mb.c1(len = la, el = m, er = 1.0), b = select(kind == 2, a = mb.c2(len = la, el = m, er = 1.0, detail = detail), b = mb.c3(len = la, el = m, er = 1.0, detail = detail)))
+    s_r2 = select(kind == 1, a = mb.c1(len = lr, el = 1.0), b = select(kind == 2, a = mb.c2(len = lr, el = 1.0, detail = 0), b = mb.c3(len = lr, el = 1.0, detail = 0)))
+    ring = merge(panel(g = s_r1, p0 = r1, p1 = a), panel(g = s_a, p0 = a, p1 = b), panel(g = s_k, p0 = b, p1 = k), panel(g = s_d, p0 = k, p1 = d), panel(g = s_r2, p0 = d, p1 = r2))
+    out = transform(ring, translate = vec3(0, y, 0))
+}
+
+def corner_block(lc: f32 = 3.0, p: f32 = 0.25, c1: f32 = 2.0, c2: f32 = 1.4, detail: int = 1) -> (out: geo<mesh>) {
+    """Угловой объём (terra целиком): 1-й этаж — диагональ c1 с окном W8 и дверью
+    подвала в цоколе; над ним на двух консолях P5 нависает эркер 2-го этажа (срез c2):
+    W3 на боковых гранях, пара W3 с колонкой на диагонали; C1 по контуру 1-го этажа,
+    C2 (подошва эркера) и C3 — по контуру 2-го."""
+    r1 = vec3(0.0 - lc, 0, 0)
+    a = vec3(0.0 - lc, 0, p)
+    b1 = vec3(p - c1, 0, p)
+    k1 = vec3(p, 0, p - c1)
+    d = vec3(p, 0, 0.0 - lc)
+    r2 = vec3(0, 0, 0.0 - lc)
+    b2 = vec3(p - c2, 0, p)
+    k2 = vec3(p, 0, p - c2)
+    ypl = mc.Y_PLINTH()
+    yb = mc.Y_BELT()
+    ye = mc.Y_EAVE()
+    # цоколь: дверь подвала на диагонали
+    d0 = wall_body(w = mc.seg_len(p0 = b1, p1 = k1), y0 = -0.3, y1 = ypl)
+    pl_diag = panel(g = mc.as_group(g = mc.cut(g = d0, cx = 0.0, y0 = 0.05, w = 0.80, h = 1.15), grp = "plaster"), p0 = b1, p1 = k1)
+    plinth = merge(face_wall(p0 = r1, p1 = a, y0 = -0.3, y1 = ypl, grp = "plaster"), face_wall(p0 = a, p1 = b1, y0 = -0.3, y1 = ypl, grp = "plaster"), pl_diag, face_wall(p0 = k1, p1 = d, y0 = -0.3, y1 = ypl, grp = "plaster"), face_wall(p0 = d, p1 = r2, y0 = -0.3, y1 = ypl, grp = "plaster"))
+    bdoor = panel(g = at(g = mw.w6(w = 0.80, h = 1.15), x = 0.0, y = 0.05), p0 = b1, p1 = k1)
+    # 1-й этаж: окно W8 на диагонали
+    f0 = wall_body(w = mc.seg_len(p0 = b1, p1 = k1), y0 = ypl, y1 = yb)
+    f1_diag = panel(g = mc.as_group(g = mc.cut(g = f0, cx = 0.0, y0 = mc.Y_SILL1(), w = 1.10, h = 1.85), grp = "terra"), p0 = b1, p1 = k1)
+    floor1 = merge(face_wall(p0 = a, p1 = b1, y0 = ypl, y1 = yb, grp = "terra"), f1_diag, face_wall(p0 = k1, p1 = d, y0 = ypl, y1 = yb, grp = "terra"))
+    w8 = panel(g = at(g = mw.w1(w = 1.10, h = 1.85, cols = 2, detail = detail), x = 0.0, y = mc.Y_SILL1()), p0 = b1, p1 = k1)
+    rets = merge(face_wall(p0 = r1, p1 = a, y0 = ypl, y1 = ye, grp = "terra"), face_wall(p0 = d, p1 = r2, y0 = ypl, y1 = ye, grp = "terra"))
+    # консоли и подшивка выноса эркера
+    ld1 = mc.seg_len(p0 = b1, p1 = k1)
+    cons = panel(g = pair(g = md.p5(w = 0.42, d = 0.46, h = 0.80), dx = ld1 * 0.5 - 0.24, y = yb), p0 = b1, p1 = k1)
+    soffit = mc.plan_slab(p0 = b1, p1 = b2, p2 = k2, p3 = k1, y0 = yb - 0.08, y1 = yb + 0.02, grp = "terra")
+    # 2-й этаж (эркер): W3 на боковых гранях, пара W3 с колонкой на диагонали
+    y3 = mc.Y_SILL2()
+    ls2 = mc.seg_len(p0 = a, p1 = b2)
+    ld2 = mc.seg_len(p0 = b2, p1 = k2)
+    s0 = wall_body(w = ls2, y0 = yb, y1 = ye)
+    side2 = mc.as_group(g = mc.cut(g = s0, cx = 0.0, y0 = y3, w = 0.62, h = 1.85), grp = "terra")
+    g0 = wall_body(w = ld2, y0 = yb, y1 = ye)
+    diag2 = mc.as_group(g = mc.cut(g = mc.cut(g = g0, cx = -0.50, y0 = y3, w = 0.62, h = 1.85), cx = 0.50, y0 = y3, w = 0.62, h = 1.85), grp = "terra")
+    floor2 = merge(panel(g = side2, p0 = a, p1 = b2), panel(g = diag2, p0 = b2, p1 = k2), panel(g = side2, p0 = k2, p1 = d))
+    w3 = at(g = mw.w3(w = 0.62, h = 1.85, detail = detail), x = 0.0, y = y3)
+    col0 = tv.column(h = 2.30, r = 0.05, grp = "terra")
+    col = select(detail > 0, a = at(g = unmark(mark(col0, "terra", where = true, domain = faces), "brass"), x = 0.0, y = y3 - 0.10, z = 0.07), b = empty_mesh())
+    wins2 = merge(panel(g = w3, p0 = a, p1 = b2), panel(g = merge(pair(g = w3, dx = 0.50, y = 0.0), col), p0 = b2, p1 = k2), panel(g = w3, p0 = k2, p1 = d))
+    # тяги
+    tc1 = ring_belt(r1 = r1, a = a, b = b1, k = k1, d = d, r2 = r2, y = ypl - 0.30, kind = 1, detail = detail)
+    tc2 = ring_belt(r1 = r1, a = a, b = b2, k = k2, d = d, r2 = r2, y = yb, kind = 2, detail = detail)
+    tc3 = ring_belt(r1 = r1, a = a, b = b2, k = k2, d = d, r2 = r2, y = mc.Y_CROWN(), kind = 3, detail = detail)
+    out = merge(plinth, bdoor, floor1, w8, rets, cons, soffit, floor2, wins2, tc1, tc2, tc3)
+}
+
+# --- шатёр эркера ----------------------------------------------------------------------
+def tent_face(p0: vec3, p1: vec3, apex: vec3, t: f32, grp: string) -> (out: geo<mesh>) {
+    """Грань шатра: треугольник по ребру основания p0→p1 (y = 0, обход CCW плана —
+    лицо наружу) и вершине apex; толщина t внутрь. Смежные грани делят ребро-вальму."""
+    dx = dot(p1, (1, 0, 0)) - dot(p0, (1, 0, 0))
+    dz = dot(p1, (0, 0, 1)) - dot(p0, (0, 0, 1))
+    L = sqrt(dx * dx + dz * dz)
+    ux = dx / L
+    uz = dz / L
+    mx = (dot(p0, (1, 0, 0)) + dot(p1, (1, 0, 0))) * 0.5
+    mz = (dot(p0, (0, 0, 1)) + dot(p1, (0, 0, 1))) * 0.5
+    ex = dot(apex, (1, 0, 0)) - mx
+    ez = dot(apex, (0, 0, 1)) - mz
+    along = ex * ux + ez * uz
+    outn = ex * (0.0 - uz) + ez * ux
+    H = dot(apex, (0, 1, 0))
+    sl = sqrt(H * H + outn * outn)
+    th = degrees(atan2(0.0 - outn, H))
+    tri = mc.prism_xy(p0 = vec3(0.0 - L * 0.5, 0, 0), p1 = vec3(L * 0.5, 0, 0), p2 = vec3(along + 0.004, sl, 0), p3 = vec3(along - 0.004, sl, 0), z0 = 0.0 - t, z1 = 0.0, grp = grp)
+    out = mc.seg_place(g = transform(tri, rotate = vec3(0.0 - th, 0, 0)), p0 = p0, p1 = p1)
+}
+
+def crown_finial(h: f32 = 1.5) -> (out: geo<mesh>) {
+    """Кованая корона шатра: шпиль с шаром, горизонтальное кольцо на восьми пиках."""
+    rod = ironwork.spool(p0 = vec3(0, 0, 0), p1 = vec3(0, h, 0), r0 = 0.04, r1 = 0.018, sides = 8)
+    ball = mark(transform(ico_sphere(subdiv = 1, radius = 0.07), translate = vec3(0, h * 0.62, 0)), "iron", where = true, domain = faces)
+    ring = transform(fixtures.ring(center = (0, 0, 0), radius = 0.30, r = 0.015, yaw_deg = 0), rotate = vec3(90, 0, 0), translate = vec3(0, h * 0.30, 0))
+    spike = merge(ironwork.spool(p0 = vec3(0, 0, 0), p1 = vec3(0, h * 0.34, 0), r0 = 0.014, r1 = 0.004, sides = 6), mark(transform(ico_sphere(subdiv = 0, radius = 0.03), translate = vec3(0, h * 0.20, 0)), "iron", where = true, domain = faces))
+    sp0 = set_position(mesh_line(count = 8, length = 0.0), pos = vec3(0.30 * sin(radians(f32(@index) * 45.0)), h * 0.12, 0.30 * cos(radians(f32(@index) * 45.0))))
+    spikes = realize(instance_on_points(sp0, source = spike))
+    struts = realize(instance_on_points(set(set_position(mesh_line(count = 4, length = 0.0), pos = vec3(0, 0, 0)), "orient", orient_from_euler(vec3(0, f32(@index) * 90.0, 0))), source = parts.slab(size = vec3(0.60, 0.025, 0.025), pos = vec3(0, h * 0.30, 0), grp = "iron")))
+    out = merge(rod, ball, ring, spikes, struts)
+}
+
+def turret(lc: f32 = 3.0, p: f32 = 0.25, c2: f32 = 1.4, h: f32 = 5.0, detail: int = 1) -> (out: geo<mesh>) {
+    """Шатёр над эркером (низ y = 0 — верх C3): пятигранная пирамида по контуру
+    2-го этажа углового объёма с выносом на карниз, фигурная плитка (tile); на
+    диагональной грани — слуховое окошко; наверху — кованая корона."""
+    o = 0.16
+    e = vec3(0.0 - lc, 0, 0.0 - lc)
+    a = vec3(0.0 - lc, 0, p + o)
+    b = vec3(p - c2 + o * 0.41421, 0, p + o)
+    k = vec3(p + o, 0, p - c2 + o * 0.41421)
+    d = vec3(p + o, 0, 0.0 - lc)
+    cc = (p - lc) * 0.5 - 0.05
+    apex = vec3(cc, h, cc)
+    t = 0.06
+    faces = merge(tent_face(p0 = a, p1 = b, apex = apex, t = t, grp = "tile"), tent_face(p0 = b, p1 = k, apex = apex, t = t, grp = "tile"), tent_face(p0 = k, p1 = d, apex = apex, t = t, grp = "tile"), tent_face(p0 = d, p1 = e, apex = apex, t = t, grp = "tile"), tent_face(p0 = e, p1 = a, apex = apex, t = t, grp = "tile"))
+    # слуховое окошко на диагонали: фронт выступает из грани на 0.30 на высоте yd
+    mx = (dot(b, (1, 0, 0)) + dot(k, (1, 0, 0))) * 0.5
+    outn = (cc - mx) * 1.41421
+    yd = 1.3
+    dep = 0.8
+    dg0 = tent_dormer(w = 0.55, h = 0.95, dep = dep)
+    dg = select(detail > 0, a = panel(g = at(g = dg0, x = 0.0, y = yd, z = outn * yd / h + 0.30 - dep * 0.5), p0 = b, p1 = k), b = empty_mesh())
+    fin = at(g = crown_finial(), x = cc, y = h - 0.02, z = cc)
+    out = merge(faces, dg, fin)
+}
+
+def tent_dormer(w: f32, h: f32, dep: f32) -> (out: geo<mesh>) {
+    """Слуховое окошко шатра — двускатное, по образцу dormer_gable lib/arch (коробка
+    центрирована по глубине, лицо +Z на dep/2), в группах палитры особняка."""
+    y_c = h - w * 0.5
+    box = parts.slab(size = vec3(w, y_c, dep), pos = vec3(0, y_c * 0.5, 0), grp = "tile")
+    cap0 = parts.slab(size = vec3(w + 0.12, w * 0.5 + 0.06, dep + 0.14), pos = vec3(0, y_c + w * 0.25 + 0.03, 0), grp = "tin")
+    cap1 = clip(cap0, origin = vec3(w * 0.5 + 0.06, y_c, 0), normal = vec3(0.0 - 0.70710678, 0.0 - 0.70710678, 0))
+    cap = clip(cap1, origin = vec3(0.0 - w * 0.5 - 0.06, y_c, 0), normal = vec3(0.70710678, 0.0 - 0.70710678, 0))
+    frame = parts.slab(size = vec3(w * 0.60 + 0.10, y_c * 0.72 + 0.10, 0.06), pos = vec3(0, y_c * 0.46, dep * 0.5 + 0.02), grp = "wood")
+    glass = parts.slab(size = vec3(w * 0.60, y_c * 0.72, 0.04), pos = vec3(0, y_c * 0.46, dep * 0.5 + 0.04), grp = "glass")
+    out = merge(box, cap, frame, glass)
+}
+
+# --- слуховое окно основной кровли ---------------------------------------------------
+def w5(w: f32 = 1.5, h: f32 = 1.2, dep: f32 = 1.2, detail: int = 1) -> (out: geo<mesh>) {
+    """W5 — слуховое окно: трёхстворчатый блок между деревянными стойками, щёки
+    в шифере, плоская далеко вынесенная кровля-козырёк на кронштейнах. Низ-центр
+    лица в origin (лицо z = 0, тело в −z на dep)."""
+    sash = mc.sash(w = w - 0.24, h = h, cols = 3, fan = 0.0)
+    posts = pair(g = parts.slab(size = vec3(0.12, h + 0.16, 0.12), pos = vec3(0, (h + 0.16) * 0.5 - 0.08, 0.0), grp = "wood"), dx = w * 0.5 - 0.06, y = 0.0)
+    cheeks = pair(g = parts.slab(size = vec3(0.06, h + 0.10, dep), pos = vec3(0, (h + 0.10) * 0.5, 0.0 - dep * 0.5), grp = "slate"), dx = w * 0.5 - 0.03, y = 0.0)
+    back = parts.slab(size = vec3(w - 0.10, h, 0.05), pos = vec3(0, h * 0.5, 0.0 - 0.14), grp = "slate")
+    apron = parts.slab(size = vec3(w + 0.08, 0.30, 0.30), pos = vec3(0, 0.0 - 0.13, 0.0 - 0.12), grp = "slate")
+    roof = parts.slab(size = vec3(w + 0.60, 0.10, dep + 0.50), pos = vec3(0, h + 0.13, 0.0 - dep * 0.5 + 0.25), grp = "tin")
+    fascia = parts.slab(size = vec3(w + 0.60, 0.16, 0.05), pos = vec3(0, h + 0.10, 0.475), grp = "wood")
+    br = pair(g = tv.corbel(w = 0.08, d = 0.40, h = 0.26, grp = "wood", steps = 2), dx = w * 0.5 - 0.06, y = h - 0.18)
+    brs = select(detail > 0, a = br, b = empty_mesh())
+    out = merge(sash, posts, cheeks, back, apron, roof, fascia, brs)
+}
