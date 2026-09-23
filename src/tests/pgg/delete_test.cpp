@@ -102,6 +102,23 @@ TEST(Delete, FacesMaskKeepsPointsAndGathersFaceGroups) {
     EXPECT_EQ(sides, 4);
 }
 
+TEST(Delete, FacesMaskDropsOrphanPointsForAggregates) {
+    // v1.33: keeping only the top face leaves its 4 points; the bottom points
+    // (orphans before v1.33) no longer leak into point aggregates.
+    pgg::RunResult r = pgg::run(
+        "b = box(size = (1, 1, 1))\n"
+        "top = delete(b, where = dot(@N, (0, 1, 0)) < 0.5, domain = faces)\n"
+        "lo = min_of(@P.y, on = top)\n"
+        "t2 = set(top, \"lo\", lo, domain = detail)\n"
+        "output t2\n");
+    expectNoErrors(r);
+    pgg::GeoPtr g = geoOutput(r, "t2");
+    ASSERT_TRUE(g);
+    EXPECT_EQ(g->faceCount(), 1u);
+    EXPECT_EQ(g->pointCount(), 4u);
+    for (const glm::vec3& p : *g->positions) EXPECT_NEAR(p.y, 0.5f, 1e-6f);
+}
+
 TEST(Delete, CornersMaskTakesTheWholeFace) {
     // Corner 0 belongs to exactly one face: that face goes, nothing else.
     pgg::RunResult r = pgg::run(
