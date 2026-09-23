@@ -1,0 +1,103 @@
+# Singer — дом Зингера целиком. Клин: Невский 29,87 м, канал 53,34 м,
+# внутренний угол 92,5° (контур OSM), фаска башни. Фасады — split по рёбрам,
+# башня — отдельная масса на фаске, не слот. Мансарда — балюстрада, люкарны,
+# крутой скат и плоская палуба, без вальмы на весь клин.
+# Рёбра плана (обход с отрицательной площадью в xz):
+#   0 западный брандмауэр, 1 торец у канала, 2 канал, 3 фаска, 4 Невский.
+
+import lib.parts
+import lib.layout.scope as ls
+import lib.layout.split as lsp
+import lib.arch.kinds as k
+import lib.arch.plan as ap
+import lib.arch.facade as af
+import singer.common as sc
+import singer.belts as sb
+import singer.units as su
+
+def pt(x: f32, z: f32) -> (out: geo<points>) {
+    """Вершина контура на y = 0."""
+    out = set_position(mesh_line(count = 1, length = 0.0), pos = vec3(x, 0.0, z))
+}
+
+def edge_dress(plan: geo<points>, i: int) -> (out: geo<mesh>) {
+    """Балюстрада C3 и скат мансарды вдоль ребра i. Низ на линии карниза."""
+    o, mid, t, nrm, yaw, len = ap.edge_frame(plan = plan, i = i)
+    y = sc.Y_EAVE()
+    sl = transform(sb.mansard_slope(len = len, run = 2.40, rise = 3.05), rotate = vec3(0, yaw, 0), translate = mid + t * 0.0 + nrm * 0.0 + o * 0.0 + vec3(0, y, 0))
+    bl = transform(sb.c3(len = len), rotate = vec3(0, yaw, 0), translate = mid + vec3(0, y, 0))
+    out = merge(sl, bl)
+}
+
+def dormer_row(plan: geo<points>, i: int, n: int, wide_at: int) -> (out: geo<mesh>) {
+    """n люкарн вдоль ребра i, равномерно. wide_at — индекс широкой (центр Невского), иначе −1."""
+    expect n >= 1: "dormer_row: n"
+    o, mid, t, nrm, yaw, len = ap.edge_frame(plan = plan, i = i)
+    y = sc.Y_EAVE() + 1.05
+    inn = 0.0 - 0.42
+    out = repeat (empty_mesh(), iterations = n) |acc| {
+        u = (f32(@iteration) + 0.5) * (len / f32(n))
+        wide = f32(@iteration) == f32(wide_at)
+        piece = select(wide, a = sb.c4(w = 2.30), b = sb.c4(w = 1.40))
+        pos = o + t * u + nrm * inn + mid * 0.0 + vec3(0, y, 0)
+        acc = merge(acc, transform(piece, rotate = vec3(0, yaw, 0), translate = pos))
+    }
+}
+
+kw = k.K_WALL()
+n0 = lsp.pattern_add(pat = lsp.pattern_empty(), size = 1.0, kind = kw, flex = true, variant = 1)
+n1 = lsp.pattern_add(pat = n0, size = 1.0, kind = kw, flex = true, variant = 4)
+pat_nevsky = lsp.pattern_add(pat = n1, size = 1.0, kind = kw, flex = true, variant = 1)
+c0 = lsp.pattern_add(pat = lsp.pattern_empty(), size = 1.0, kind = kw, flex = true, variant = 2)
+c1 = lsp.pattern_add(pat = c0, size = 1.0, kind = kw, flex = true, variant = 1)
+c2 = lsp.pattern_add(pat = c1, size = 1.0, kind = kw, flex = true, variant = 1)
+c3 = lsp.pattern_add(pat = c2, size = 1.0, kind = kw, flex = true, variant = 1)
+pat_canal = lsp.pattern_add(pat = c3, size = 1.0, kind = kw, flex = true, variant = 3)
+pat_blank = lsp.pattern_add(pat = lsp.pattern_empty(), size = 1.0, kind = kw, flex = true, variant = 5)
+
+# A западный конец Невского, D дальний запад, C дальний конец канала,
+# B2 и B1 — концы фаски. Виртуальный угол был в (0, 0).
+raw_pts = merge(pt(x = -29.870, z = 0.0), pt(x = -30.300, z = 52.068), pt(x = -2.327, z = 53.289), pt(x = -0.092, z = 2.098), pt(x = -2.100, z = 0.0))
+plan = ap.plan_finish(pts = raw_pts)
+faces = af.facades(plan = plan, y0 = 0.0, y1 = sc.Y_EAVE(), t = 0.55)
+b_n = lsp.split(scopes = delete(faces, where = @facade != 4), pattern = pat_nevsky)
+b_c = lsp.split(scopes = delete(faces, where = @facade != 2), pattern = pat_canal)
+b_w = lsp.split(scopes = delete(faces, where = @facade != 0), pattern = pat_blank)
+b_e = lsp.split(scopes = delete(faces, where = @facade != 1), pattern = pat_blank)
+bays = merge(b_n, b_c, b_w, b_e)
+
+g_bay = foreach s in delete(bays, where = @variant != 1) {
+    s = ls.place(g = su.street_bay(w = ls.frame_w(s)), s = s)
+}
+g_door = foreach s in delete(bays, where = @variant != 2) {
+    s = ls.place(g = su.street_bay(w = ls.frame_w(s), door = true), s = s)
+}
+g_stat = foreach s in delete(bays, where = @variant != 3) {
+    s = ls.place(g = su.street_bay(w = ls.frame_w(s), crown = true), s = s)
+}
+g_main = foreach s in delete(bays, where = @variant != 4) {
+    s = ls.place(g = su.street_bay(w = ls.frame_w(s), door = true, crown = true), s = s)
+}
+g_party = foreach s in delete(bays, where = @variant != 5) {
+    s = ls.place(g = su.party_wall(w = ls.frame_w(s)), s = s)
+}
+walls = merge(g_bay, g_door, g_stat, g_main, g_party)
+
+co, cmid, ct, cn, cyaw, clen = ap.edge_frame(plan = plan, i = 3)
+tower = transform(su.corner_block(w = clen), rotate = vec3(0, cyaw, 0), translate = cmid + ct * 0.0 + cn * 0.0 + co * 0.0)
+
+dress = merge(edge_dress(plan = plan, i = 0), edge_dress(plan = plan, i = 1), edge_dress(plan = plan, i = 2), edge_dress(plan = plan, i = 4))
+dorm_n = dormer_row(plan = plan, i = 4, n = 5, wide_at = 2)
+dorm_c = dormer_row(plan = plan, i = 2, n = 5, wide_at = -1)
+deck = parts.slab(size = vec3(16.0, 0.20, 26.0), pos = vec3(-15.5, sc.Y_EAVE() + 2.95, 22.0), grp = "slate")
+
+wing = transform(su.court_wing(len = 26.0, n = 6), translate = vec3(-16.0, 0.0, 25.4))
+court_n = transform(su.court_wing(len = 18.0, n = 4), translate = vec3(-18.0, 0.0, 7.4))
+glass_a = parts.slab(size = vec3(20.0, 0.06, 14.0), pos = vec3(-16.0, 14.15, 15.5), grp = "glass")
+glass_b = parts.slab(size = vec3(18.0, 0.06, 14.0), pos = vec3(-16.0, 14.15, 37.5), grp = "glass")
+courts = merge(wing, court_n, glass_a, glass_b)
+
+house = sc.paint(g = merge(walls, tower, dress, dorm_n, dorm_c, deck, courts))
+
+output house
+output plan

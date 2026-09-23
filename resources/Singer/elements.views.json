@@ -1,0 +1,20 @@
+[
+  {"name": "w1", "node": "w1_unit", "orbit": [22, 8], "shading": "flat", "chrome": "off"},
+  {"name": "w2", "node": "w2_unit", "orbit": [18, 6], "shading": "flat", "chrome": "off"},
+  {"name": "w3", "node": "w3_unit", "orbit": [20, 8], "shading": "flat", "chrome": "off"},
+  {"name": "belts", "node": "belts_unit", "orbit": [32, 12], "shading": "flat", "chrome": "off"},
+  {"name": "row", "node": "elements_row", "orbit": [16, 10], "zoom": 0.92, "shading": "flat", "chrome": "off"},
+  {"name": "c2", "node": "c2_unit", "orbit": [28, 12], "shading": "flat", "chrome": "off"},
+  {"name": "c3", "node": "c3_unit", "orbit": [24, 10], "shading": "flat", "chrome": "off"},
+  {"name": "c4", "node": "c4_unit", "orbit": [18, 8], "shading": "flat", "chrome": "off"},
+  {"name": "d4", "node": "d4_unit", "orbit": [16, 6], "shading": "flat", "chrome": "off"},
+  {"name": "w4", "node": "w4_unit", "orbit": [22, 8], "shading": "flat", "chrome": "off"},
+  {"name": "s1", "node": "s1_unit", "orbit": [20, 10], "shading": "flat", "chrome": "off"},
+  {"name": "d2", "node": "d2_unit", "orbit": [18, 8], "shading": "flat", "chrome": "off"},
+  {"name": "drum", "node": "drum_unit", "orbit": [35, 18], "shading": "flat", "chrome": "off"},
+  {"name": "s2", "node": "s2_unit", "orbit": [20, 12], "shading": "flat", "chrome": "off"},
+  {"name": "s3", "node": "s3_unit", "orbit": [28, 14], "shading": "flat", "chrome": "off"},
+  {"name": "bay", "node": "bay_unit", "orbit": [18, 12], "zoom": 0.7, "shading": "flat", "chrome": "off"},
+  {"name": "door", "node": "door_unit", "orbit": [18, 10], "zoom": 0.7, "shading": "flat", "chrome": "off"},
+  {"name": "corner", "node": "corner_unit", "orbit": [22, 18], "zoom": 0.92, "shading": "flat", "chrome": "off"}
+]
