@@ -81,8 +81,11 @@ struct Builder {
     // Velocity of a wavefront vertex between edges (nL, wL) and (nR, wR):
     // dot(vel, nL) = wL, dot(vel, nR) = wR.
     glm::vec2 velocity(const glm::vec2& nL, float wL, const glm::vec2& nR, float wR) const {
+        // |det| = sin of the angle between unit normals; below ~0.001 degree
+        // the lines are parallel for float input (float noise alone reaches
+        // 1e-7 on walls tens of metres long, and 1/det sends the vertex away).
         const float det = cross2(nL, nR);
-        if (std::abs(det) > 1e-7f) return glm::vec2((wL * nR.y - nL.y * wR) / det, (nL.x * wR - wL * nR.x) / det);
+        if (std::abs(det) > 2e-5f) return glm::vec2((wL * nR.y - nL.y * wR) / det, (nL.x * wR - wL * nR.x) / det);
         if (glm::dot(nL, nR) > 0.0f) return nL * (0.5f * (wL + wR));  // parallel, same direction: ride along
         // Parallel lines closing in: the vertex stands on a ridge — the lines
         // already met, time for it stops (a ridge does not move; the ring is
@@ -508,28 +511,31 @@ struct Builder {
 }  // namespace
 
 std::vector<glm::vec2> offsetOutline(const std::vector<glm::vec2>& outline, float d) {
+    // Each offset line dot(q, n) = c is computed once per edge and both of its
+    // end vertices are solved from it: an axis-aligned edge stays exactly
+    // axis-aligned (a 1-ulp tilt makes opposite walls "almost antiparallel"
+    // and the skeleton vertex between them runs away).
     const size_t n = outline.size();
-    std::vector<glm::vec2> nIn(n);
+    std::vector<glm::dvec2> nIn(n);
+    std::vector<double> c(n);
     for (size_t i = 0; i < n; ++i) {
-        const glm::vec2 e = outline[(i + 1) % n] - outline[i];
-        const float len = glm::length(e);
-        nIn[i] = len > 0.0f ? glm::vec2(e.y / len, -e.x / len) : glm::vec2(0.0f);
+        const glm::dvec2 a(outline[i]), b(outline[(i + 1) % n]);
+        const glm::dvec2 e = b - a;
+        const double len = glm::length(e);
+        nIn[i] = len > 0.0 ? glm::dvec2(e.y / len, -e.x / len) : glm::dvec2(0.0);
+        if (e.x == 0.0) nIn[i] = glm::dvec2(e.y > 0.0 ? 1.0 : -1.0, 0.0);
+        if (e.y == 0.0 && e.x != 0.0) nIn[i] = glm::dvec2(0.0, e.x > 0.0 ? -1.0 : 1.0);
+        c[i] = glm::dot(a, nIn[i]) - static_cast<double>(d);
     }
     std::vector<glm::vec2> off(n);
     for (size_t i = 0; i < n; ++i) {
-        const glm::vec2 nA = nIn[(i + n - 1) % n];
-        const glm::vec2 nB = nIn[i];
-        const glm::vec2 dA(-nA.y, nA.x);  // direction of edge (i-1)
-        const glm::vec2 pA = outline[(i + n - 1) % n] - nA * d;
-        const glm::vec2 pB = outline[i] - nB * d;
-        // vertex i: the point of line A (pA + s*dA) lying on the offset line
-        // of edge i: dot(pA + s*dA - pB, nB) = 0.
-        const float denom = glm::dot(dA, nB);
-        if (std::abs(denom) > 1e-9f) {
-            const float s = glm::dot(pB - pA, nB) / denom;
-            off[i] = pA + dA * s;
+        const size_t ia = (i + n - 1) % n;
+        const glm::dvec2 nA = nIn[ia], nB = nIn[i];
+        const double det = nA.x * nB.y - nA.y * nB.x;
+        if (std::abs(det) > 1e-12) {
+            off[i] = glm::vec2(glm::dvec2((c[ia] * nB.y - nA.y * c[i]) / det, (nA.x * c[i] - c[ia] * nB.x) / det));
         } else {
-            off[i] = pB;
+            off[i] = glm::vec2(glm::dvec2(outline[i]) - nB * static_cast<double>(d));  // collinear neighbours
         }
     }
     return off;

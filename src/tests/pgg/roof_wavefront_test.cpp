@@ -396,4 +396,58 @@ TEST(RoofWavefront, ShedRoofThreeGables) {
     EXPECT_EQ(sk.faces[3].nodes.size(), 3u);
 }
 
+TEST(RoofWavefront, OverhangOnTwoRisalitOutlineMatchesManualOffset) {
+    // resources/Mansion plan: risalits on two neighbouring facades plus a
+    // chamfered corner, gable walls on the risalit fronts (edges 3 and 9).
+    // The offset outline used to carry 1-ulp tilts on its axis-aligned walls;
+    // opposite walls then read as "almost antiparallel" and one skeleton vertex
+    // ran ~130 km away.
+    const float hw = 7.5f, hd = 8.15f, rp = 0.25f, rh = 2.1f, ch = 0.674f;
+    const float xs = -hw + 0.5f + 3.9f + rh, zs = hd - 3.0f - 2.6f - rh;
+    const std::vector<glm::vec2> outline = {
+        {-hw, -hd},     {-hw, hd},      {xs - rh, hd},      {xs - rh, hd + rp}, {xs + rh, hd + rp},
+        {xs + rh, hd},  {hw - ch, hd},  {hw, hd - ch},      {hw, zs + rh},      {hw + rp, zs + rh},
+        {hw + rp, zs - rh}, {hw, zs - rh}, {hw, -hd}};
+    std::vector<float> speed(outline.size(), 1.0f / std::tan(glm::radians(60.0f)));
+    speed[3] = speed[9] = 0.0f;
+
+    const std::vector<glm::vec2> off = pgg::offsetOutline(outline, 0.2f);
+    ASSERT_EQ(off.size(), outline.size());
+    pggtest::expectF32Near(off[0].x, -7.7f, 1e-6f);
+    EXPECT_EQ(off[0].x, off[1].x);    // the wall x = -7.7 stays exactly vertical
+    EXPECT_EQ(off[11].x, off[12].x);  // and so does x = 7.7
+    EXPECT_EQ(off[12].y, off[0].y);
+
+    SkeletonInput in;
+    in.outline = off;
+    in.speed = speed;
+    const StraightSkeleton sk = pgg::buildStraightSkeleton(in, 4.2f);
+    for (const pgg::SkeletonNode& n : sk.nodes) {
+        EXPECT_GE(n.p.x, -7.7f - 1e-3f);
+        EXPECT_LE(n.p.x, 7.95f + 1e-3f);
+        EXPECT_GE(n.p.y, -8.35f - 1e-3f);
+        EXPECT_LE(n.p.y, 8.6f + 1e-3f);
+    }
+
+    // The same roof from a hand-offset outline (rounded coordinates).
+    const std::vector<glm::vec2> manual = {
+        {-7.7f, -8.35f}, {-7.7f, 8.35f}, {-3.3f, 8.35f}, {-3.3f, 8.6f},   {1.3f, 8.6f},
+        {1.3f, 8.35f},   {6.9088f, 8.35f}, {7.7f, 7.5588f}, {7.7f, 2.75f}, {7.95f, 2.75f},
+        {7.95f, -1.85f}, {7.7f, -1.85f}, {7.7f, -8.35f}};
+    SkeletonInput mi;
+    mi.outline = manual;
+    mi.speed = speed;
+    const StraightSkeleton msk = pgg::buildStraightSkeleton(mi, 4.2f);
+    ASSERT_EQ(sk.faces.size(), msk.faces.size());
+    for (size_t f = 0; f < sk.faces.size(); ++f) {
+        float a = 0.0f, b = 0.0f;
+        std::vector<glm::vec2> pa, pb;
+        for (int32_t idx : sk.faces[f].nodes) pa.push_back(sk.nodes[static_cast<size_t>(idx)].p);
+        for (int32_t idx : msk.faces[f].nodes) pb.push_back(msk.nodes[static_cast<size_t>(idx)].p);
+        a = signedArea(pa);
+        b = signedArea(pb);
+        pggtest::expectF32Near(a, b, 1e-2f);
+    }
+}
+
 }  // namespace
