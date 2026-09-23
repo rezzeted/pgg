@@ -132,4 +132,5 @@
 - `mansion/windows.pgg`, `belts.pgg`, `details.pgg` — элементы: окна, карнизы и лопатки, консоли/портал/балконы/розетка.
 - `mansion/units.pgg` — агрегаты: `axis_bay`, `triple_bay`, `end_pier`, `risalit_side`, `risalit_entr`, `gable`, `corner_block`, `turret`, `w5`.
 - `elements.pgg` — стенды элементов и агрегатов (кадр каждого).
+- `retrospective.md` — что шло хорошо и на что ушли силы при сборке.
 - `mansion.pgg` — здание: фасады раскладкой `lib/layout/split` по рёбрам `plan_rect`, крыша `roof_wavefront` (фронтоны щипцов — `@pitch = 90`), шифер по `tile_anchors`, слуховые окна, трубы, водостоки. Виды — `mansion.views.json`.
