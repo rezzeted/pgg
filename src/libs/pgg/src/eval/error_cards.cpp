@@ -15,16 +15,20 @@ const std::vector<ErrorCard>& cards() {
          "malformed literal or type name",
          "A literal or type name has a shape the grammar allows but the core "
          "forbids (e.g. a vector literal with 1 or 5+ components, an unknown "
-         "type name in a declaration).",
+         "type name in a declaration, a non-constant param default, a swizzle "
+         "with letters other than x/y/z/w).",
          {"a parenthesized scalar `(1)` was meant as a vector — vectors are vec2..vec4 only",
-          "a vector literal with more than 4 components",
-          "a misspelled type name in a param/def declaration"},
-         "v = (1, 2, 3, 4, 5)",
-         "v = (1, 2, 3)  # vec2..vec4 only"},
+          "a vector literal with more than 4 components (lists use [a, b, ...])",
+          "a misspelled type name in a param/def declaration",
+          "a param default that reads a binding — defaults are constants (-1, vec3(0, 0, 1), 0.5 * 2, [])",
+          "`v.q` / `ns.f` without parentheses — swizzle is .x/.xz/.xyz, a module call needs (...)"},
+         "def f(side: int = n + 1) -> (out: int) {\n    out = side\n}",
+         "def f(side: int = -1) -> (out: int) {\n    out = side\n}"},
         {"E101",
          "syntax error",
          "The parser could not read the file at all; the line points at the "
-         "first token that stopped the grammar.",
+         "first token that stopped the grammar. Newlines inside ( and [ do not "
+         "end a statement, so an unclosed one is reported at its opening line.",
          {"an unclosed brace or paren above the reported line",
           "a malformed statement (missing '=', stray token)",
           "a comment without '#'"},

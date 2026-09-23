@@ -451,7 +451,12 @@ void GrammarCompositor::addExpect(ContractStmt* e) {
     }
     Frame& f = frames_.back();
     if (!f.nodes.empty() || !f.ensures.empty()) {
-        syntaxError(e->span, "expect must precede the def body");
+        const int first = !f.nodes.empty() && f.nodes.front() ? f.nodes.front()->span.line
+                                                                : f.ensures.front()->span.line;
+        syntaxError(e->span, "expect must precede the def body",
+                    "move it above line " + std::to_string(first) +
+                        " (the first binding/ensure); expect checks the parameters, so inline "
+                        "any computed value into its condition");
         return;
     }
     f.expects.push_back(e);

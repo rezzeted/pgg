@@ -113,15 +113,17 @@ private:
                 prev.used = true;
                 return;
             }
-            error("E102", span, "name '" + name + "' is already defined",
-                  "every name is a graph node — pick a fresh name (SSA)");
+            error("E102", span, "name '" + name + "' is already defined (line " + std::to_string(prev.span.line) + ")",
+                  "names are bound once (SSA): give each step a fresh name (" + name + "2, " + name +
+                      "_moved, ...) and bind an output port only in the last step");
             return;
         }
         for (const Scope* s = scope.parent; s; s = s->parent) {
-            if (s->defined.count(name)) {
+            if (auto outer = s->defined.find(name); outer != s->defined.end()) {
                 error("E102", span,
-                      "name '" + name + "' shadows an outer definition",
-                      "two nodes cannot share a name, even in nested scopes");
+                      "name '" + name + "' shadows an outer definition (line " +
+                          std::to_string(outer->second.span.line) + ")",
+                      "two nodes cannot share a name, even in nested scopes — rename the inner one");
                 return;
             }
         }
@@ -165,12 +167,18 @@ private:
             return;
         }
         if (capturedAcrossDefBoundary(scope, name, *info)) {
-            error("E105", span,
-                  "'" + name + "' is a top-level runtime value captured by a def body",
-                  "def bodies are hermetic — pass it through the def signature (§7.6)");
+            reportCapture(name, span, *info);
             return;
         }
         info->used = true;
+    }
+
+    void reportCapture(const std::string& name, Span span, const BindingInfo& info) {
+        error("E105", span,
+              "'" + name + "' is a top-level value (line " + std::to_string(info.span.line) +
+                  ") read inside a def body",
+              "def bodies are hermetic (§7.6): add '" + name + ": <type>' to the def parameters and pass '" +
+                  name + " = " + name + "' at the call site");
     }
 
     // A def body may not capture top-level params/rng/bindings of its file
@@ -192,9 +200,7 @@ private:
         BindingInfo* info = scope.lookup(name);
         if (!info) return;
         if (capturedAcrossDefBoundary(scope, name, *info)) {
-            error("E105", span,
-                  "'" + name + "' is a top-level runtime value captured by a def body",
-                  "def bodies are hermetic — pass it through the def signature (§7.6)");
+            reportCapture(name, span, *info);
             return;
         }
         info->used = true;
