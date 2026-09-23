@@ -382,7 +382,11 @@ namespace {
 // inherit the face columns and groups of the first cut face of their loop
 // (the cut end of a brick is still brick) and additionally join `cap_group`
 // when it is given; cap corners get zero columns except corner N = -normal.
-// Open loops (open input surfaces) get no cap. geo<points>: keeps the points
+// Open loops (open input surfaces) get no cap. A face lying in the plane is
+// kept, except one facing into the kept half whose every off-plane neighbour
+// is removed: it closes a solid on the removed side (the cap of an earlier
+// clip on the same plane), and keeping it would leave a stray sheet that
+// duplicates the kept solid's own face. geo<points>: keeps the points
 // in the half-space. geo<instances>: E204 (realize first).
 
 Value opClip(const BoundCall& bound, RunContext& run) {
@@ -448,9 +452,48 @@ Value opClip(const BoundCall& bound, RunContext& run) {
     // Directed cap edges (from -> to, in cap winding) with the face that cut them.
     struct CapEdge { int32_t from, to, face; };
     std::vector<CapEdge> capEdges;
+    std::vector<uint8_t> dropFace;
     if (hasFaces) {
         const auto& FO = *in.faceOffsets;
         const auto& CV = *in.cornerVerts;
+        auto onPlaneFace = [&](size_t f) {
+            for (int32_t c = FO[f]; c < FO[f + 1]; ++c)
+                if (side[static_cast<size_t>(CV[static_cast<size_t>(c)])] != 0) return false;
+            return FO[f + 1] - FO[f] >= 3;
+        };
+        std::vector<size_t> facingIn;
+        for (size_t f = 0; f < in.faceCount(); ++f)
+            if (onPlaneFace(f) && glm::dot(faceNormal(in, f), n) > 0.0f) facingIn.push_back(f);
+        if (!facingIn.empty()) {
+            auto ekey = [](int32_t a, int32_t b) {
+                return (static_cast<uint64_t>(static_cast<uint32_t>(std::min(a, b))) << 32) | static_cast<uint32_t>(std::max(a, b));
+            };
+            std::unordered_multimap<uint64_t, size_t> byEdge;
+            for (size_t f = 0; f < in.faceCount(); ++f)
+                for (int32_t c = FO[f]; c < FO[f + 1]; ++c) {
+                    const int32_t cn = c + 1 < FO[f + 1] ? c + 1 : FO[f];
+                    byEdge.emplace(ekey(CV[static_cast<size_t>(c)], CV[static_cast<size_t>(cn)]), f);
+                }
+            auto removed = [&](size_t f) {
+                for (int32_t c = FO[f]; c < FO[f + 1]; ++c)
+                    if (side[static_cast<size_t>(CV[static_cast<size_t>(c)])] > 0) return false;
+                return true;
+            };
+            dropFace.assign(in.faceCount(), 0);
+            for (size_t f : facingIn) {
+                bool anyNeighbour = false, allRemoved = true;
+                for (int32_t c = FO[f]; c < FO[f + 1] && allRemoved; ++c) {
+                    const int32_t cn = c + 1 < FO[f + 1] ? c + 1 : FO[f];
+                    auto range = byEdge.equal_range(ekey(CV[static_cast<size_t>(c)], CV[static_cast<size_t>(cn)]));
+                    for (auto it = range.first; it != range.second; ++it) {
+                        if (it->second == f || onPlaneFace(it->second)) continue;
+                        anyNeighbour = true;
+                        if (!removed(it->second)) { allRemoved = false; break; }
+                    }
+                }
+                if (anyNeighbour && allRemoved) dropFace[f] = 1;
+            }
+        }
         struct Emitted { int32_t point; };
         std::vector<Emitted> seq;
         for (size_t f = 0; f < in.faceCount(); ++f) {
@@ -464,6 +507,7 @@ Value opClip(const BoundCall& bound, RunContext& run) {
                 allOut &= s < 0;
             }
             if (allOut) continue;
+            if (!dropFace.empty() && dropFace[f]) continue;
             if (allIn) {
                 for (int32_t c = begin; c < end; ++c) {
                     cornerRows.push_back(RowSrc::copy(c));
@@ -520,7 +564,13 @@ Value opClip(const BoundCall& bound, RunContext& run) {
                 const int32_t cn = c + 1 < faceOffsets[f + 1] ? c + 1 : faceOffsets[f];
                 directed.insert(key(cornerVerts[static_cast<size_t>(c)], cornerVerts[static_cast<size_t>(cn)]));
             }
-        for (size_t f = 0; f + 1 < faceOffsets.size(); ++f)
+        for (size_t f = 0; f + 1 < faceOffsets.size(); ++f) {
+            // A face lying in the plane is itself the surface there: its free
+            // edges are an open sheet's border, not a cut loop.
+            bool inPlane = true;
+            for (int32_t c = faceOffsets[f]; c < faceOffsets[f + 1] && inPlane; ++c)
+                inPlane = onPlane[static_cast<size_t>(cornerVerts[static_cast<size_t>(c)])] != 0;
+            if (inPlane) continue;
             for (int32_t c = faceOffsets[f]; c < faceOffsets[f + 1]; ++c) {
                 const int32_t cn = c + 1 < faceOffsets[f + 1] ? c + 1 : faceOffsets[f];
                 const int32_t a = cornerVerts[static_cast<size_t>(c)], b = cornerVerts[static_cast<size_t>(cn)];
@@ -528,6 +578,7 @@ Value opClip(const BoundCall& bound, RunContext& run) {
                 if (directed.count(key(b, a))) continue;
                 capEdges.push_back({b, a, faceRows[f].a});
             }
+        }
     }
 
     // Caps: chain directed cut edges into closed loops.
