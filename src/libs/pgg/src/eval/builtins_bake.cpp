@@ -2,7 +2,8 @@
 // attribute by ray casting against the geometry itself. Deterministic
 // (stratified hemisphere directions from the geometry's rng), parallel over
 // the target elements, a small median-split BVH over the fan-triangulated
-// faces. Rays start slightly off the surface along the sampling normal; hits
+// faces. Each corner averages rays started over the face patch it owns
+// (see opBakeAo), slightly off the surface along the face normal; hits
 // from behind (the ray is inside the geometry it left) are ignored, which is
 // what keeps welded convex corners from occluding themselves.
 #include "../../pch.h"
@@ -182,45 +183,91 @@ Value opBakeAo(const BoundCall& bound, RunContext& run) {
     if (!(distance > 0.0f)) distance = diag * 0.25f;
     if (!(distance > 0.0f) || !std::isfinite(distance)) return Value(inPtr);
     const float eps = std::max(1e-6f, diag * 1e-4f);
+    const float cover = distance * 0.05f;
 
-    // Sampling normals on the target domain.
-    std::shared_ptr<const std::vector<glm::vec3>> normals;
-    if (domain == Domain::Corners && cornerN) {
-        normals = std::get<std::shared_ptr<const std::vector<glm::vec3>>>(in.cornerAttrs->find("N")->data);
-    } else if (domain == Domain::Points && in.normals && in.normals->size() == in.pointCount()) {
-        normals = in.normals;
-    } else {
-        normals = derivedNormals(in, domain);
-    }
-    const size_t count = in.elementCount(domain);
-    if (!normals || normals->size() != count) return Value(inPtr);
-
-    const TriBvh bvh(fanTriangles(in));
+    // AO is a per-corner average over the patch the corner owns under linear
+    // interpolation: the quad (corner, next-edge midpoint, face centroid,
+    // prev-edge midpoint). Sampling the vertex itself puts a crease value on
+    // the corner and the interpolation smears it across a large face as a
+    // stripe. Rays leave the patch along the geometric face normal. A patch
+    // point with a surface right on top of it (tiles over the roof underlay)
+    // is hidden and left out of the average: only the visible part of the
+    // patch decides what the interpolated colour shows.
     const auto& P = *in.positions;
     const auto& CV = *in.cornerVerts;
-    std::vector<float> ao(count, 1.0f);
+    const auto& FO = *in.faceOffsets;
+    const size_t nCorners = CV.size();
+    std::vector<int32_t> cornerFace(nCorners, -1);
+    for (size_t f = 0; f < in.faceCount(); ++f)
+        for (int32_t c = FO[f]; c < FO[f + 1]; ++c) cornerFace[static_cast<size_t>(c)] = static_cast<int32_t>(f);
+
+    const TriBvh bvh(fanTriangles(in));
+    std::vector<float> cornerAo(nCorners, 1.0f);
+    std::vector<float> cornerArea(nCorners, 0.0f);  // patch area x visible fraction
     const int strata = static_cast<int>(std::ceil(std::sqrt(static_cast<float>(rays))));
-    parallelFor(count, run.threads, [&](size_t s, size_t e) {
+    parallelFor(nCorners, run.threads, [&](size_t s, size_t e) {
         for (size_t i = s; i < e; ++i) {
-            glm::vec3 n = (*normals)[i];
-            const float ln = glm::length(n);
-            n = ln > 1e-12f ? n / ln : glm::vec3(0, 1, 0);
-            const glm::vec3 p = domain == Domain::Corners ? P[static_cast<size_t>(CV[i])] : P[i];
-            const glm::vec3 o = p + n * eps;
+            const int32_t f = cornerFace[i];
+            if (f < 0) continue;
+            const int32_t begin = FO[static_cast<size_t>(f)], end = FO[static_cast<size_t>(f) + 1];
+            const int32_t nv = end - begin;
+            if (nv < 3) continue;
+            glm::vec3 n = faceNormal(in, static_cast<size_t>(f));
+            const float area2 = glm::length(n);
+            if (!(area2 > 1e-12f)) continue;
+            n /= area2;
+            glm::vec3 centroid(0.0f);
+            for (int32_t c = begin; c < end; ++c) centroid += P[static_cast<size_t>(CV[static_cast<size_t>(c)])];
+            centroid /= static_cast<float>(nv);
+            const int32_t ci = static_cast<int32_t>(i);
+            const int32_t cNext = ci + 1 < end ? ci + 1 : begin;
+            const int32_t cPrev = ci > begin ? ci - 1 : end - 1;
+            const glm::vec3 v = P[static_cast<size_t>(CV[i])];
+            const glm::vec3 mNext = 0.5f * (v + P[static_cast<size_t>(CV[static_cast<size_t>(cNext)])]);
+            const glm::vec3 mPrev = 0.5f * (v + P[static_cast<size_t>(CV[static_cast<size_t>(cPrev)])]);
             float occluded = 0.0f;
+            int visible = 0;
             for (int k = 0; k < rays; ++k) {
-                // Stratified jittered (u1, u2) per (element, ray) — deterministic.
-                const float j1 = rngF32(rng, static_cast<uint64_t>(i), static_cast<uint32_t>(k * 2));
-                const float j2 = rngF32(rng, static_cast<uint64_t>(i), static_cast<uint32_t>(k * 2 + 1));
+                // Stratified jittered direction and patch position per (corner, ray) — deterministic.
+                const uint32_t lane = static_cast<uint32_t>(k * 4);
+                const float j1 = rngF32(rng, static_cast<uint64_t>(i), lane);
+                const float j2 = rngF32(rng, static_cast<uint64_t>(i), lane + 1);
+                const float j3 = rngF32(rng, static_cast<uint64_t>(i), lane + 2);
+                const float j4 = rngF32(rng, static_cast<uint64_t>(i), lane + 3);
                 const float u1 = (static_cast<float>(k % strata) + j1) / static_cast<float>(strata);
                 const float u2 = (static_cast<float>(k / strata) + j2) / static_cast<float>(strata);
+                const float ps = (static_cast<float>(k) + j3) / static_cast<float>(rays);
+                const float pt = std::fmod(static_cast<float>(k) * 0.6180340f + j4, 1.0f);
+                const glm::vec3 p = (1.0f - ps) * (1.0f - pt) * v + ps * (1.0f - pt) * mNext + ps * pt * centroid +
+                                    (1.0f - ps) * pt * mPrev;
+                const glm::vec3 o = p + n * eps;
+                if (bvh.hit(o, n, eps, cover) > 0.0f) continue;
+                visible += 1;
                 const glm::vec3 d = hemisphereDir(n, std::min(u1, 0.99999f), std::min(u2, 0.99999f));
                 const float t = bvh.hit(o, d, eps, distance);
                 if (t > 0.0f) occluded += 1.0f - (t / distance) * (t / distance);  // near hits darken more
             }
-            ao[i] = std::clamp(1.0f - occluded / static_cast<float>(rays), 0.0f, 1.0f);
+            cornerArea[i] = 0.5f * area2 / static_cast<float>(nv) * static_cast<float>(visible) / static_cast<float>(rays);
+            if (visible > 0) cornerAo[i] = std::clamp(1.0f - occluded / static_cast<float>(visible), 0.0f, 1.0f);
         }
     });
+
+    std::vector<float> ao;
+    if (domain == Domain::Corners) {
+        ao = std::move(cornerAo);
+    } else {
+        // A point takes the area-weighted mean of its corners' patches.
+        const size_t nPoints = in.pointCount();
+        std::vector<float> sum(nPoints, 0.0f), weight(nPoints, 0.0f);
+        for (size_t c = 0; c < nCorners; ++c) {
+            const size_t pt = static_cast<size_t>(CV[c]);
+            sum[pt] += cornerAo[c] * cornerArea[c];
+            weight[pt] += cornerArea[c];
+        }
+        ao.assign(nPoints, 1.0f);
+        for (size_t pt = 0; pt < nPoints; ++pt)
+            if (weight[pt] > 0.0f) ao[pt] = sum[pt] / weight[pt];
+    }
     AttrSet attrs = in.attrs(domain) ? *in.attrs(domain) : AttrSet{};
     attrs.columns[name] = AttrColumn{std::make_shared<const std::vector<float>>(std::move(ao)), AttrTypeInfo::None};
     return Value(withAttrs(in, domain, std::make_shared<const AttrSet>(std::move(attrs))));
