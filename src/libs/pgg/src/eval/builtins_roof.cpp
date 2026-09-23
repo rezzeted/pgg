@@ -176,6 +176,31 @@ Value opRoofWavefront(const BoundCall& bound, RunContext& run) {
     auto orientedPoly = [&](const SkeletonFace& f) {
         std::vector<glm::vec3> poly;
         for (int32_t idx : f.nodes) poly.push_back(nodePos(idx));
+        // Two anti-parallel edges that met on a ridge below rise_max stay in the
+        // front as a zero-width sliver up to the cut: their slope faces get a
+        // vertical step (ridge node -> cut node at the same plan point). The
+        // step top is not on the slope plane (the fan-triangulated panel would
+        // bulge over the coverage) — drop it; the ridge node closes the face.
+        if (pitchE[static_cast<size_t>(f.edge)] < 89.999f) {
+            bool changed = true;
+            while (changed && poly.size() > 3) {
+                changed = false;
+                for (size_t k = 0; k < poly.size(); ++k) {
+                    const glm::vec3& c = poly[k];
+                    const glm::vec3& pv = poly[(k + poly.size() - 1) % poly.size()];
+                    const glm::vec3& nx = poly[(k + 1) % poly.size()];
+                    auto stepOver = [&](const glm::vec3& o) {
+                        const float dx = c.x - o.x, dz = c.z - o.z;
+                        return dx * dx + dz * dz < 1e-8f && c.y > o.y + 1e-4f;
+                    };
+                    if (stepOver(pv) || stepOver(nx)) {
+                        poly.erase(poly.begin() + static_cast<std::ptrdiff_t>(k));
+                        changed = true;
+                        break;
+                    }
+                }
+            }
+        }
         glm::vec3 pn(0.0f);
         for (size_t k = 0; k < poly.size(); ++k) {
             const glm::vec3& a = poly[k];
@@ -235,10 +260,14 @@ Value opRoofWavefront(const BoundCall& bound, RunContext& run) {
         panels = withGroups(*panels, Domain::Faces, std::make_shared<const GroupSet>(std::move(fg)));
     }
 
-    // --- planes: per panel edge a boundary plane (outward normal in the slope
-    // plane, Newell-projected), the eave edge carrying the tile frame
-    // (o = eave midpoint, len = eave length, w_len = slope depth). Same row
-    // model as the analytic roofs' planes output (cls = 0).
+    // --- planes: per panel edge a boundary half-plane in the panel's own plane
+    // (o on the edge, n = outward in-plane normal), the eave edge carrying the
+    // tile frame (o = eave midpoint, len = eave length, w_len = slope depth).
+    // A skeleton face may be non-convex (a main slope widening behind a
+    // valley): it is ear-clipped into convex parts, each part a closed set of
+    // rows (@part); the diagonals between parts are cls = 2 (no margin). An
+    // anchor is inside the panel when it is inside any of its parts. Convex
+    // faces are one part (0) — the analytic roofs' row model (cls = 0).
     struct PlaneRow {
         glm::vec3 o;
         glm::vec3 n;
@@ -246,62 +275,105 @@ Value opRoofWavefront(const BoundCall& bound, RunContext& run) {
         uint8_t eave;
         float len;
         float wLen;
+        int64_t part;
+        float cls;
     };
     std::vector<PlaneRow> planeRows;
     {
-        // Panel normals, wound outward (one per source edge).
-        std::vector<glm::vec3> panelN(sk.faces.size());
         for (const SkeletonFace& f : sk.faces) {
-            std::vector<glm::vec3> poly = orientedPoly(f);
-            glm::vec3 pn(0.0f);
-            for (size_t k = 0; k < poly.size(); ++k) {
-                const glm::vec3& a = poly[k];
-                const glm::vec3& b = poly[(k + 1) % poly.size()];
-                pn += glm::vec3((a.y - b.y) * (a.z + b.z), (a.z - b.z) * (a.x + b.x), (a.x - b.x) * (a.y + b.y));
-            }
-            if (glm::length(pn) < 1e-9f) pn = glm::vec3(0, 1, 0);
-            panelN[static_cast<size_t>(f.edge)] = glm::normalize(pn);
-        }
-        // Arc lookup by endpoint pair -> (leftEdge, rightEdge).
-        auto neighborOf = [&](int32_t a, int32_t b, int32_t self) -> int32_t {
-            for (const SkeletonArc& arc : sk.arcs)
-                if ((arc.a == a && arc.b == b) || (arc.a == b && arc.b == a)) {
-                    if (arc.leftEdge == self) return arc.rightEdge;
-                    if (arc.rightEdge == self) return arc.leftEdge;
-                }
-            return -1;
-        };
-        for (const SkeletonFace& f : sk.faces) {
-            const glm::vec3& pn = panelN[static_cast<size_t>(f.edge)];
             const glm::vec3 v0 = nodePos(f.nodes[0]);
             const glm::vec3 v1 = nodePos(f.nodes[1]);
-            const size_t fn = f.nodes.size();
+            const std::vector<glm::vec3> poly = orientedPoly(f);
+            const size_t fn = poly.size();
+            glm::vec3 pn(0.0f);
             for (size_t k = 0; k < fn; ++k) {
-                const glm::vec3& a = nodePos(f.nodes[k]);
-                const glm::vec3& b = nodePos(f.nodes[(k + 1) % fn]);
-                const glm::vec3 mid = 0.5f * (a + b);
-                const bool isEave = (glm::length(a - v0) < 1e-4f && glm::length(b - v1) < 1e-4f) ||
-                                    (glm::length(a - v1) < 1e-4f && glm::length(b - v0) < 1e-4f);
+                const glm::vec3& a = poly[k];
+                const glm::vec3& b = poly[(k + 1) % fn];
+                pn += glm::vec3((a.y - b.y) * (a.z + b.z), (a.z - b.z) * (a.x + b.x), (a.x - b.x) * (a.y + b.y));
+            }
+            pn = glm::length(pn) < 1e-9f ? glm::vec3(0, 1, 0) : glm::normalize(pn);
+            auto isEaveEdge = [&](const glm::vec3& a, const glm::vec3& b) {
+                return (glm::length(a - v0) < 1e-4f && glm::length(b - v1) < 1e-4f) ||
+                       (glm::length(a - v1) < 1e-4f && glm::length(b - v0) < 1e-4f);
+            };
+            // The polygon is wound CCW around pn: cross(b - a, pn) points out of it.
+            auto pushRow = [&](size_t ia, size_t ib, int64_t part, bool diagonal) {
+                const glm::vec3& a = poly[ia];
+                const glm::vec3& b = poly[ib];
+                if (glm::length(b - a) < 1e-6f && !isEaveEdge(a, b)) return;
                 PlaneRow pr;
-                pr.o = mid;
+                pr.o = 0.5f * (a + b);
                 pr.island = f.edge;
-                pr.eave = isEave ? 1 : 0;
-                if (isEave) {
+                pr.part = part;
+                pr.eave = !diagonal && isEaveEdge(a, b) ? 1 : 0;
+                pr.cls = diagonal ? 2.0f : 0.0f;
+                if (pr.eave) {
                     // Vertical plane through the eave edge, outward horizontal.
                     const glm::vec2 d = in.outline[static_cast<size_t>((f.edge + 1) % n)] - in.outline[static_cast<size_t>(f.edge)];
                     const float len = glm::length(d);
                     pr.n = len > 0.0f ? glm::vec3(-d.y / len, 0.0f, d.x / len) : glm::vec3(0, 0, 1);
-                    pr.len = glm::length(b - a);
                 } else {
-                    // Boundary plane = the neighbouring panel's plane (its
-                    // normal): an anchor past the edge sits on the
-                    // neighbour's slope and gets punched.
-                    const int32_t nb = neighborOf(f.nodes[k], f.nodes[(k + 1) % fn], f.edge);
-                    pr.n = nb >= 0 ? panelN[static_cast<size_t>(nb)] : glm::vec3(0, 1, 0);
-                    pr.len = 0.0f;
+                    const glm::vec3 c = glm::cross(b - a, pn);
+                    pr.n = glm::length(c) < 1e-9f ? glm::vec3(0, 1, 0) : glm::normalize(c);
                 }
+                pr.len = pr.eave ? glm::length(v1 - v0) : 0.0f;
                 pr.wLen = 0.0f;
                 planeRows.push_back(pr);
+            };
+            // In-plane 2D frame (CCW preserved: e2 = pn x e1).
+            glm::vec3 e1 = poly[fn > 1 ? 1 : 0] - poly[0];
+            e1 = glm::length(e1) < 1e-9f ? glm::vec3(1, 0, 0) : glm::normalize(e1);
+            const glm::vec3 e2 = glm::cross(pn, e1);
+            std::vector<glm::vec2> q(fn);
+            for (size_t k = 0; k < fn; ++k) q[k] = glm::vec2(glm::dot(poly[k] - poly[0], e1), glm::dot(poly[k] - poly[0], e2));
+            auto turn = [&](size_t a, size_t b, size_t c) { return cross2(q[b] - q[a], q[c] - q[b]); };
+            bool convex = true;
+            for (size_t k = 0; k < fn && convex; ++k)
+                if (turn((k + fn - 1) % fn, k, (k + 1) % fn) < -1e-5f) convex = false;
+            const size_t rowsBefore = planeRows.size();
+            if (convex || fn < 4) {
+                for (size_t k = 0; k < fn; ++k) pushRow(k, (k + 1) % fn, 0, false);
+            } else {
+                // Ear clipping on the index ring; every ear is one convex part.
+                std::vector<size_t> ring(fn);
+                for (size_t k = 0; k < fn; ++k) ring[k] = k;
+                auto isPolyEdge = [&](size_t a, size_t b) { return (a + 1) % fn == b; };
+                auto inTri = [&](const glm::vec2& p, size_t a, size_t b, size_t c) {
+                    return cross2(q[b] - q[a], p - q[a]) >= -1e-6f && cross2(q[c] - q[b], p - q[b]) >= -1e-6f &&
+                           cross2(q[a] - q[c], p - q[c]) >= -1e-6f;
+                };
+                int64_t part = 0;
+                size_t guard = 0;
+                while (ring.size() > 3 && guard++ < fn * fn) {
+                    bool clipped = false;
+                    for (size_t k = 0; k < ring.size(); ++k) {
+                        const size_t ia = ring[(k + ring.size() - 1) % ring.size()];
+                        const size_t ib = ring[k];
+                        const size_t ic = ring[(k + 1) % ring.size()];
+                        if (turn(ia, ib, ic) <= 1e-6f) continue;
+                        bool empty = true;
+                        for (size_t m : ring)
+                            if (m != ia && m != ib && m != ic && inTri(q[m], ia, ib, ic)) {
+                                empty = false;
+                                break;
+                            }
+                        if (!empty) continue;
+                        pushRow(ia, ib, part, !isPolyEdge(ia, ib));
+                        pushRow(ib, ic, part, !isPolyEdge(ib, ic));
+                        pushRow(ic, ia, part, true);
+                        ++part;
+                        ring.erase(ring.begin() + static_cast<std::ptrdiff_t>(k));
+                        clipped = true;
+                        break;
+                    }
+                    if (!clipped) break;
+                }
+                const size_t m = ring.size();
+                for (size_t k = 0; k < m; ++k) {
+                    const size_t ia = ring[k];
+                    const size_t ib = ring[(k + 1) % m];
+                    pushRow(ia, ib, part, !isPolyEdge(ia, ib));
+                }
             }
             // Slope depth for the eave frame: farthest in-plane distance from
             // the eave line measured along the panel normal's up-slope axis.
@@ -311,16 +383,12 @@ Value opRoofWavefront(const BoundCall& bound, RunContext& run) {
                 const float elen = glm::length(edgeDir3);
                 if (elen > 1e-9f) edgeDir3 /= elen;
                 glm::vec3 W = glm::cross(pn, edgeDir3);  // up-slope, into the panel
-                const glm::vec3 some = nodePos(f.nodes[fn > 2 ? 2 : 0]);
+                const glm::vec3 some = nodePos(f.nodes[f.nodes.size() > 2 ? 2 : 0]);
                 if (glm::dot(W, some - mid) < 0.0f) W = -W;
                 float wMax = 0.0f;
-                std::vector<glm::vec3> poly = orientedPoly(f);
-                for (const glm::vec3& q : poly) wMax = std::max(wMax, glm::dot(q - mid, W));
-                for (size_t k = planeRows.size() - fn; k < planeRows.size(); ++k)
-                    if (planeRows[k].eave) {
-                        planeRows[k].len = glm::length(v1 - v0);
-                        planeRows[k].wLen = wMax;
-                    }
+                for (const glm::vec3& qq : poly) wMax = std::max(wMax, glm::dot(qq - mid, W));
+                for (size_t k = rowsBefore; k < planeRows.size(); ++k)
+                    if (planeRows[k].eave) planeRows[k].wLen = wMax;
             }
         }
     }
@@ -328,7 +396,7 @@ Value opRoofWavefront(const BoundCall& bound, RunContext& run) {
     {
         std::vector<glm::vec3> ppos;
         std::vector<glm::vec3> po, pn2;
-        std::vector<int64_t> pis;
+        std::vector<int64_t> pis, ppart;
         std::vector<uint8_t> pev;
         std::vector<float> plen, pwlen, pcls;
         for (const PlaneRow& pr : planeRows) {
@@ -339,7 +407,8 @@ Value opRoofWavefront(const BoundCall& bound, RunContext& run) {
             pev.push_back(pr.eave);
             plen.push_back(pr.len);
             pwlen.push_back(pr.wLen);
-            pcls.push_back(0.0f);
+            pcls.push_back(pr.cls);
+            ppart.push_back(pr.part);
         }
         planes = makePoints(std::move(ppos));
         AttrSet pa;
@@ -350,6 +419,7 @@ Value opRoofWavefront(const BoundCall& bound, RunContext& run) {
         pa.columns["len"] = AttrColumn{ColumnData(std::make_shared<const std::vector<float>>(plen))};
         pa.columns["w_len"] = AttrColumn{ColumnData(std::make_shared<const std::vector<float>>(pwlen))};
         pa.columns["cls"] = AttrColumn{ColumnData(std::make_shared<const std::vector<float>>(pcls))};
+        pa.columns["part"] = AttrColumn{ColumnData(std::make_shared<const std::vector<int64_t>>(ppart))};
         planes = withAttrs(*planes, Domain::Points, std::make_shared<const AttrSet>(std::move(pa)));
     }
 
@@ -381,6 +451,11 @@ Value opRoofWavefront(const BoundCall& bound, RunContext& run) {
         }
         const bool leftGable = pitchE[static_cast<size_t>(arc.leftEdge)] >= 89.999f;
         const bool rightGable = pitchE[static_cast<size_t>(arc.rightEdge)] >= 89.999f;
+        // The ridge-to-cut sliver between two slopes (see orientedPoly): no edge.
+        if (!leftGable && !rightGable) {
+            const float dx = pb.x - pa.x, dz = pb.z - pa.z;
+            if (dx * dx + dz * dz < 1e-8f) continue;
+        }
         int32_t role;
         glm::vec3 outN(0, 1, 0);
         if (leftGable || rightGable) {

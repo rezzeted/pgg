@@ -344,11 +344,13 @@ TEST(ArchLib, RoofRectKinds) {
     ASSERT_TRUE(valleys != nullptr);
     EXPECT_EQ(valleys->pointCount(), 4u);
 
-    // anchors cover all 4 hip panels: exact count, all stamped with variant 0 and
+    // anchors cover all 4 hip panels: exact count (the lattice area of 8.8 x 5.8
+    // at 45 deg is ~806 sites; the frame yaw is taken over the panel's own
+    // points, so the -90 deg hip is covered too), all stamped with variant 0 and
     // oriented frames (orient quaternion present).
     pgg::GeoPtr anchors = geoOutput(r, "anchors");
     ASSERT_TRUE(anchors != nullptr);
-    ASSERT_EQ(anchors->pointCount(), 739u);
+    ASSERT_EQ(anchors->pointCount(), 804u);
     const std::vector<int64_t>* vars = intCol(*anchors, "variant");
     ASSERT_TRUE(vars != nullptr);
     for (int64_t v : *vars) EXPECT_EQ(v, 0);
