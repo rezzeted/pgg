@@ -323,15 +323,45 @@ GeoPtr deleteByMask(const Geo& in, Domain domain, const std::vector<uint8_t>& dr
                     if (drop[static_cast<size_t>(verts[static_cast<size_t>(c)])]) dropFace[f] = 1;
             rebuildFaces(in, out, dropFace, &remap);
         }
-    } else if (domain == Domain::Faces) {
-        rebuildFaces(in, out, drop, nullptr);
-    } else {  // corners: a face dies with any of its corners
+    } else {
         const auto& offsets = *in.faceOffsets;
-        std::vector<uint8_t> dropFace(in.faceCount(), 0);
-        for (size_t f = 0; f + 1 < offsets.size(); ++f)
-            for (int32_t c = offsets[f]; c < offsets[f + 1] && !dropFace[f]; ++c)
-                if (drop[static_cast<size_t>(c)]) dropFace[f] = 1;
-        rebuildFaces(in, out, dropFace, nullptr);
+        const auto& verts = *in.cornerVerts;
+        std::vector<uint8_t> dropFace;
+        if (domain == Domain::Faces) {
+            dropFace = drop;
+        } else {  // corners: a face dies with any of its corners
+            dropFace.assign(in.faceCount(), 0);
+            for (size_t f = 0; f + 1 < offsets.size(); ++f)
+                for (int32_t c = offsets[f]; c < offsets[f + 1] && !dropFace[f]; ++c)
+                    if (drop[static_cast<size_t>(c)]) dropFace[f] = 1;
+        }
+        // v1.33: points that lost their last face go with it (as in extrude),
+        // so aggregates over the result never see the deleted faces' points.
+        // Points that had no face in the input stay.
+        std::vector<uint8_t> usedByKept(in.pointCount(), 0), usedByDropped(in.pointCount(), 0);
+        for (size_t f = 0; f + 1 < offsets.size(); ++f) {
+            std::vector<uint8_t>& used = dropFace[f] ? usedByDropped : usedByKept;
+            for (int32_t c = offsets[f]; c < offsets[f + 1]; ++c) used[static_cast<size_t>(verts[static_cast<size_t>(c)])] = 1;
+        }
+        std::vector<uint8_t> orphan(in.pointCount(), 0);
+        bool anyOrphan = false;
+        for (size_t p = 0; p < orphan.size(); ++p) {
+            orphan[p] = usedByDropped[p] && !usedByKept[p];
+            anyOrphan = anyOrphan || orphan[p];
+        }
+        if (!anyOrphan) {
+            rebuildFaces(in, out, dropFace, nullptr);
+        } else {
+            const std::vector<int32_t> keep = keptIndices(orphan);
+            std::vector<int32_t> remap(in.pointCount(), -1);
+            for (size_t i = 0; i < keep.size(); ++i) remap[static_cast<size_t>(keep[i])] = static_cast<int32_t>(i);
+            using Vec3Col = std::shared_ptr<const std::vector<glm::vec3>>;
+            out.positions = std::get<Vec3Col>(gatherColumn(ColumnData(in.positions), keep));
+            if (in.normals) out.normals = std::get<Vec3Col>(gatherColumn(ColumnData(in.normals), keep));
+            out.pointAttrs = gatherAttrs(in.pointAttrs.get(), keep);
+            out.pointGroups = gatherGroups(in.pointGroups.get(), keep);
+            rebuildFaces(in, out, dropFace, &remap);
+        }
     }
     return std::make_shared<const Geo>(std::move(out));
 }

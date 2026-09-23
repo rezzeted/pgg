@@ -228,8 +228,10 @@ TEST(Separate, SplitsByMaskWithDeleteCascade) {
     ASSERT_TRUE(yes && no && py && pn);
     EXPECT_EQ(yes->faceCount(), 1u);
     EXPECT_EQ(no->faceCount(), 5u);
-    // Face masks keep points; point masks cascade to faces.
-    EXPECT_EQ(yes->pointCount(), 8u);
+    // Face masks drop the points left without a face (v1.33); point masks
+    // cascade to faces.
+    EXPECT_EQ(yes->pointCount(), 4u);
+    EXPECT_EQ(no->pointCount(), 8u);
     EXPECT_EQ(py->pointCount(), 4u);
     EXPECT_EQ(py->faceCount(), 1u);
     EXPECT_EQ(pn->pointCount(), 4u);
