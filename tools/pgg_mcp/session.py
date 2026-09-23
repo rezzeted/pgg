@@ -17,6 +17,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Mapping, Optional
@@ -27,6 +28,9 @@ DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 9878
 _SERVE_REL = "src/apps/PggServe"
 _SERVE_NAME = "PggServe"
+
+# A freshly linked binary younger than this is treated as still being written.
+_BINARY_SETTLE_S = 2.0
 
 _SLOT_OPS = frozenset(
     {"params", "views", "render", "reference", "probe", "export", "diff", "docs"}
@@ -258,9 +262,16 @@ class PggSession:
     popen_fn: Callable[..., Any] = subprocess.Popen
     which_fn: Callable[[str], Optional[str]] = shutil.which
     client_factory: Optional[Callable[[], PggRpcClient]] = None
+    time_fn: Callable[[], float] = time.time
+    mtime_fn: Callable[[str], float] = os.path.getmtime
 
     _proc: Any = field(default=None, init=False, repr=False)
     _log_file: Any = field(default=None, init=False, repr=False)
+    _started_mtime: Optional[float] = field(default=None, init=False, repr=False)
+    _loaded: dict[str, dict[str, Any]] = field(default_factory=dict, init=False, repr=False)
+    _notes: dict[str, Any] = field(default_factory=dict, init=False, repr=False)
+    _foreign_stale: Optional[dict[str, Any]] = field(default=None, init=False, repr=False)
+    _foreign_checked_mtime: Optional[float] = field(default=None, init=False, repr=False)
     binary_path: Optional[str] = field(default=None, init=False)
     last_file: Optional[str] = field(default=None, init=False)
 
@@ -276,11 +287,37 @@ class PggSession:
     def find_binary(self) -> Optional[str]:
         return find_serve_binary(self.repo_root, self.platform, self._env())
 
+    def _mtime(self, path: Optional[str]) -> Optional[float]:
+        if not path:
+            return None
+        try:
+            return self.mtime_fn(path)
+        except OSError:
+            return None
+
+    def _owns_running_proc(self) -> bool:
+        return self._proc is not None and getattr(self._proc, "poll", lambda: 0)() is None
+
+    def _newer_settled_binary(self, since: float) -> Optional[tuple[str, float]]:
+        """The binary to run if it was rebuilt after ``since`` and is done linking."""
+        serve = self.find_binary()
+        mtime = self._mtime(serve)
+        if serve is None or mtime is None or mtime <= since:
+            return None
+        if self.time_fn() - mtime < _BINARY_SETTLE_S:
+            return None
+        return serve, mtime
+
     def ensure(self) -> Optional[dict[str, Any]]:
         """Start PggServe if needed. None = RPC port is accepting."""
         if self.port_open_fn(self.host, self.port):
             if self.binary_path is None:
                 self.binary_path = self.find_binary()
+            if self._owns_running_proc():
+                if self._started_mtime is not None and self._newer_settled_binary(self._started_mtime):
+                    return self._restart()
+            else:
+                self._check_foreign_stale()
             return None
 
         if self._proc is not None and getattr(self._proc, "poll", lambda: 0)() is None:
@@ -312,6 +349,8 @@ class PggSession:
 
         log_dir = Path(self.repo_root) / "tmp"
         log_dir.mkdir(parents=True, exist_ok=True)
+        if self._log_file is not None:
+            self._log_file.close()
         self._log_file = open(log_dir / "pgg_serve.log", "ab", buffering=0)
         popen_kw: dict[str, Any] = {
             "cwd": self.repo_root,
@@ -320,6 +359,7 @@ class PggSession:
         }
         self._proc = self.popen_fn(cmd, **popen_kw)
         self.binary_path = serve
+        self._started_mtime = self._mtime(serve)
         if self.wait_for_port_fn(self.host, self.port, timeout_s=30.0, step_s=0.5):
             return None
         poll = getattr(self._proc, "poll", lambda: None)()
@@ -336,6 +376,97 @@ class PggSession:
             log="tmp/pgg_serve.log",
             binary=serve,
         )
+
+    def _stop_proc(self) -> None:
+        proc = self._proc
+        self._proc = None
+        if proc is None:
+            return
+        try:
+            proc.terminate()
+            proc.wait(timeout=10)
+        except Exception:  # noqa: BLE001 — a stuck process is killed below
+            try:
+                proc.kill()
+            except Exception:  # noqa: BLE001
+                pass
+        deadline = self.time_fn() + 10.0
+        while self.port_open_fn(self.host, self.port) and self.time_fn() < deadline:
+            time.sleep(0.1)
+
+    def _restart(self) -> Optional[dict[str, Any]]:
+        """Replace our PggServe with the rebuilt binary and reload the known slots."""
+        self._stop_proc()
+        start_error = self.ensure()
+        if start_error:
+            return start_error
+        reloaded: list[str] = []
+        failed: dict[str, str] = {}
+        keep_last = self.last_file
+        for file, load_args in list(self._loaded.items()):
+            resp = self._raw_call("load", load_args)
+            if resp.get("ok"):
+                reloaded.append(file)
+            else:
+                failed[file] = str((resp.get("error") or {}).get("message", "load failed"))
+        self.last_file = keep_last
+        self._notes["restarted"] = True
+        self._notes["restart"] = {"binary": self.binary_path, "reloaded_slots": reloaded}
+        if failed:
+            self._notes["restart"]["failed_slots"] = failed
+        return None
+
+    def _check_foreign_stale(self) -> None:
+        """Warn when a PggServe we did not start predates the current build."""
+        serve = self.find_binary()
+        mtime = self._mtime(serve)
+        if mtime is None:
+            self._foreign_stale = None
+            return
+        if self._foreign_stale is None and self._foreign_checked_mtime == mtime:
+            return
+        self._foreign_checked_mtime = mtime
+        resp = self._raw_call("status", {})
+        data = resp.get("data") if resp.get("ok") else None
+        uptime = data.get("uptime_s") if isinstance(data, dict) else None
+        if not isinstance(uptime, (int, float)) or uptime <= 0:
+            self._foreign_stale = None
+            return
+        started = self.time_fn() - float(uptime)
+        if mtime > started + 1.0:
+            self._foreign_stale = {
+                "binary": serve,
+                "message": (
+                    "PggServe on the port was started before the last build and not by this MCP; "
+                    "it runs the old code. Stop it (the MCP then starts the new binary)."
+                ),
+            }
+        else:
+            self._foreign_stale = None
+
+    def _raw_call(self, op: str, args: dict[str, Any]) -> dict[str, Any]:
+        payload: dict[str, Any] = {"op": op}
+        if args:
+            payload["args"] = args
+        client: Optional[PggRpcClient] = None
+        try:
+            client = self._make_client()
+            return client.call(**payload)
+        except PggRpcError as e:
+            return error_envelope(e.kind, e.message)
+        except (ConnectionError, OSError) as e:
+            return error_envelope("unreachable", f"PggServe RPC unreachable: {e}")
+        finally:
+            if client is not None:
+                client.close()
+
+    def _attach_notes(self, resp: dict[str, Any]) -> dict[str, Any]:
+        if self._notes:
+            resp.update(self._notes)
+            self._notes = {}
+        if self._foreign_stale is not None:
+            resp["stale_binary"] = dict(self._foreign_stale)
+        return resp
 
     def _make_client(self) -> PggRpcClient:
         if self.client_factory is not None:
@@ -374,6 +505,12 @@ class PggSession:
                 if op == "load" and resp.get("ok") and isinstance(resp.get("data"), dict):
                     session = resp["data"].get("session") or {}
                     self.last_file = session.get("file") or resp["data"].get("path")
+                    if "path" in payload_args and self.last_file:
+                        replay = {k: v for k, v in payload_args.items() if k in ("path", "lib_roots")}
+                        self._loaded.pop(self.last_file, None)
+                        self._loaded[self.last_file] = replay
+                        while len(self._loaded) > 8:  # PggServe keeps at most 8 slots
+                            self._loaded.pop(next(iter(self._loaded)))
                 if op == "status" and resp.get("ok") and isinstance(resp.get("data"), dict):
                     data = resp["data"]
                     data["serve"] = "running"
@@ -381,7 +518,7 @@ class PggSession:
                     if self.binary_path:
                         data["binary"] = self.binary_path
                     data["rpc"] = {"host": self.host, "port": self.port}
-                return resp
+                return self._attach_notes(resp)
             except PggRpcError as e:
                 return error_envelope(e.kind, e.message)
             except (ConnectionError, OSError) as e:
