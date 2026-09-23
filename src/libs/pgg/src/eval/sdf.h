@@ -129,7 +129,7 @@ const FieldNode* sdfContextViolation(const FieldNode* root);
 // Deterministic AABB BVH over the mesh triangles (mid-split on the longest
 // centroid axis, tie-break by triangle index). Closest-point queries return
 // the nearest triangle by (distance, face, tri) — the pseudo-sign oracle of
-// sdf_from_mesh. (distance_to will reuse this structure in a later stage.)
+// sdf_from_mesh; raycast() serves the raycast builtin.
 class MeshBvh {
 public:
     struct Tri {
@@ -143,6 +143,10 @@ public:
     // false when the mesh has no triangles. outPoint/outNormal: closest point
     // and its triangle normal (pseudo-sign oracle).
     bool closest(const glm::vec3& p, float& outDist, glm::vec3& outPoint, glm::vec3& outNormal) const;
+    // First hit of the ray origin + t*dir (dir unit), 0 <= t <= maxDist, both
+    // triangle sides; ties by (t, face, tri). outFace: source face index.
+    bool raycast(const glm::vec3& origin, const glm::vec3& dir, float maxDist, float& outT, glm::vec3& outNormal,
+                 int32_t& outFace) const;
 
 private:
     struct Node {

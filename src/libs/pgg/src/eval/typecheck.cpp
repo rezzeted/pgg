@@ -1070,6 +1070,20 @@ private:
                 // Attribute barrier (§8.4): the extracted mesh carries @P only.
                 storeSchema(&c, sourceSchema(GeoKind::Mesh, false));
                 break;
+            case BuiltinId::Raycast: {
+                GeoSchema s = argSchema(byParam, 0);
+                checkFieldArgs(s, byParam, {2, 3});  // dir, origin
+                if (!s.open) {
+                    auto& pts = s.attrs[domainIndex("points")];
+                    pts["hit"] = ScalarType::Bool;
+                    pts["hit_pos"] = SchemaAttrType(ScalarType::Vec3, AttrTypeInfo::Point);
+                    pts["hit_n"] = SchemaAttrType(ScalarType::Vec3, AttrTypeInfo::Normal);
+                    pts["hit_dist"] = ScalarType::F32;
+                    pts["hit_face"] = ScalarType::Int;
+                }
+                storeSchema(&c, std::move(s));
+                break;
+            }
             case BuiltinId::Islands: {
                 GeoSchema s = argSchema(byParam, 0);
                 if (!s.open) s.attrs[domainIndex("faces")]["island_id"] = ScalarType::Int;

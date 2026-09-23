@@ -445,7 +445,7 @@ const FieldNode* sdfContextViolation(const FieldNode* root) {
                 return n;
             case FKind::Call: {
                 const BuiltinId id = static_cast<BuiltinId>(n->callId);
-                if (id == BuiltinId::DistanceTo || id == BuiltinId::Ingroup) return n;
+                if (id == BuiltinId::DistanceTo || id == BuiltinId::InsidePolygon || id == BuiltinId::Ingroup) return n;
                 break;
             }
             default:
@@ -562,6 +562,71 @@ bool MeshBvh::closest(const glm::vec3& p, float& outDist, glm::vec3& outPoint, g
     outDist = best;
     outPoint = bestP;
     outNormal = bestN;
+    return true;
+}
+
+bool MeshBvh::raycast(const glm::vec3& origin, const glm::vec3& dir, float maxDist, float& outT,
+                      glm::vec3& outNormal, int32_t& outFace) const {
+    if (nodes_.empty()) return false;
+    const glm::vec3 inv(1.0f / dir.x, 1.0f / dir.y, 1.0f / dir.z);
+    auto slab = [&](const Node& n) {
+        float t0 = 0.0f, t1 = std::numeric_limits<float>::infinity();
+        for (int a = 0; a < 3; ++a) {
+            if (dir[a] == 0.0f) {
+                if (origin[a] < n.mn[a] || origin[a] > n.mx[a]) return std::numeric_limits<float>::infinity();
+                continue;
+            }
+            float ta = (n.mn[a] - origin[a]) * inv[a];
+            float tb = (n.mx[a] - origin[a]) * inv[a];
+            if (ta > tb) std::swap(ta, tb);
+            t0 = std::max(t0, ta);
+            t1 = std::min(t1, tb);
+            if (t0 > t1 * (1.0f + 1e-6f) + 1e-6f) return std::numeric_limits<float>::infinity();
+        }
+        return t0;
+    };
+    float best = maxDist;
+    int32_t bestFace = -1, bestTri = std::numeric_limits<int32_t>::max();
+    glm::vec3 bestN(0.0f, 1.0f, 0.0f);
+    int32_t stack[64];
+    int top = 0;
+    stack[top++] = 0;
+    while (top > 0) {
+        const Node& n = nodes_[stack[--top]];
+        if (slab(n) > best) continue;
+        if (n.left < 0) {
+            for (int32_t i = n.begin; i < n.begin + n.count; ++i) {
+                const Tri& t = tris_[i];
+                // Moller-Trumbore, two-sided.
+                const glm::vec3 e1 = t.b - t.a, e2 = t.c - t.a;
+                const glm::vec3 pv = glm::cross(dir, e2);
+                const float det = glm::dot(e1, pv);
+                if (std::abs(det) < 1e-12f) continue;
+                const float invDet = 1.0f / det;
+                const glm::vec3 tv = origin - t.a;
+                const float u = glm::dot(tv, pv) * invDet;
+                if (u < -1e-6f || u > 1.0f + 1e-6f) continue;
+                const glm::vec3 qv = glm::cross(tv, e1);
+                const float v = glm::dot(dir, qv) * invDet;
+                if (v < -1e-6f || u + v > 1.0f + 1e-6f) continue;
+                const float th = glm::dot(e2, qv) * invDet;
+                if (th < 0.0f || th > best) continue;
+                if (th < best || bestFace < 0 || t.face < bestFace || (t.face == bestFace && t.tri < bestTri)) {
+                    best = th;
+                    bestFace = t.face;
+                    bestTri = t.tri;
+                    bestN = t.normal;
+                }
+            }
+        } else {
+            stack[top++] = n.left;
+            stack[top++] = n.right;
+        }
+    }
+    if (bestFace < 0) return false;
+    outT = best;
+    outNormal = bestN;
+    outFace = bestFace;
     return true;
 }
 

@@ -205,6 +205,12 @@ const std::vector<BuiltinSig>& registry() {
                             fieldResult(ScalarType::Int)));
         }
         r.push_back(sig(BuiltinId::DistanceTo, "distance_to", {geoArg("target")}, fieldResult(ScalarType::F32)));
+        {
+            ParamSig pos = fld("pos", ScalarType::Vec3);
+            pos.defPosition = true;
+            r.push_back(sig(BuiltinId::InsidePolygon, "inside_polygon", {geoArg("poly"), pos},
+                            fieldResult(ScalarType::Bool)));
+        }
         r.push_back(sig(BuiltinId::Position, "position", {}, fieldResult(ScalarType::Vec3)));
         r.push_back(sig(BuiltinId::Normal, "normal", {}, fieldResult(ScalarType::Vec3)));
         r.push_back(sig(BuiltinId::Index, "index", {}, fieldResult(ScalarType::Int)));
@@ -579,10 +585,22 @@ const std::vector<BuiltinSig>& registry() {
                          val("rng", ScalarType::Rng, true)},
                         Type{ScalarType::Geo, false, GeoKind::Mesh}));
 
+        // --- §8.9 geometry queries (v1.34) ----------------------------------------
+        {
+            ParamSig origin = fld("origin", ScalarType::Vec3);
+            origin.defPosition = true;
+            BuiltinSig s = sig(BuiltinId::Raycast, "raycast",
+                               {geoArg("geo"), geoArg("target", GeoKind::Mesh),
+                                fldDef("dir", ScalarType::Vec3, Value(glm::vec3(0.0f, -1.0f, 0.0f))), origin,
+                                valDef("max_dist", ScalarType::F32, Value(1.0e6f))},
+                               geoResult());
+            s.resultGeoKindOfFirstArg = true;
+            r.push_back(s);
+        }
+
         // --- known but deferred past this stage ---------------------------------
         r.push_back(deferredSig("import_mesh", "deferred: no host asset contract yet, Q4"));
-        for (const char* n : {"raycast", "transfer"})
-            r.push_back(deferredSig(n, "sampling ops are a later stage (post-E4)"));
+        r.push_back(deferredSig("transfer", "sampling ops are a later stage (post-E4)"));
         return r;
     }();
     return kRegistry;
@@ -752,6 +770,8 @@ Value evalBuiltinCall(const BoundCall& bound, RunContext& run) {
             return evalBakeBuiltin(bound, run);
         case BuiltinId::RoofWavefront:
             return evalRoofBuiltin(bound, run);
+        case BuiltinId::Raycast:
+            return evalQueryBuiltin(bound, run);
         case BuiltinId::Delete:
         case BuiltinId::Clip:
             return evalTopologyBuiltin(bound, run);

@@ -27,7 +27,7 @@ enum class BuiltinId {
     // §8.5 rng
     RngFromSeed, SplitRng, AliasRng,
     // §8.5 field generators
-    Fbm, Vnoise, Random, RandomVec, RandomInt, DistanceTo, Position, Normal, Index,
+    Fbm, Vnoise, Random, RandomVec, RandomInt, DistanceTo, InsidePolygon, Position, Normal, Index,
     // §6.3 expression functions (field-polymorphic)
     Dot, Cross, Length, Normalize, Clamp, Smoothstep, Mix, Abs, Min, Max, Floor, Pow,
     Sin, Cos, Tan, Asin, Acos, Atan, Sqrt, Exp, Log, Ceil, Round, Fract, Radians, Degrees, Atan2, Mod,
@@ -42,6 +42,8 @@ enum class BuiltinId {
     Extrude, Inset, Bevel, Separate, Triangulate, Subdivide, MergeByDistance, Mirror, Circle, Sweep, BezierPoints, ResamplePoints, BakeAo,
     // §8 L1 roof skeleton (v1.30)
     RoofWavefront,
+    // §8.9 geometry queries (v1.34)
+    Raycast,
     // §8.8 scatter and instancing
     DistributePoints, InstanceOnPoints, Realize,
     // §8.10 aggregators
@@ -176,6 +178,7 @@ Value evalTopologyOpsBuiltin(const BoundCall& bound, RunContext& run);
 Value evalSweepBuiltin(const BoundCall& bound, RunContext& run);
 Value evalBakeBuiltin(const BoundCall& bound, RunContext& run);
 Value evalRoofBuiltin(const BoundCall& bound, RunContext& run);
+Value evalQueryBuiltin(const BoundCall& bound, RunContext& run);
 
 // Materializes geo<instances> into geo<mesh> (spec §8.8); host entry point
 // for tools that export instances without running the graph. nullptr when the

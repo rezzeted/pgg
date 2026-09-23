@@ -808,6 +808,31 @@ ConstBufferPtr evalFieldGenBuf(int callId, const FieldNode& node,
             });
             return std::make_shared<const Buffer>(std::move(out));
         }
+        case BuiltinId::InsidePolygon: {
+            // Even-odd rule in plan (XZ) over the poly's points in @index order.
+            const GeoPtr poly = asGeo(node.params[0]);
+            ConstBufferPtr at = convertBuffer(args[0], ScalarType::Vec3);
+            const auto& p = std::get<Vec3Buf>(*at);
+            BoolBuf out(count, 0);
+            const size_t n = poly && poly->positions ? poly->positions->size() : 0;
+            if (n >= 3) {
+                const auto& ring = *poly->positions;
+                parallelFor(count, threads, [&](size_t s, size_t e) {
+                    for (size_t i = s; i < e; ++i) {
+                        const float x = p[i].x, z = p[i].z;
+                        bool in = false;
+                        for (size_t a = 0, b = n - 1; a < n; b = a++) {
+                            const glm::vec3& pa = ring[a];
+                            const glm::vec3& pb = ring[b];
+                            if ((pa.z > z) != (pb.z > z) && x < (pb.x - pa.x) * (z - pa.z) / (pb.z - pa.z) + pa.x)
+                                in = !in;
+                        }
+                        out[i] = in ? 1 : 0;
+                    }
+                });
+            }
+            return std::make_shared<const Buffer>(std::move(out));
+        }
         case BuiltinId::DistanceTo: {
             // Brute-force point-to-surface distance (perf: later stages).
             const GeoPtr target = asGeo(node.params[0]);
