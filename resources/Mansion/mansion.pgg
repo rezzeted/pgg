@@ -3,7 +3,7 @@
 # lib/arch: план-прямоугольник → facades (scope на ребро) → split каждого фасада
 # своим паттерном участков (@variant — вид участка) → участки mansion/units в рамки
 # (ls.place). Угловой объём с эркером и шатром — на углу (+X, +Z), где сходятся
-# боковой (ребро 1, лицо +Z) и входной (ребро 2, лицо +X) фасады. Крыша — прямой
+# боковой (сторона front, лицо +Z) и входной (сторона right, лицо +X) фасады. Крыша — прямой
 # скелет контура с выступами ризалитов: рёбра фронтонов @pitch = 90 дают щипцы,
 # rise_max — плоская палуба; покрытие — ромбовидный шифер по якорям tile_anchors.
 # Стенд элементов и участков по отдельности — elements.pgg.
@@ -25,8 +25,8 @@ import mansion.common as mc
 import mansion.units as mu
 
 # --- габариты плана ------------------------------------------------------------------
-# Боковой фасад (ребро 1, от дальнего угла к эркеру): простенок 0.5 | три окна 3.9 |
-# ризалит 4.2 | ось 3.4 | угловой объём 3.0. Входной (ребро 2, от эркера): угол 3.0 |
+# Боковой фасад (front, от дальнего угла к эркеру): простенок 0.5 | три окна 3.9 |
+# ризалит 4.2 | ось 3.4 | угловой объём 3.0. Входной (right, от эркера): угол 3.0 |
 # узкая ось 2.6 | ризалит с порталом 4.2 | две оси по 3.0 | простенок 0.5.
 W = 15.0
 D = 16.3
@@ -68,10 +68,10 @@ pat_entr = lsp.pattern_add(pat = e4, size = 0.5, kind = kw, variant = 2)
 
 plan = ap.plan_rect(w = W, d = D)
 faces = af.facades(plan = plan, y0 = 0.0, y1 = mc.Y_EAVE(), t = mc.WALL_T())
-bays_l = lsp.split(scopes = delete(faces, where = @facade != 0), pattern = ends(n = 5))
-bays_s = lsp.split(scopes = delete(faces, where = @facade != 1), pattern = pat_side)
-bays_e = lsp.split(scopes = delete(faces, where = @facade != 2), pattern = pat_entr)
-bays_r = lsp.split(scopes = delete(faces, where = @facade != 3), pattern = ends(n = 4))
+bays_l = lsp.split(scopes = delete(faces, where = @facade != ap.rect_side(side = left)), pattern = ends(n = 5))
+bays_s = lsp.split(scopes = delete(faces, where = @facade != ap.rect_side(side = front)), pattern = pat_side)
+bays_e = lsp.split(scopes = delete(faces, where = @facade != ap.rect_side(side = right)), pattern = pat_entr)
+bays_r = lsp.split(scopes = delete(faces, where = @facade != ap.rect_side(side = back)), pattern = ends(n = 4))
 bays = merge(bays_l, bays_s, bays_e, bays_r)
 
 g_end_l = foreach s in delete(bays, where = @variant != 1) {
@@ -147,7 +147,11 @@ y_d = mc.Y_EAVE() + u_d * tp
 dw = mu.w5(w = 1.5, h = 1.15, dep = 1.2, detail = detail)
 dg = transform(mu.tent_dormer(w = 1.1, h = 1.5, dep = 1.4), translate = vec3(0, 0, 0.0 - 0.7))
 dw_s = merge(transform(dw, translate = vec3(hw - 3.0 - 1.7, y_d, hd - u_d)), transform(dw, translate = vec3(0.0 - hw + 0.5 + 1.95, y_d, hd - u_d)))
-dw_e = merge(transform(dw, rotate = vec3(0, 90, 0), translate = vec3(hw - u_d, y_d, hd - 3.0 - 1.3)), transform(dg, rotate = vec3(0, 90, 0), translate = vec3(hw - u_d, y_d, zs - rh - 1.5)))
+# Входной фасад — сторона right: рамка ребра даёт поворот и направление вдоль стены
+# (от угла эркера, вершина (hw, hd)) без ручного вывода yaw.
+e_o, _, e_t, e_n, e_yaw, _ = ap.edge_frame(plan = plan, i = ap.rect_side(side = right))
+e_in = e_o - e_n * u_d + vec3(0, y_d, 0)
+dw_e = merge(transform(dw, rotate = vec3(0, e_yaw, 0), translate = e_in + e_t * 4.3), transform(dg, rotate = vec3(0, e_yaw, 0), translate = e_in + e_t * (hd - zs + rh + 1.5)))
 dormers = merge(dw_s, dw_e)
 chim0 = mc.as_group(g = tb.chimney_stack(w = 0.78, d = 0.64, h = 3.6), grp = "redbrick")
 chim = merge(transform(chim0, translate = vec3(0.0 - 3.6, 12.4, 4.6)), transform(chim0, translate = vec3(1.6, 12.4, 0.0 - 5.3)), transform(chim0, translate = vec3(4.6, 12.4, 0.0 - 1.2)), transform(chim0, translate = vec3(0.0 - 4.4, 12.4, 0.0 - 3.4)))

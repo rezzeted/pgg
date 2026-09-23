@@ -248,9 +248,12 @@ const std::vector<BuiltinDoc>& docs() {
          "c = ramp(@h, 0.0, (0.2, 0.1, 0.05), 1.0, (0.9, 0.9, 0.8))"},
         // --- §8.6 groups -----------------------------------------------------
         {"mark", "groups",
-         "Creates/overwrites a named group (mask) on the geometry at domain "
-         "points/corners/faces/detail.",
-         "m = mark(g, \"flat_tops\", where = dot(@N, (0, 1, 0)) > 0.9)"},
+         "Creates a named group (mask) on the geometry at domain "
+         "points/corners/faces/detail. mode = set (default) replaces the "
+         "membership with where; mode = add keeps the current members and adds "
+         "where (a missing group starts empty).",
+         "m = mark(g, \"flat_tops\", where = dot(@N, (0, 1, 0)) > 0.9)\n"
+         "m2 = mark(m, \"flat_tops\", where = ingroup(\"deck\"), mode = add)"},
         {"unmark", "groups", "Removes a named group.",
          "u = unmark(g, \"flat_tops\")"},
         {"ingroup", "groups",

@@ -71,6 +71,27 @@ TEST(Groups, MarkOnFacesReadFromPoints) {
     EXPECT_EQ(pgg::asInt(valueOutput(r, "c")), 3);
 }
 
+TEST(Groups, MarkModeAddExtendsMembership) {
+    // Grid res 2 = 4 faces (2 with x > 0, 2 with z > 0, 1 in both). set replaces,
+    // add unions; add on a missing group starts from empty.
+    pgg::RunResult r = pgg::run(
+        "b = grid(size = (4, 4), res = 2)\n"
+        "m = mark(b, \"g\", where = dot(@P, (1, 0, 0)) > 0, domain = faces)\n"
+        "s = mark(m, \"g\", where = dot(@P, (0, 0, 1)) > 0, domain = faces)\n"
+        "a = mark(m, \"g\", where = dot(@P, (0, 0, 1)) > 0, domain = faces, mode = add)\n"
+        "f = mark(b, \"h\", where = dot(@P, (0, 0, 1)) > 0, domain = faces, mode = add)\n"
+        "cs = count(s, domain = faces, where = ingroup(\"g\"))\n"
+        "ca = count(a, domain = faces, where = ingroup(\"g\"))\n"
+        "cf = count(f, domain = faces, where = ingroup(\"h\"))\n"
+        "output cs\n"
+        "output ca\n"
+        "output cf\n");
+    expectNoErrors(r);
+    EXPECT_EQ(pgg::asInt(valueOutput(r, "cs")), 2);
+    EXPECT_EQ(pgg::asInt(valueOutput(r, "ca")), 3);
+    EXPECT_EQ(pgg::asInt(valueOutput(r, "cf")), 2);
+}
+
 TEST(Groups, UnmarkRemovesTheGroup) {
     pgg::RunResult r = pgg::run(
         "b = ico_sphere(subdiv = 1, radius = 1.0)\n"

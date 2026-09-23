@@ -282,9 +282,11 @@ const std::vector<BuiltinSig>& registry() {
         {
             ParamSig domain = valDef("domain", ScalarType::String, Value(std::string("points")));
             domain.enumValues = {"points", "corners", "faces", "detail"};
+            ParamSig mode = valDef("mode", ScalarType::String, Value(std::string("set")));
+            mode.enumValues = {"set", "add"};
             BuiltinSig s = sig(BuiltinId::Mark, "mark",
                                {geoArg("geo"), val("name", ScalarType::String, true),
-                                fld("where", ScalarType::Bool, true), domain},
+                                fld("where", ScalarType::Bool, true), domain, mode},
                                geoResult());
             s.resultGeoKindOfFirstArg = true;
             r.push_back(s);

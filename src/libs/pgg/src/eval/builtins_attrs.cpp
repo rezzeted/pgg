@@ -34,8 +34,8 @@ ColumnData bufferToColumn(const Buffer& buf) {
         buf);
 }
 
-// mark(geo, name, where, domain): create/overwrite a named bool mask on the
-// given domain (§8.6).
+// mark(geo, name, where, domain, mode): create/overwrite (mode = set) or
+// extend (mode = add) a named bool mask on the given domain (§8.6).
 Value opMark(const BoundCall& bound, RunContext& run) {
     const Geo& in = *asGeo(bound.values[0]);
     const std::string& name = asString(bound.values[1]);
@@ -50,7 +50,11 @@ Value opMark(const BoundCall& bound, RunContext& run) {
     const auto& w = std::get<BoolBuf>(*where);
 
     GroupSet groups = in.groups(domain) ? *in.groups(domain) : GroupSet{};
-    groups.columns[name] = std::make_shared<const BoolColumn>(w);
+    BoolColumn col = w;
+    if (asString(bound.values[4]) == "add")
+        if (const auto prev = groups.columns.find(name); prev != groups.columns.end() && prev->second)
+            for (size_t i = 0; i < col.size() && i < prev->second->size(); ++i) col[i] = col[i] | (*prev->second)[i];
+    groups.columns[name] = std::make_shared<const BoolColumn>(std::move(col));
     return Value(withGroups(in, domain, std::make_shared<const GroupSet>(std::move(groups))));
 }
 
