@@ -604,9 +604,9 @@ DocumentSession::PullResult DocumentSession::pullGeometry(const std::string& nod
     return out;
 }
 
-pgg::RunResult DocumentSession::runProbes(const std::string& spec, double& ms) {
+pgg::RunResult DocumentSession::runProbes(const std::vector<std::string>& specs, double& ms) {
     pgg::RunParams rp = makeRunParams();
-    rp.probes = {spec};
+    rp.probes = specs;
     const double t0 = wallNowSec();
     pgg::RunResult r = pgg::runFile(m_resolvedPath, rp);
     ms = (wallNowSec() - t0) * 1000.0;

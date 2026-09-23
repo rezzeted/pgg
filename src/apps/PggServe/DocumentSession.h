@@ -98,7 +98,7 @@ public:
     };
     PullResult pullGeometry(const std::string& node);
 
-    pgg::RunResult runProbes(const std::string& spec, double& ms);
+    pgg::RunResult runProbes(const std::vector<std::string>& specs, double& ms);
 
     bool resolveCameraTarget(const CameraTargetSpec& spec, const PreviewGeometry& geo,
                               glm::vec3& outCenter, float& outRadius, bool& hasBBox, glm::vec3& bmin,

@@ -736,11 +736,21 @@ json ServeRuntime::handleReference(uint64_t clientId, const json& args) {
 json ServeRuntime::handleProbe(uint64_t clientId, const json& args) {
     auto session = resolveSlot(clientId, args);
     std::lock_guard<std::mutex> engine(session->engineMu);
-    const std::string spec = args.value("spec", std::string{});
-    if (spec.empty()) ServeRpcServer::fail("bad_args", "probe needs 'spec'");
+    std::vector<std::string> specs;
+    if (args.contains("spec") && args["spec"].is_string() && !args["spec"].get<std::string>().empty())
+        specs.push_back(args["spec"].get<std::string>());
+    if (args.contains("specs")) {
+        if (!args["specs"].is_array()) ServeRpcServer::fail("bad_args", "'specs' must be an array of strings");
+        for (const json& s : args["specs"]) {
+            if (!s.is_string() || s.get<std::string>().empty())
+                ServeRpcServer::fail("bad_args", "'specs' must be an array of non-empty strings");
+            specs.push_back(s.get<std::string>());
+        }
+    }
+    if (specs.empty()) ServeRpcServer::fail("bad_args", "probe needs 'spec' or 'specs'");
     const AutoReloadResult reload = session->autoReloadIfChanged();
     double ms = 0.0;
-    pgg::RunResult r = session->runProbes(spec, ms);
+    pgg::RunResult r = session->runProbes(specs, ms);
     json records = json::array();
     for (const pgg::ProbeRecord& pr : r.probes)
         records.push_back(

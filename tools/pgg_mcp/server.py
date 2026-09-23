@@ -204,7 +204,8 @@ def pgg_reference(image: str, node: str, ortho: Optional[str] = None,
 
 
 @mcp.tool()
-def pgg_probe(spec: str, file: Optional[str] = None) -> dict:
+def pgg_probe(spec: Optional[str] = None, specs: Optional[list[str]] = None,
+              file: Optional[str] = None) -> dict:
     """Пробник-инспектор узла: probe-only прогон (outputs не считаются).
 
     spec — "путь:инспектор[параметры]", например "house:schema" (структура
@@ -214,13 +215,21 @@ def pgg_probe(spec: str, file: Optional[str] = None) -> dict:
     mesh_from_sdf; bbox[group=<grp>] — min/max/center/size группы (без group —
     весь geo); gap[a=group:…, b=group:…, axis=x|y|z] — зазор bbox по оси
     (перекрытие отрицательное). table[where=<expr>,limit=N] / find[where=<expr>].
+    specs — список таких строк: все пробники за ОДИН прогон графа (дешевле,
+    чем N вызовов; записи идут в порядке specs). spec и specs можно сочетать.
     file — слот; передайте, если load был не в этом ходе.
     {records:[{origin,path,inspector,text}], diagnostics, has_errors, ms,
     cache:{hits,misses}, reloaded, load_diagnostics?, session:{file}} (reloaded=true —
     перед прогоном сработал авто-reload по mtime, F4).
-    Пример: pgg_probe(spec="house:schema").
+    Пример: pgg_probe(spec="house:schema"),
+    pgg_probe(specs=["roof:bbox[group=tile]", "roof:bbox[group=ridge]"]).
     """
-    return _call("probe", _with_file({"spec": spec}, file))
+    args: dict = {}
+    if spec:
+        args["spec"] = spec
+    if specs:
+        args["specs"] = list(specs)
+    return _call("probe", _with_file(args, file))
 
 
 @mcp.tool()
