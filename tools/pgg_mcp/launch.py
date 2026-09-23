@@ -19,11 +19,36 @@ from pathlib import Path
 from typing import Optional
 
 
-def _repo_root() -> Path:
-    env = os.environ.get("PGG_REPO_ROOT")
-    if env:
-        return Path(env).resolve()
+def _checkout_root() -> Path:
     return Path(__file__).resolve().parent.parent.parent
+
+
+def _repo_root() -> Path:
+    """Repo root from ``PGG_REPO_ROOT``, else the directory that contains this file.
+
+    Cursor may substitute ``${workspaceFolder}`` as a literal ``~/...`` in the
+    env while the process cwd is already absolute. ``Path.resolve()`` does not
+    expand ``~`` and would join it onto cwd. A missing directory must not abort
+    startup: the module path is always inside the checkout.
+    """
+    fallback = _checkout_root()
+    env = os.environ.get("PGG_REPO_ROOT")
+    if not env:
+        return fallback
+    root = Path(env).expanduser()
+    if not root.is_absolute():
+        root = Path.cwd() / root
+    try:
+        root = root.resolve()
+    except OSError:
+        return fallback
+    if root.is_dir():
+        return root
+    print(
+        f"tools.pgg_mcp.launch: PGG_REPO_ROOT={env!r} is not a directory, using {fallback}",
+        file=sys.stderr,
+    )
+    return fallback
 
 
 def _python_is_310(exe: str) -> bool:

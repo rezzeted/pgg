@@ -222,7 +222,8 @@ def default_repo_root(environ: Optional[Mapping[str, str]] = None) -> str:
     env = environ if environ is not None else os.environ
     override = env.get("PGG_REPO_ROOT")
     if override:
-        return override
+        # Same "~" case as launch._repo_root: expand before resolve.
+        return str(Path(override).expanduser().resolve())
     return str(Path(__file__).resolve().parent.parent.parent)
 
 
