@@ -349,6 +349,104 @@ class SessionEnsureTests(unittest.TestCase):
         self.assertEqual(calls[2]["args"]["file"], "/other.pgg")
 
 
+class StaleBinaryTests(unittest.TestCase):
+    class LiveProc:
+        def __init__(self) -> None:
+            self.alive = True
+
+        def poll(self) -> int | None:
+            return None if self.alive else 0
+
+        def terminate(self) -> None:
+            self.alive = False
+
+        def wait(self, timeout: float | None = None) -> int:
+            return 0
+
+    def _session(self, root: str, clock: list[float], mtimes: dict[str, float], calls: list[dict],
+                 procs: list[object], port: list[bool]) -> PggSession:
+        class FakeClient:
+            def call(self, **kw: object) -> dict:
+                calls.append(dict(kw))
+                if kw.get("op") == "load":
+                    path = kw["args"]["path"]  # type: ignore[index]
+                    return {"ok": True, "data": {"session": {"file": "/abs/" + str(path)}, "path": path}}
+                if kw.get("op") == "status":
+                    return {"ok": True, "data": {"uptime_s": 100.0}}
+                return {"ok": True, "data": {}}
+
+            def close(self) -> None:
+                pass
+
+        def popen(*_a: object, **_k: object) -> object:
+            proc = StaleBinaryTests.LiveProc()
+            procs.append(proc)
+            port[0] = True
+            return proc
+
+        def port_open(*_a: object, **_k: object) -> bool:
+            if procs and not getattr(procs[-1], "alive", True):
+                port[0] = False
+            return port[0]
+
+        session = PggSession(
+            repo_root=root,
+            platform="linux",
+            environ={"DISPLAY": ":0"},
+            port_open_fn=port_open,
+            wait_for_port_fn=lambda *_a, **_k: True,
+            popen_fn=popen,
+            client_factory=FakeClient,
+            time_fn=lambda: clock[0],
+            mtime_fn=lambda p: mtimes[p],
+        )
+        self.addCleanup(lambda: session._log_file.close() if session._log_file else None)
+        return session
+
+    def test_own_process_restarts_on_rebuilt_binary_and_reloads_slots(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            binary = _touch(root, "_int_linux/src/apps/PggServe/Debug/PggServe")
+            clock, mtimes = [1000.0], {binary: 900.0}
+            calls: list[dict] = []
+            procs: list[object] = []
+            session = self._session(root, clock, mtimes, calls, procs, [False])
+            session.call("load", {"path": "a.pgg", "lib_roots": ["/lib"]})
+            session.call("load", {"path": "b.pgg"})
+            self.assertEqual(len(procs), 1)
+            self.assertNotIn("restarted", session.call("ping"))
+
+            mtimes[binary] = 1001.0
+            clock[0] = 1001.5  # still linking: no restart yet
+            self.assertNotIn("restarted", session.call("ping"))
+            self.assertEqual(len(procs), 1)
+
+            clock[0] = 1010.0
+            calls.clear()
+            resp = session.call("render", {"node": "house"})
+            self.assertEqual(len(procs), 2)
+            self.assertTrue(resp["restarted"])
+            self.assertEqual(resp["restart"]["reloaded_slots"], ["/abs/a.pgg", "/abs/b.pgg"])
+            self.assertEqual([c["op"] for c in calls], ["load", "load", "render"])
+            self.assertEqual(calls[0]["args"], {"path": "a.pgg", "lib_roots": ["/lib"]})
+            self.assertEqual(calls[2]["args"]["file"], "/abs/b.pgg")
+            self.assertNotIn("restarted", session.call("ping"))
+
+    def test_foreign_process_gets_stale_binary_warning(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            binary = _touch(root, "_int_linux/src/apps/PggServe/Debug/PggServe")
+            clock, mtimes = [1000.0], {binary: 950.0}  # server started at 900
+            calls: list[dict] = []
+            procs: list[object] = []
+            session = self._session(root, clock, mtimes, calls, procs, [True])
+            resp = session.call("ping")
+            self.assertEqual(procs, [])
+            self.assertIn("stale_binary", resp)
+            self.assertEqual(resp["stale_binary"]["binary"], binary)
+
+            mtimes[binary] = 850.0
+            self.assertNotIn("stale_binary", session.call("ping"))
+
+
 class ProductLibRootsTests(unittest.TestCase):
     def test_appends_shipped_lib(self) -> None:
         with tempfile.TemporaryDirectory() as root:
