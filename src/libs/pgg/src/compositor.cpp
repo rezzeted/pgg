@@ -139,14 +139,58 @@ Expr* GrammarCompositor::newAttr(const std::string& name, Span span) {
 }
 
 Expr* GrammarCompositor::newVec(std::vector<Expr*> elems, Span span) {
-    auto* n = make<VecLit>(span);
-    n->elems.reserve(elems.size());
-    for (Expr* e : elems) n->elems.push_back(e ? e : newError(span));
+    // `-1` parses as Unary(-, 1): fold it back so numeric tuples stay literals.
+    bool allNumbers = true;
+    for (Expr*& e : elems) {
+        if (!e) e = newError(span);
+        if (e->kind == NodeKind::Unary) {
+            auto* u = static_cast<Unary*>(e);
+            if (u->op == "-" && u->operand && u->operand->kind == NodeKind::NumberLit)
+                e = newNumber("-" + static_cast<NumberLit*>(u->operand)->text, e->span);
+        }
+        allNumbers = allNumbers && e->kind == NodeKind::NumberLit;
+    }
+    if (elems.size() > 4) {
+        syntaxError(span, "a tuple is vec2..vec4, got " + std::to_string(elems.size()) + " components",
+                    "lists use brackets: [a, b, c, d, e]");
+        return newError(span);
+    }
+    if (allNumbers) {
+        auto* n = make<VecLit>(span);
+        n->elems = std::move(elems);
+        return n;
+    }
+    std::vector<CallArg> args;
+    for (Expr* e : elems) {
+        CallArg a;
+        a.value = e;
+        args.push_back(a);
+    }
+    return newCall({"vec" + std::to_string(elems.size())}, std::move(args), span);
+}
+
+Expr* GrammarCompositor::newSwizzle(Expr* base, const antlr4::Token* comps, Span span) {
+    const std::string text = textOf(comps);
+    bool ok = !text.empty() && text.size() <= 4;
+    for (char ch : text) ok = ok && (ch == 'x' || ch == 'y' || ch == 'z' || ch == 'w');
+    if (!ok) {
+        syntaxError(spanOfTok(comps), "'." + text + "' is not a vector component",
+                    "components are x, y, z, w (1-4 of them: .x, .xz, .xyz); a module call needs "
+                    "parentheses: ns." + text + "(...)");
+        return newError(span);
+    }
+    auto* n = make<Unary>(span);
+    n->op = "." + text;
+    n->operand = base ? base : newError(span);
     return n;
 }
 
-Expr* GrammarCompositor::newSignedNumber(const antlr4::Token* minus, const antlr4::Token* num, Span span) {
-    return newNumber(minus ? "-" + textOf(num) : textOf(num), minus ? span : spanOfTok(num));
+Expr* GrammarCompositor::newDefault(Expr* e) {
+    if (e && e->kind == NodeKind::Ident) {
+        const auto* id = static_cast<const Ident*>(e);
+        return newEnumLit(id->name, id->span);
+    }
+    return e;
 }
 
 Expr* GrammarCompositor::newList(std::vector<Expr*> elems, Span span) {

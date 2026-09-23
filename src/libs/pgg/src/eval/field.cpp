@@ -212,7 +212,54 @@ ConstBufferPtr bufferLogic(const std::string& op, ConstBufferPtr a, ConstBufferP
     return std::make_shared<const Buffer>(std::move(out));
 }
 
+ConstBufferPtr bufferSwizzle(const std::string& op, ConstBufferPtr a, unsigned threads) {
+    const size_t n = op.size() - 1;
+    int idx[4] = {0, 0, 0, 0};
+    for (size_t i = 0; i < n; ++i) idx[i] = swizzleIndex(op[i + 1]);
+    return std::make_shared<const Buffer>(std::visit(
+        [&](const auto& va) -> Buffer {
+            using VecT = std::decay_t<decltype(va)>;
+            using ElemT = typename VecT::value_type;
+            if constexpr (!(std::is_same_v<ElemT, glm::vec2> || std::is_same_v<ElemT, glm::vec3> ||
+                            std::is_same_v<ElemT, glm::vec4>)) {
+                return F32Buf(va.size(), 0.0f);  // caller reports the type error
+            } else {
+                auto pick = [&](const ElemT& v, auto& out) {
+                    for (size_t k = 0; k < n; ++k) out[static_cast<int>(k)] = v[idx[k]];
+                };
+                if (n == 1) {
+                    F32Buf out(va.size());
+                    parallelFor(va.size(), threads, [&](size_t b, size_t e) {
+                        for (size_t i = b; i < e; ++i) out[i] = va[i][idx[0]];
+                    });
+                    return out;
+                }
+                if (n == 2) {
+                    Vec2Buf out(va.size());
+                    parallelFor(va.size(), threads, [&](size_t b, size_t e) {
+                        for (size_t i = b; i < e; ++i) pick(va[i], out[i]);
+                    });
+                    return out;
+                }
+                if (n == 3) {
+                    Vec3Buf out(va.size());
+                    parallelFor(va.size(), threads, [&](size_t b, size_t e) {
+                        for (size_t i = b; i < e; ++i) pick(va[i], out[i]);
+                    });
+                    return out;
+                }
+                Vec4Buf out(va.size());
+                parallelFor(va.size(), threads, [&](size_t b, size_t e) {
+                    for (size_t i = b; i < e; ++i) pick(va[i], out[i]);
+                });
+                return out;
+            }
+        },
+        *a));
+}
+
 ConstBufferPtr bufferUnary(const std::string& op, ConstBufferPtr a, unsigned threads) {
+    if (isSwizzleOp(op)) return bufferSwizzle(op, std::move(a), threads);
     return std::make_shared<const Buffer>(std::visit(
         [&](const auto& va) -> Buffer {
             using VecT = std::decay_t<decltype(va)>;
@@ -315,6 +362,15 @@ ConstBufferPtr computeField(const FieldNode& node, EvalContext& ctx) {
         }
         case FKind::Unary: {
             ConstBufferPtr a = evalField(node.args[0], ctx.geo, ctx.domain, run);
+            if (isSwizzleOp(node.op)) {
+                const ScalarType t = bufferType(*a);
+                if (!isVectorBase(t) || swizzleMaxIndex(node.op) >= vecWidth(t)) {
+                    run.report("E204", node.span,
+                               "swizzle '" + node.op + "' on " + scalarName(t) + " (actual attribute type)",
+                               "components must exist: vec2 has x y, vec3 x y z, vec4 x y z w");
+                    return makeZeroBuffer(node.type, count);
+                }
+            }
             return bufferUnary(node.op, std::move(a), run.threads);
         }
         case FKind::Binary: {
@@ -536,10 +592,19 @@ TypedValue compileExprImpl(const Expr* e, RunContext& run, const IdentResolver& 
                 n->op = u->op;
                 n->args = {a.field};
                 n->span = e->span;
-                n->type = u->op == "!" ? ScalarType::Bool : a.field->type;
+                n->type = u->op == "!"           ? ScalarType::Bool
+                          : isSwizzleOp(u->op) ? swizzleResultBase(u->op)
+                                               : a.field->type;
                 return makeFieldResult(n);
             }
             Value r = valueUnary(u->op, a.value);
+            if (isSwizzleOp(u->op) && isNone(r)) {
+                run.report("E204", e->span,
+                           "swizzle '" + u->op + "' needs a vector with those components, got " +
+                               typeName(a.type),
+                           "vec2 has x y, vec3 x y z, vec4 x y z w; a module call needs parentheses");
+                return {};
+            }
             return makeValueResult(r);
         }
         case NodeKind::Binary: {

@@ -38,6 +38,22 @@ Document parse(const std::string& text, const std::string& fileName) {
     parser.gc = &gc;
     File* file = parser.file()->result;
 
+    // Newlines inside ( and [ are insignificant, so an unclosed one swallows
+    // the lines below it: name the opening line explicitly.
+    tokens.fill();
+    for (size_t i = 0; i < lexer.brackets.size(); ++i) {
+        if (lexer.brackets[i] == '{') continue;
+        Diagnostic d;
+        d.code = "E101";
+        d.span.line = static_cast<int32_t>(lexer.bracketLines[i]);
+        d.span.endLine = d.span.line;
+        d.message = std::string("unclosed '") + lexer.brackets[i] + "'";
+        d.hint = std::string("close it with '") + (lexer.brackets[i] == '(' ? ')' : ']') +
+                 "' — newlines inside brackets do not end a statement";
+        listener.diagnostics.push_back(std::move(d));
+        break;
+    }
+
     Document doc;
     doc.file = file;
     doc.arena = gc.takeArena();

@@ -1608,6 +1608,18 @@ private:
     Type inferUnary(const Unary* u) {
         const Type t = infer(u->operand);
         if (t.base == ScalarType::None) return {};
+        if (isSwizzleOp(u->op)) {
+            Type r = t;
+            r.base = swizzleResultBase(u->op);
+            if (t.base == ScalarType::Any) return r;  // user attribute: the runtime checks the column
+            if (!isVectorBase(t.base) || swizzleMaxIndex(u->op) >= vecWidth(t.base)) {
+                error("E204", u->span,
+                      "swizzle '" + u->op + "' needs a vector with those components, got " + typeName(t),
+                      "vec2 has x y, vec3 x y z, vec4 x y z w; a module call needs parentheses: ns.f(...)");
+                return {};
+            }
+            return r;
+        }
         if (u->op == "-") {
             if (!isNumericBase(t.base) && !isVectorBase(t.base)) {
                 error("E204", u->span, "unary '-' needs a numeric operand, got " + typeName(t));

@@ -67,7 +67,11 @@ public:
     Expr* newIdent(const std::string& name, Span);
     Expr* newAttr(const std::string& name, Span);
     Expr* newVec(std::vector<Expr*> elems, Span);
-    Expr* newSignedNumber(const antlr4::Token* minus, const antlr4::Token* num, Span);
+    // Swizzle `.xz` is a Unary whose op starts with '.' (operand = the vector).
+    Expr* newSwizzle(Expr* base, const antlr4::Token* comps, Span);
+    // Param default: a bare ident is an enum literal; the rest stays an
+    // expression (constness is the validator's check).
+    Expr* newDefault(Expr* e);
     Expr* newList(std::vector<Expr*> elems, Span);
     Expr* newParen(Expr* inner, Span);
     Expr* newUnary(std::string op, Expr* operand, Span);

@@ -288,6 +288,7 @@ private:
                 return "(" + expr(static_cast<const Paren*>(e)->inner) + ")";
             case NodeKind::Unary: {
                 const auto* u = static_cast<const Unary*>(e);
+                if (!u->op.empty() && u->op[0] == '.') return expr(u->operand) + u->op;
                 return u->op + expr(u->operand);
             }
             case NodeKind::Binary: {

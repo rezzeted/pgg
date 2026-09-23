@@ -27,6 +27,29 @@ public:
   ~PggLexer() override;
 
 
+  public:
+      // Open brackets, innermost last: '(' / '[' make newlines insignificant
+      // (multi-line calls and lists, v1.33); '{' (bodies, enum types) restores them.
+      std::vector<char> brackets;
+      std::vector<size_t> bracketLines;
+
+      void openBracket(char c) {
+          brackets.push_back(c);
+          bracketLines.push_back(getLine());
+      }
+      void closeBracket(char open) {
+          while (!brackets.empty()) {
+              const char top = brackets.back();
+              brackets.pop_back();
+              bracketLines.pop_back();
+              if (top == open) break;
+          }
+      }
+      bool insideParens() const {
+          return !brackets.empty() && brackets.back() != '{';
+      }
+
+
   std::string getGrammarFileName() const override;
 
   const std::vector<std::string>& getRuleNames() const override;
@@ -41,6 +64,8 @@ public:
 
   const antlr4::atn::ATN& getATN() const override;
 
+  void action(antlr4::RuleContext *context, size_t ruleIndex, size_t actionIndex) override;
+
   // By default the static state used to implement the lexer is lazily initialized during the first
   // call to the constructor. You can call this function if you wish to initialize the static state
   // ahead of time.
@@ -49,6 +74,13 @@ public:
 private:
 
   // Individual action functions triggered by action() above.
+  void LPARENAction(antlr4::RuleContext *context, size_t actionIndex);
+  void RPARENAction(antlr4::RuleContext *context, size_t actionIndex);
+  void LBRACEAction(antlr4::RuleContext *context, size_t actionIndex);
+  void RBRACEAction(antlr4::RuleContext *context, size_t actionIndex);
+  void LBRACKETAction(antlr4::RuleContext *context, size_t actionIndex);
+  void RBRACKETAction(antlr4::RuleContext *context, size_t actionIndex);
+  void NEWLINEAction(antlr4::RuleContext *context, size_t actionIndex);
 
   // Individual semantic predicate functions triggered by sempred() above.
 

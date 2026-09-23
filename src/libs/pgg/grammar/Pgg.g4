@@ -10,6 +10,30 @@ grammar Pgg;
 #include "src/compositor.h"
 }
 
+@lexer::members {
+public:
+    // Open brackets, innermost last: '(' / '[' make newlines insignificant
+    // (multi-line calls and lists, v1.33); '{' (bodies, enum types) restores them.
+    std::vector<char> brackets;
+    std::vector<size_t> bracketLines;
+
+    void openBracket(char c) {
+        brackets.push_back(c);
+        bracketLines.push_back(getLine());
+    }
+    void closeBracket(char open) {
+        while (!brackets.empty()) {
+            const char top = brackets.back();
+            brackets.pop_back();
+            bracketLines.pop_back();
+            if (top == open) break;
+        }
+    }
+    bool insideParens() const {
+        return !brackets.empty() && brackets.back() != '{';
+    }
+}
+
 @parser::members {
 public:
     pgg::GrammarCompositor* gc = nullptr;
@@ -225,9 +249,13 @@ unary returns [pgg::Expr* result = nullptr]
     | p=postfix { $result = $p.result; }
     ;
 
+// Swizzle (v1.33): `v.x`, `@P.xz`, `centroid(g).y`. A dotted name directly
+// followed by `(` is a qualified call instead (`ls.place(...)`).
 postfix returns [pgg::Expr* result = nullptr]
-    : c=call { $result = $c.result; }
-    | p=primary { $result = $p.result; }
+    : ( c=call { $result = $c.result; }
+      | p=primary { $result = $p.result; }
+      )
+      (DOT s=IDENT { $result = gc->newSwizzle($result, $s, spanOf(_localctx)); })*
     ;
 
 call returns [pgg::Expr* result = nullptr]
@@ -261,15 +289,12 @@ attr_ref returns [pgg::Expr* result = nullptr]
     : AT n=IDENT { $result = gc->newAttr($n.text, spanOf(_localctx)); }
     ;
 
+// Tuple of 2..4 expressions (v1.33). All-numeric components stay a vec
+// literal; anything else becomes a vecN(...) call. At least one COMMA is
+// required, so a parenthesized `(-1)` stays a scalar expression.
 vec_literal returns [pgg::Expr* result = nullptr]
-    : LPAREN e+=vec_elem (COMMA e+=vec_elem)+ RPAREN
+    : LPAREN e+=aexpr (COMMA e+=aexpr)+ RPAREN
       { $result = gc->newVec(gc->resultsOf($e), spanOf(_localctx)); }
-    ;
-
-// A vec component is a signed numeric literal; at least one COMMA is required,
-// so a parenthesized `(-1)` stays a scalar expression, not a broken vec1.
-vec_elem returns [pgg::Expr* result = nullptr]
-    : (m=MINUS)? n=NUMBER { $result = gc->newSignedNumber($m, $n, spanOf(_localctx)); }
     ;
 
 // list literal (spec §13: T[] values, e.g. variants = [a, b]). Any expressions
@@ -280,16 +305,11 @@ list_literal returns [pgg::Expr* result = nullptr]
       { $result = gc->newList(gc->resultsOf($e), spanOf(_localctx)); }
     ;
 
-// literal: defaults in param positions (spec §6.6). A bare ident here is an
-// enum/domain literal; in general expressions idents parse as Ident and the
-// enum reading is a type-driven decision of a later stage.
+// literal: defaults in param positions (spec §6.6). Any expression parses; a
+// bare ident is an enum/domain literal, and the validator requires the rest
+// to be constant (literals, -x, arithmetic, vecN(...) of constants).
 literal returns [pgg::Expr* result = nullptr]
-    : n=NUMBER { $result = gc->newNumber($n.text, spanTok($n)); }
-    | s=STRING { $result = gc->newString($s.text, spanTok($s)); }
-    | b=(TRUE|FALSE) { $result = gc->newBool($b.text, spanTok($b)); }
-    | v=vec_literal { $result = $v.result; }
-    | NONE { $result = gc->newNone(spanOf(_localctx)); }
-    | e=IDENT { $result = gc->newEnumLit($e.text, spanTok($e)); }
+    : e=aexpr { $result = gc->newDefault($e.result); }
     ;
 
 // --- types ---------------------------------------------------------------------------
@@ -347,14 +367,14 @@ COLON: ':';
 DOT: '.';
 COMMA: ',';
 ASSIGN: '=';
-LPAREN: '(';
-RPAREN: ')';
-LBRACE: '{';
-RBRACE: '}';
-LBRACKET: '[';
-RBRACKET: ']';
+LPAREN: '(' { openBracket('('); };
+RPAREN: ')' { closeBracket('('); };
+LBRACE: '{' { openBracket('{'); };
+RBRACE: '}' { closeBracket('{'); };
+LBRACKET: '[' { openBracket('['); };
+RBRACKET: ']' { closeBracket('['); };
 
 IDENT: [A-Za-z_] [A-Za-z0-9_]*;
-NEWLINE: '\r'? '\n';
+NEWLINE: '\r'? '\n' { if (insideParens()) setChannel(HIDDEN); };
 COMMENT: '#' ~[\r\n]* -> channel(HIDDEN);
 WS: [ \t]+ -> channel(HIDDEN);
