@@ -50,7 +50,7 @@ def slab(size: vec3, pos: vec3, grp: string) -> (out: geo<mesh>) {
 }
 
 def to_group(g: geo<mesh>, src: string, dst: string) -> (out: geo<mesh>) {
-    """Переметить грани из группы src в dst (ingroup-маска, затем снять src).
-    Контракт: прочие группы и геометрия не меняются; src без граней — g как есть."""
-    out = unmark(mark(g, dst, where = ingroup(src), domain = faces), src)
+    """Переметить грани из группы src в dst: грани src добавляются в dst (уже бывшие
+    в dst там остаются), src снимается. Прочие группы и геометрия не меняются."""
+    out = unmark(mark(g, dst, where = ingroup(src), domain = faces, mode = add), src)
 }

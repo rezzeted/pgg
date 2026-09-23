@@ -3,8 +3,16 @@
 # и крыши (A3). Контур — geo<points>, точка на вершину: @P (y = 0), @edge_len
 # (исходящее ребро), @edge_yaw (азимут НАРУЖНОЙ нормали исходящего ребра, 0 = +Z),
 # @convex (вершина выпуклая: квойны/вальмы — только на выпуклых, ендовы — на вогнутых).
-# Порядок вершин: CCW при взгляде с +Y (знаковая площадь в (x,z) отрицательна) —
-# наружная нормаль ребра = (−dir.z, 0, dir.x), plan_finish это проверяет (ensure).
+#
+# Контракт (выводить руками не нужно — edge_frame / rect_side):
+# - ребро i идёт из вершины i в вершину (i + 1) % n; индекс ребра = @facade у facades/corners;
+# - обход CCW при взгляде с +Y (знаковая площадь в (x,z) отрицательна), plan_finish это
+#   проверяет (ensure);
+# - касательная t = normalize(P[i+1] − P[i]), наружная нормаль = (−t.z, 0, t.x);
+# - yaw = @edge_yaw = degrees(atan2(−t.z, t.x)): панель, собранная вдоль +X лицом в +Z,
+#   после transform(rotate = (0, yaw, 0), translate = mid) стоит на ребре лицом наружу;
+# - plan_rect: рёбра 0..3 = стороны left (−X), front (+Z), right (+X), back (−Z) —
+#   rect_side(side = front) вместо литерала 1.
 
 import lib.layout.scope as ls
 import lib.arch.kinds as k
@@ -45,6 +53,28 @@ def plan_rect(w: f32, d: f32) -> (out: geo<points>) {
     hd = d * 0.5
     pts = set_position(mesh_line(count = 4, length = 0.0), pos = vec3(@index >= 2 ? hw : 0.0 - hw, 0.0, ((@index == 1) | (@index == 2)) ? hd : 0.0 - hd))
     out = plan_finish(pts = pts)
+}
+
+def rect_side(side: enum {left, front, right, back}) -> (out: int) {
+    """Индекс ребра plan_rect по стороне: left (−X) = 0, front (+Z) = 1, right (+X) = 2,
+    back (−Z) = 3. Для выборки фасада: delete(faces, where = @facade != rect_side(side = front))."""
+    out = side == left ? 0 : (side == front ? 1 : (side == right ? 2 : 3))
+}
+
+def edge_frame(plan: geo<points>, i: int) -> (origin: vec3, mid: vec3, tangent: vec3, normal: vec3, yaw: f32, len: f32) {
+    """Рамка ребра i плана (из вершины i в (i + 1) % n): начало, середина, единичная
+    касательная, наружная нормаль, yaw (как @edge_yaw) и длина. Панель вдоль +X лицом в +Z:
+    transform(g, rotate = vec3(0, yaw, 0), translate = mid + tangent * u) — на ребре в u от середины."""
+    expect count(plan) >= 3: "edge_frame: контуру нужно >= 3 вершин"
+    expect i >= 0 & i < count(plan): "edge_frame: индекс ребра в [0, count(plan))"
+    n = count(plan)
+    origin = value(@P, on = delete(plan, where = @index != i))
+    p1 = value(@P, on = delete(plan, where = @index != (i + 1) % n))
+    mid = (origin + p1) * 0.5
+    len = length(p1 - origin)
+    tangent = (p1 - origin) / len
+    normal = vec3(0.0 - tangent.z, 0.0, tangent.x)
+    yaw = degrees(atan2(0.0 - tangent.z, tangent.x))
 }
 
 def plan_chamfer_rect(w: f32, d: f32, c: f32) -> (out: geo<points>) {

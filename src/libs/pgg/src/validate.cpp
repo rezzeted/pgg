@@ -19,6 +19,10 @@ bool isTypeName(const std::string& s) {
     return false;
 }
 
+// `a, _, c = f(...)`: a multi-output target that binds nothing (not readable,
+// may repeat).
+const char* const kDiscardTarget = "_";
+
 struct BindingInfo {
     Span span;
     bool used = false;
@@ -162,6 +166,11 @@ private:
     void read(Scope& scope, const std::string& name, Span span) {
         BindingInfo* info = scope.lookup(name);
         if (!info) {
+            if (name == kDiscardTarget) {
+                error("E103", span, "'_' discards a multi-output value and cannot be read",
+                      "give that output a name in the destructuring (a, name = f(...))");
+                return;
+            }
             error("E103", span, "'" + name + "' is used before definition",
                   "define the name above this line (define-before-use)");
             return;
@@ -317,6 +326,7 @@ private:
                 expr(b->value, scope);
                 for (size_t i = 0; i < b->targets.names.size(); ++i) {
                     Span ts = i < b->targets.spans.size() ? b->targets.spans[i] : s->span;
+                    if (b->targets.names.size() > 1 && b->targets.names[i] == kDiscardTarget) continue;
                     define(scope, b->targets.names[i], ts, /*warnIfUnused=*/true, /*isRuntimeValue=*/true);
                     // SSA-alias table for the rng lints (W003/W004/W005): a name
                     // is unique within its scope, but two zone bodies may reuse
@@ -337,6 +347,7 @@ private:
                 expr(z->iterations, scope);
                 for (size_t i = 0; i < z->targets.names.size(); ++i) {
                     Span ts = i < z->targets.spans.size() ? z->targets.spans[i] : s->span;
+                    if (z->targets.names.size() > 1 && z->targets.names[i] == kDiscardTarget) continue;
                     define(scope, z->targets.names[i], ts, /*warnIfUnused=*/true, /*isRuntimeValue=*/true);
                 }
                 Scope body;

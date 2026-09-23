@@ -203,3 +203,31 @@ TEST(LangV133, HintsCarryTheFix) {
 }
 
 }  // namespace
+
+TEST(LangV133, DiscardTargetInDestructuring) {
+    // `_` skips a multi-output value: may repeat, no unused warning, works in
+    // def bodies and on repeat zones.
+    pgg::RunResult r = runSource(
+        "def top(g: geo<mesh>) -> (out: vec3) {\n"
+        "    _, out = bbox(g)\n"
+        "}\n"
+        "g = box(size = (2, 2, 2))\n"
+        "lo, _ = bbox(g)\n"
+        "hi = top(g = g)\n"
+        "_, far = repeat (bbox(g), iterations = 2) |a, b| {\n"
+        "    a = a + (1, 0, 0)\n"
+        "    b = b + (1, 0, 0)\n"
+        "}\n"
+        "output lo\n"
+        "output hi\n"
+        "output far\n");
+    expectNoErrors(r);
+    EXPECT_FALSE(hasCode(r.diagnostics, "W001"));
+    ASSERT_EQ(r.outputs.size(), 3u);
+    EXPECT_FLOAT_EQ(pgg::asVec3(r.outputs[0].value).x, -1.0f);
+    EXPECT_FLOAT_EQ(pgg::asVec3(r.outputs[1].value).y, 1.0f);
+    EXPECT_FLOAT_EQ(pgg::asVec3(r.outputs[2].value).x, 3.0f);
+
+    pgg::RunResult bad = runSource("lo, _ = bbox(box())\nx = _\noutput x\noutput lo\n");
+    EXPECT_TRUE(hasCode(bad.diagnostics, "E103", 2));
+}
