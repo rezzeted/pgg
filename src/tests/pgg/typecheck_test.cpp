@@ -137,7 +137,7 @@ TEST(Typecheck, DeferredOperationsReportCleanly) {
     pgg::RunResult rc = runSrc(
         "a = ico_sphere(subdiv = 1, radius = 1.0)\n"
         "b = ico_sphere(subdiv = 1, radius = 1.0)\n"
-        "r = raycast(a, b)\n"
+        "r = transfer(a, b)\n"
         "output r\n");
     EXPECT_EQ(countCode(rc, "E201"), 1);
 }

@@ -152,6 +152,12 @@ const std::vector<BuiltinDoc>& docs() {
          "Distance to the closest surface of another geometry (proximity field), "
          "evaluable on the points domain.",
          "d = distance_to(target = cliffs)"},
+        {"inside_polygon", "fields",
+         "Even-odd point-in-polygon test in plan (XZ): true where pos lies inside "
+         "the closed ring through poly's points in @index order (any winding, "
+         "y ignored). Masks for delete/mark/set: keep a scatter inside a plot, "
+         "trim anchors to a footprint.",
+         "inner = delete(pts, where = !inside_polygon(poly = plot))"},
         {"position", "fields",
          "Explicit @P reader — for passing the position as a field into a def.",
          "w = fbm(at = position(), scale = 2.0, rng = root)"},
@@ -458,14 +464,20 @@ const std::vector<BuiltinDoc>& docs() {
          "decks). Per-vertex @pitch on the outline overrides pitch per edge; "
          "pitch = 90 is a vertical gable wall.",
          "panels, edges, top = roof_wavefront(outline = plan, pitch = 45.0, y0 = 9.0)"},
+        // --- §8.9 geometry queries (v1.34) ------------------------------------------
+        {"raycast", "scatter",
+         "One ray per point of geo against target's triangles (BVH, both sides): "
+         "from origin (default @P) along dir (default down), up to max_dist. "
+         "Stamps points attrs @hit (bool), @hit_pos (point), @hit_n (geometric "
+         "normal of the hit triangle), @hit_dist, @hit_face; a miss keeps "
+         "hit = false, hit_pos = origin, hit_dist = -1. Drop onto terrain, stick "
+         "decals/wheels to a body, measure clearance. Empty target is E603.",
+         "r = raycast(pts, target = terrain, origin = @P + (0, 50, 0))\n"
+         "on = set_position(r, pos = @hit_pos, where = @hit)"},
         // --- deferred (registered, not supported at this stage) ------------------
         {"import_mesh", "deferred",
          "Deferred past this stage: fetch an immutable mesh through the host "
          "AssetProvider (no host asset contract yet).",
-         "# not available at this stage"},
-        {"raycast", "deferred",
-         "Deferred past this stage: ray queries against a mesh (placement, "
-         "normal capture).",
          "# not available at this stage"},
         {"transfer", "deferred",
          "Deferred past this stage: transfer named attributes between geometries "
