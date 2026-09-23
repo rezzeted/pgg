@@ -53,6 +53,7 @@ std::string exprText(const pgg::Expr* e) {
         case pgg::NodeKind::Paren: return "(" + exprText(static_cast<const pgg::Paren*>(e)->inner) + ")";
         case pgg::NodeKind::Unary: {
             const auto* u = static_cast<const pgg::Unary*>(e);
+            if (!u->op.empty() && u->op[0] == '.') return exprText(u->operand) + u->op;
             return u->op + exprText(u->operand);
         }
         case pgg::NodeKind::Binary: {

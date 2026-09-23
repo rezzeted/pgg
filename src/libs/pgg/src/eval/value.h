@@ -10,6 +10,7 @@
 // exist only as explicit casts. A value implicitly becomes a constant field;
 // a field never becomes a value without an aggregator (E205).
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -392,8 +393,44 @@ inline Value valueBinary(const std::string& op, const Value& a, const Value& b) 
     }
 }
 
+// Swizzle ops are Unary ops spelled ".x" / ".xz" (v1.33).
+inline bool isSwizzleOp(const std::string& op) { return op.size() >= 2 && op[0] == '.'; }
+
+inline int swizzleIndex(char c) { return c == 'x' ? 0 : c == 'y' ? 1 : c == 'z' ? 2 : 3; }
+
+// Result base of a swizzle: 1 component -> f32, 2..4 -> vecN.
+inline ScalarType swizzleResultBase(const std::string& op) {
+    const size_t n = op.size() - 1;
+    return n == 1 ? ScalarType::F32 : n == 2 ? ScalarType::Vec2 : n == 3 ? ScalarType::Vec3 : ScalarType::Vec4;
+}
+
+// Highest component index a swizzle reads (vec width must exceed it).
+inline int swizzleMaxIndex(const std::string& op) {
+    int m = 0;
+    for (size_t i = 1; i < op.size(); ++i) m = std::max(m, swizzleIndex(op[i]));
+    return m;
+}
+
+template <typename V>
+Value swizzleVec(const std::string& op, const V& v) {
+    float c[4] = {0, 0, 0, 0};
+    const size_t n = op.size() - 1;
+    for (size_t i = 0; i < n; ++i) c[i] = v[swizzleIndex(op[i + 1])];
+    if (n == 1) return Value(c[0]);
+    if (n == 2) return Value(glm::vec2(c[0], c[1]));
+    if (n == 3) return Value(glm::vec3(c[0], c[1], c[2]));
+    return Value(glm::vec4(c[0], c[1], c[2], c[3]));
+}
+
 inline Value valueUnary(const std::string& op, const Value& v) {
     const ScalarType t = valueBase(v);
+    if (isSwizzleOp(op)) {
+        const int w = vecWidth(t);
+        if (!isVectorBase(t) || swizzleMaxIndex(op) >= w) return Value();
+        if (t == ScalarType::Vec2) return swizzleVec(op, asVec2(v));
+        if (t == ScalarType::Vec3) return swizzleVec(op, asVec3(v));
+        return swizzleVec(op, asVec4(v));
+    }
     if (op == "-") {
         switch (t) {
             case ScalarType::Bool: return Value(-static_cast<int64_t>(asBool(v)));

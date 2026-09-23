@@ -71,6 +71,7 @@ std::string exprText(const Expr* e) {
             return "(" + exprText(static_cast<const Paren*>(e)->inner) + ")";
         case NodeKind::Unary: {
             const auto* u = static_cast<const Unary*>(e);
+            if (!u->op.empty() && u->op[0] == '.') return "(" + exprText(u->operand) + u->op + ")";
             return "(" + u->op + " " + exprText(u->operand) + ")";
         }
         case NodeKind::Binary: {

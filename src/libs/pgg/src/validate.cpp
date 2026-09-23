@@ -67,6 +67,7 @@ public:
                 case NodeKind::ParamDecl: {
                     const auto* p = static_cast<const ParamDecl*>(item);
                     type(p->type);
+                    if (p->hasDefault) constDefault(p->def, p->name);
                     define(scope, p->name, item->span, /*warnIfUnused=*/false, /*isRuntimeValue=*/true);
                     break;
                 }
@@ -208,6 +209,58 @@ private:
         }
     }
 
+    // Param defaults are constants (§6.6): literals, enum names, -x / !x,
+    // arithmetic, tuples/lists and pure scalar builtins of constants.
+    static const Expr* firstNonConst(const Expr* e) {
+        static const std::unordered_set<std::string> kPure = {
+            "vec2", "vec3", "vec4", "f32", "int", "bool", "radians", "degrees", "sqrt",
+            "sin",  "cos",  "tan",  "min", "max", "abs", "floor",   "ceil",    "round"};
+        if (!e) return nullptr;
+        switch (e->kind) {
+            case NodeKind::NumberLit:
+            case NodeKind::StringLit:
+            case NodeKind::BoolLit:
+            case NodeKind::NoneLit:
+            case NodeKind::EnumLit:
+            case NodeKind::ErrorExpr:
+                return nullptr;
+            case NodeKind::Paren:
+                return firstNonConst(static_cast<const Paren*>(e)->inner);
+            case NodeKind::Unary:
+                return firstNonConst(static_cast<const Unary*>(e)->operand);
+            case NodeKind::Binary: {
+                const auto* b = static_cast<const Binary*>(e);
+                if (const Expr* bad = firstNonConst(b->lhs)) return bad;
+                return firstNonConst(b->rhs);
+            }
+            case NodeKind::VecLit:
+                for (const Expr* el : static_cast<const VecLit*>(e)->elems)
+                    if (const Expr* bad = firstNonConst(el)) return bad;
+                return nullptr;
+            case NodeKind::ListLit:
+                for (const Expr* el : static_cast<const ListLit*>(e)->elems)
+                    if (const Expr* bad = firstNonConst(el)) return bad;
+                return nullptr;
+            case NodeKind::Call: {
+                const auto* c = static_cast<const Call*>(e);
+                if (c->path.size() != 1 || !kPure.count(c->path[0])) return e;
+                for (const CallArg& a : c->args)
+                    if (const Expr* bad = firstNonConst(a.value)) return bad;
+                return nullptr;
+            }
+            default:
+                return e;  // idents, attribute reads, ternaries
+        }
+    }
+
+    void constDefault(const Expr* e, const std::string& param) {
+        if (const Expr* bad = firstNonConst(e)) {
+            error("E100", bad->span, "default of '" + param + "' must be a constant expression",
+                  "literals, -x, arithmetic, (a, b, c) and vec3(...)/f32(...)/radians(...) of constants "
+                  "are allowed; compute derived values in the def body");
+        }
+    }
+
     void type(const TypeRef* t) {
         if (!t) return;
         if (!isTypeName(t->base)) {
@@ -222,6 +275,7 @@ private:
         scope.isDefBoundary = true;  // hermeticity boundary for read() (E105)
         for (const DefParam& p : d->params) {
             type(p.type);
+            if (p.hasDefault) constDefault(p.def, p.name);
             define(scope, p.name, d->span, /*warnIfUnused=*/false, /*isRuntimeValue=*/true);
         }
         for (const OutDecl& o : d->outputs) type(o.type);
