@@ -150,6 +150,33 @@ TEST(Clip, IdentityWhenNothingIsCutAndEmptyWhenAllIsCut) {
     EXPECT_EQ(gone->faceCount(), 0u);
 }
 
+TEST(Clip, SamePlaneAgainDropsTheOldCapButKeepsLoneSheets) {
+    // The cap of the first clip lies in the second clip's plane and faces into
+    // the kept half; its solid is removed, so it goes too (no stray sheet that
+    // a later clip would turn into a copy of a reveal face). A lone quad in the
+    // plane has no off-plane neighbours and stays.
+    pgg::RunResult r = pgg::run(
+        "left = clip(box(size = (2, 1, 1)), origin = (0, 0, 0), normal = (-1, 0, 0))\n"
+        "again = clip(left, origin = (0, 0, 0), normal = (1, 0, 0))\n"
+        "sheet = transform(grid(size = (1, 1), res = 1), rotate = (0, 0, -90))\n"
+        "with_sheet = clip(merge(left, sheet), origin = (0, 0, 0), normal = (1, 0, 0))\n"
+        "twice = clip(clip(box(size = (2, 1, 1)), origin = (0, 0, 0), normal = (-1, 0, 0)), origin = (0, 0, 0), normal = (-1, 0, 0))\n"
+        "output again\n"
+        "output with_sheet\n"
+        "output twice\n");
+    expectNoErrors(r);
+    pgg::GeoPtr again = geoOutput(r, "again");
+    pgg::GeoPtr withSheet = geoOutput(r, "with_sheet");
+    pgg::GeoPtr twice = geoOutput(r, "twice");
+    ASSERT_TRUE(again && withSheet && twice);
+    EXPECT_EQ(again->faceCount(), 0u);
+    ASSERT_EQ(withSheet->faceCount(), 1u);
+    EXPECT_GT(glm::normalize(pgg::faceNormal(*withSheet, 0)).x, 0.999f);
+    // Same side twice keeps the cap once: 6 faces, still watertight.
+    EXPECT_EQ(twice->faceCount(), 6u);
+    EXPECT_EQ(pgg::nonManifoldEdgeCount(*twice), 0u);
+}
+
 TEST(Clip, PointsKeepHalfSpace) {
     pgg::RunResult r = pgg::run(
         "p = mesh_line(count = 5, length = 4.0, dir = (1, 0, 0))\n"
