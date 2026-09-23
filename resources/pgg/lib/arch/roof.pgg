@@ -241,7 +241,9 @@ def tile_anchors(slopes: geo<mesh>, planes: geo<points>, row_pitch: f32 = 0.28, 
     скатов в островке). margin — отступ якорей внутрь от боковых граней (плитка не
     свисает с вальм/ендов); top — отступ верхнего ряда от конька (его накрывают
     колпаки); eave_over — допустимый свис за карниз. @orient — рамка ската (терминал
-    покрытия лежит в XZ с лицом +Y, как tile_plain). Лист графа."""
+    покрытия лежит в XZ с лицом +Y, как tile_plain); @island_id — островок панели, @part —
+    выпуклая часть панели (cls 0/2-плоскости с тем же @part), в которую попал якорь: разбивка
+    покрытия по скатам — probe hist[attr=@island_id] / hist[attr=@part]. Лист графа."""
     expect row_pitch > 0.05 & col_pitch > 0.05: "tile_anchors: шаги разумные, в метрах"
     evs = delete(planes, where = @eave == false)
     out = foreach ev in evs {
@@ -258,17 +260,14 @@ def anchors_of_island(ev: geo<points>, slopes: geo<mesh>, planes: geo<points>, r
 def anchors_of_panel(p: geo<mesh>, planes: geo<points>, row_pitch: f32, col_pitch: f32, lift: f32, margin: f32, top: f32, eave_over: f32) -> (out: geo<points>) {
     """Якоря одной панели (внутренность tile_anchors). Рамка из eave-плоскости островка:
     U вдоль карниза, N — нормаль из @slope_pitch/@eave_yaw, W — вверх по скату."""
-    # delete(domain = faces) keeps the other panels' points, which read face attrs
-    # as 0: aggregates go over the panel's own points only (@eave_yaw may be < 0).
-    pv = set(p, "live", 1.0, domain = faces)
-    isl = max_of(@island_id, on = pv, where = @live > 0.5)
+    isl = max_of(@island_id, on = p)
     pl0 = delete(planes, where = @island_id != isl)
     ev = delete(pl0, where = @eave == false)
     mid = value(@o, on = ev)
     elen = value(@len, on = ev)
     w_max = value(@w_len, on = ev)
-    pitch = max_of(@slope_pitch, on = pv, where = @live > 0.5)
-    yaw = max_of(@eave_yaw, on = pv, where = @live > 0.5)
+    pitch = max_of(@slope_pitch, on = p)
+    yaw = max_of(@eave_yaw, on = p)
     sy = sin(radians(yaw))
     cy = cos(radians(yaw))
     sp = sin(radians(pitch))
@@ -281,8 +280,8 @@ def anchors_of_panel(p: geo<mesh>, planes: geo<points>, row_pitch: f32, col_pitc
     cpitch = elen >= col_pitch ? elen / f32(n_cols) : col_pitch
     # A panel may be wider than its eave (a gable slope over a short risalit side edge,
     # a main slope widening behind a valley): extra columns cover its U extent.
-    u_lo = min_of(dot(@P - mid, U), on = pv, where = @live > 0.5)
-    u_hi = max_of(dot(@P - mid, U), on = pv, where = @live > 0.5)
+    u_lo = min_of(dot(@P - mid, U), on = p)
+    u_hi = max_of(dot(@P - mid, U), on = p)
     ex_l = max(int(ceil((0.0 - u_lo - elen * 0.5 - 0.01) / cpitch)), 0)
     ex_r = max(int(ceil((u_hi - elen * 0.5 - 0.01) / cpitch)), 0)
     n_tot = n_cols + ex_l + ex_r
@@ -290,12 +289,13 @@ def anchors_of_panel(p: geo<mesh>, planes: geo<points>, row_pitch: f32, col_pitc
     a1 = set_position(a0, pos = mid + U * ((f32(@index % n_tot - ex_l) - f32(n_cols - 1) * 0.5 + 0.5 * f32((@index / n_tot) % 2 == 1)) * cpitch) + W * (f32(@index / n_tot) * row_pitch) + N * lift)
     a2 = set(a1, "orient", orient_from_euler(vec3(pitch, yaw, 0.0)), domain = points)
     a3 = set(a2, "variant", 0, domain = points)
-    a4 = set(a3, "bad", false, domain = points)
+    a4 = set(a3, "island_id", int(isl), domain = points)
     a5 = set(a4, "sub", true, domain = points)
     a6 = set(a5, "hsub", false, domain = points)
     # Boundary rows per convex part (cls 0/2): inside the panel = inside any part.
     n_parts = int(max_of(f32(@part), on = pl0)) + 1
-    a6p = set(a6, "inpart", false, domain = points)
+    a6q = set(a6, "inpart", false, domain = points)
+    a6p = set(a6q, "part", -1, domain = points)
     a7p = repeat (a6p, iterations = n_parts) |acc| {
         rows0 = delete(pl0, where = (@part != @iteration) | (@cls == 1))
         rows = set(rows0, "j", @index, domain = points)
@@ -309,7 +309,8 @@ def anchors_of_panel(p: geo<mesh>, planes: geo<points>, row_pitch: f32, col_pitc
             c2 = set(acc2, "cur_in", (@cur_in == true) & (outside == false))
             acc2 = c2
         }
-        acc = set(c1, "inpart", (@inpart == true) | (@cur_in == true))
+        c3 = set(c1, "part", (@inpart == false) & (@cur_in == true) ? @iteration : @part)
+        acc = set(c3, "inpart", (@inpart == true) | (@cur_in == true))
     }
     # Subtract rows (cls 1): inside ALL of them = under another wing.
     sub0 = delete(pl0, where = @cls != 1)
@@ -321,7 +322,11 @@ def anchors_of_panel(p: geo<mesh>, planes: geo<points>, row_pitch: f32, col_pitc
         acc = set(b1, "hsub", true)
     }
     a8 = delete(a7, where = (@inpart == false) | ((@hsub == true) & (@sub == true)))
-    out = delete(a8, where = dot(@P - mid, W) > w_max - top)
+    a9 = delete(a8, where = dot(@P - mid, W) > w_max - top)
+    t0 = remove_attr(a9, "inpart")
+    t1 = remove_attr(t0, "cur_in")
+    t2 = remove_attr(t1, "sub")
+    out = remove_attr(t2, "hsub")
 }
 
 # --- Композиция крыльев (Г/П/Т-семейство, крестовые) -------------------------------------
