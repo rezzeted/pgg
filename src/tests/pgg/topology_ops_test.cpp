@@ -514,6 +514,35 @@ TEST(Sweep, StraightTubeIsClosedWithCapsAndCarriesPathAttrs) {
         if (o.name == "top") EXPECT_EQ(pgg::asInt(o.value), 8);
 }
 
+TEST(Sweep, ClockwiseProfileStillFacesOutward) {
+    // Hand-placed profiles in either order give the same outward tube: a CW
+    // square and a CW (concave, ear-clipped caps) L.
+    pgg::RunResult r = pgg::run(
+        "path = mesh_line(count = 3, length = 2.0, dir = (0, 0, 1))\n"
+        "sq = set_position(mesh_line(count = 4, length = 0.0), pos = @index == 0 ? (-0.2, -0.2, 0) : (@index == 1 ? (-0.2, 0.2, 0) : (@index == 2 ? (0.2, 0.2, 0) : (0.2, -0.2, 0))))\n"
+        "ell = set_position(mesh_line(count = 6, length = 0.0), pos = @index == 0 ? (-0.2, -0.2, 0) : (@index == 1 ? (-0.2, 0.2, 0) : (@index == 2 ? (0.0, 0.2, 0) : (@index == 3 ? (0.0, 0.0, 0) : (@index == 4 ? (0.2, 0.0, 0) : (0.2, -0.2, 0))))))\n"
+        "a = sweep(path, sq)\n"
+        "b = sweep(path, ell)\n"
+        "output a\n"
+        "output b\n");
+    expectNoErrors(r);
+    pgg::GeoPtr a = geoOutput(r, "a"), b = geoOutput(r, "b");
+    ASSERT_TRUE(a && b);
+    expectOutward(*a, glm::vec3(0.0f, 0.0f, 1.0f));
+    // Signed volume of the closed L tube is positive (faces point out).
+    float vol = 0.0f;
+    const auto& P = *b->positions;
+    const auto& CV = *b->cornerVerts;
+    const auto& FO = *b->faceOffsets;
+    for (size_t f = 0; f + 1 < FO.size(); ++f)
+        for (int32_t c = FO[f] + 1; c + 1 < FO[f + 1]; ++c)
+            vol += glm::dot(P[static_cast<size_t>(CV[static_cast<size_t>(FO[f])])],
+                            glm::cross(P[static_cast<size_t>(CV[static_cast<size_t>(c)])], P[static_cast<size_t>(CV[static_cast<size_t>(c + 1)])])) /
+                   6.0f;
+    EXPECT_EQ(pgg::nonManifoldEdgeCount(*b), 0u);
+    EXPECT_NEAR(vol, 0.12f * 2.0f, 1e-4f);  // L area 0.12 x length 2
+}
+
 TEST(Sweep, ClosedPathMakesATorusAndScaleAttrScalesTheProfile) {
     pgg::RunResult r = pgg::run(
         "ring = transform(circle(sides = 12, radius = 2.0), rotate = (90, 0, 0))\n"

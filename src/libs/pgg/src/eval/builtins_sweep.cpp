@@ -17,8 +17,10 @@
 // consumed @scale/@profile_scale/@twist, plus @uv (u across the profile, v
 // along the path); profile
 // columns are ignored. Open paths with a closed profile get planar caps
-// (convex profile -> one polygon, else ear-clipped) unless cap = false. Quads
-// face outward for a CCW profile.
+// (convex profile -> one polygon, else ear-clipped) unless cap = false. A
+// closed profile always gives an outward-facing tube: a clockwise one (signed
+// area < 0, e.g. hand-placed points in the "wrong" order) has every face
+// reversed, so the author never has to know the winding convention.
 
 #include <algorithm>
 #include <array>
@@ -253,6 +255,19 @@ Value opSweep(const BoundCall& bound, RunContext& run) {
         };
         emitCap(0, true);          // start cap faces -T
         emitCap(nPath - 1, false); // end cap faces +T
+    }
+
+    if (profileClosed) {
+        float area2 = 0.0f;
+        for (size_t j = 0; j < nProf; ++j) {
+            const glm::vec3& a = PR[j];
+            const glm::vec3& b = PR[(j + 1) % nProf];
+            area2 += a.x * b.y - b.x * a.y;
+        }
+        if (scale[0].x * scale[0].y < 0.0f) area2 = -area2;  // a mirroring scale flips the winding back
+        if (area2 < 0.0f)
+            for (size_t f = 0; f + 1 < offsets.size(); ++f)
+                std::reverse(verts.begin() + offsets[f], verts.begin() + offsets[f + 1]);
     }
 
     Geo out;
