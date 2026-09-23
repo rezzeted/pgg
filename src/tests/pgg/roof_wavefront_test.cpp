@@ -5,6 +5,7 @@
 // ridge of a two-vertex ring. Faces must tile the outline exactly (areas sum
 // to the outline's, every face closed and planar).
 #include <cmath>
+#include <set>
 
 #include <gtest/gtest.h>
 
@@ -316,6 +317,21 @@ TEST(RoofWavefront, BuiltinMatchesAnalyticHip) {
         EXPECT_TRUE(inBar || inStem) << p.x << "," << p.z;
         EXPECT_LE(p.y, 1.5f + 0.02f);
     }
+    // Anchor contract: the panel's island and convex part ride on every anchor;
+    // the internal masks of the lattice filter are gone.
+    ASSERT_TRUE(c_an->pointAttrs != nullptr);
+    for (const char* tmp : {"inpart", "cur_in", "sub", "hsub", "bad", "live"})
+        EXPECT_EQ(c_an->pointAttrs->find(tmp), nullptr) << tmp;
+    const pgg::AttrColumn* isl = c_an->pointAttrs->find("island_id");
+    const pgg::AttrColumn* part = c_an->pointAttrs->find("part");
+    ASSERT_TRUE(isl != nullptr && part != nullptr);
+    const auto& islV = *std::get<std::shared_ptr<const std::vector<int64_t>>>(isl->data);
+    const auto& partV = *std::get<std::shared_ptr<const std::vector<int64_t>>>(part->data);
+    std::set<int64_t> islands, parts;
+    for (int64_t v : islV) islands.insert(v);
+    for (int64_t v : partV) parts.insert(v);
+    EXPECT_EQ(islands.size(), 12u);                // every panel of the cross is covered
+    EXPECT_EQ(parts, (std::set<int64_t>{0}));      // the skeleton panels here are convex
 
     // Risalit gable (front @pitch = 90) under a cut above its ridge (1.5 < 2.0):
     // the bump's side edges meet on the ridge first; their panels stay planar

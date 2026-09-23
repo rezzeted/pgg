@@ -8,7 +8,7 @@ fingerprint man_p: c07b6e2cf5ec3759
 fingerprint man_t: d1c4dc1733399c62
 fingerprint oh_p: bec9202691936db6
 fingerprint oh_pl: 2efe77cf4eb3ca8f
-fingerprint anchors: 4fc848077d56bfe7
-fingerprint c_anchors: 820ee899d1ee7fd9
+fingerprint anchors: be5f535d31edb307
+fingerprint c_anchors: fe030e577f1c7bd2
 fingerprint ris_p: f5f2bf0ebfd12b31
 fingerprint ris_e: 942af914de5107d5
