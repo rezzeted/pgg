@@ -66,7 +66,7 @@ const std::vector<ErrorCard>& cards() {
          "unknown or unsupported operation",
          "The call name matches no builtin and no in-scope def, or the "
          "operation is registered but deferred past the current stage "
-         "(import_mesh, raycast, transfer).",
+         "(import_mesh, transfer).",
          {"a typo in the operation name",
           "calling a def that was not imported or defined",
           "calling a deferred operation — build it from defs over MVP builtins"},
@@ -243,6 +243,15 @@ const std::vector<ErrorCard>& cards() {
           "an empty input geometry"},
          "k = value(@wid, on = pts, where = @index > 5)",
          "k = value(@wid, on = pts, where = @index == 0)  # exactly one element"},
+        {"E603",
+         "raycast against an empty target",
+         "raycast needs triangles to hit; with no faces every ray is a miss "
+         "(@hit = false) and the run fails so the empty input is not silent.",
+         {"the target branch of a select() is empty_mesh() at this parameter value",
+          "a delete/clip upstream removed every face of the target",
+          "passing a geo<points> outline instead of the surface mesh"},
+         "r = raycast(pts, target = empty_mesh())",
+         "r = raycast(pts, target = terrain)  # a geo<mesh> with faces"},
         {"E604",
          "launch parameter not bound",
          "A param without a default was not given a value at launch (spec §6.6).",
