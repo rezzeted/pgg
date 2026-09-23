@@ -436,9 +436,14 @@ void main() {
 }
 )";
 
+// Two-sided shading: a back face is lit with the flipped normal, and it loses
+// depth ties (slope-scaled bias) so a face glued back-to-back onto another
+// (a sash side on a window reveal, abutting slab ends) never z-fights through
+// it, while open sheets stay visible from behind.
 const char* kFsGlsl = R"(
 #version 330
 uniform vec4 light_dir;
+uniform vec4 fill_dir;
 uniform vec4 highlight;
 in vec3 v_n;
 in vec3 v_col;
@@ -447,12 +452,14 @@ out vec4 frag_color;
 void main() {
     vec3 n = normalize(v_n);
     if (!gl_FrontFacing) n = -n;
-    vec3 l = normalize(light_dir.xyz);
-    float dif = clamp(dot(n, l), 0.0, 1.0);
-    float sky = 0.55 + 0.45 * n.y;
+    float key = clamp(dot(n, normalize(light_dir.xyz)), 0.0, 1.0);
+    float fill = clamp(dot(n, normalize(fill_dir.xyz)), 0.0, 1.0);
+    float hemi = mix(0.16, 0.34, 0.5 + 0.5 * n.y);
     vec3 albedo = mix(v_col, highlight.rgb, v_mask * highlight.a);
-    vec3 col = albedo * (0.22 * sky + 0.85 * dif) + vec3(0.06) * pow(dif, 16.0);
+    vec3 col = albedo * (hemi + 0.70 * key + 0.30 * fill) + vec3(0.05) * pow(key, 16.0);
     frag_color = vec4(pow(col, vec3(0.4545)), 1.0);
+    float zb = 2.0 * fwidth(gl_FragCoord.z) + 1e-6;
+    gl_FragDepth = gl_FragCoord.z + (gl_FrontFacing ? 0.0 : zb);
 }
 )";
 
@@ -471,17 +478,22 @@ VSOut main(VSIn inp) {
 )";
 
 const char* kFsHlsl = R"(
-cbuffer fs_params: register(b0) { float4 light_dir; float4 highlight; };
+cbuffer fs_params: register(b0) { float4 light_dir; float4 fill_dir; float4 highlight; };
 struct PSIn { float4 pos: SV_Position; float3 n: TEXCOORD0; float3 col: TEXCOORD1; float mask: TEXCOORD2; bool front: SV_IsFrontFace; };
-float4 main(PSIn inp): SV_Target {
+struct PSOut { float4 color: SV_Target; float depth: SV_Depth; };
+PSOut main(PSIn inp) {
     float3 n = normalize(inp.n);
     if (!inp.front) n = -n;
-    float3 l = normalize(light_dir.xyz);
-    float dif = saturate(dot(n, l));
-    float sky = 0.55 + 0.45 * n.y;
+    float key = saturate(dot(n, normalize(light_dir.xyz)));
+    float fill = saturate(dot(n, normalize(fill_dir.xyz)));
+    float hemi = lerp(0.16, 0.34, 0.5 + 0.5 * n.y);
     float3 albedo = lerp(inp.col, highlight.rgb, inp.mask * highlight.a);
-    float3 col = albedo * (0.22 * sky + 0.85 * dif) + 0.06 * pow(dif, 16.0);
-    return float4(pow(col, 0.4545), 1.0);
+    float3 col = albedo * (hemi + 0.70 * key + 0.30 * fill) + 0.05 * pow(key, 16.0);
+    PSOut o;
+    o.color = float4(pow(col, 0.4545), 1.0);
+    float zb = 2.0 * fwidth(inp.pos.z) + 1e-6;
+    o.depth = inp.pos.z + (inp.front ? 0.0 : zb);
+    return o;
 }
 )";
 
@@ -504,17 +516,22 @@ vertex VSOut _main(VSIn in [[stage_in]], constant VsParams& p [[buffer(0)]]) {
 const char* kFsMsl = R"(
 #include <metal_stdlib>
 using namespace metal;
-struct FsParams { float4 light_dir; float4 highlight; };
+struct FsParams { float4 light_dir; float4 fill_dir; float4 highlight; };
 struct PSIn { float4 pos [[position]]; float3 n; float3 col; float mask; };
-fragment float4 _main(PSIn in [[stage_in]], constant FsParams& p [[buffer(0)]], bool front [[front_facing]]) {
+struct PSOut { float4 color [[color(0)]]; float depth [[depth(any)]]; };
+fragment PSOut _main(PSIn in [[stage_in]], constant FsParams& p [[buffer(0)]], bool front [[front_facing]]) {
     float3 n = normalize(in.n);
     if (!front) n = -n;
-    float3 l = normalize(p.light_dir.xyz);
-    float dif = saturate(dot(n, l));
-    float sky = 0.55 + 0.45 * n.y;
+    float key = saturate(dot(n, normalize(p.light_dir.xyz)));
+    float fill = saturate(dot(n, normalize(p.fill_dir.xyz)));
+    float hemi = mix(0.16, 0.34, 0.5 + 0.5 * n.y);
     float3 albedo = mix(in.col, p.highlight.rgb, in.mask * p.highlight.a);
-    float3 col = albedo * (0.22 * sky + 0.85 * dif) + 0.06 * pow(dif, 16.0);
-    return float4(pow(col, 0.4545), 1.0);
+    float3 col = albedo * (hemi + 0.70 * key + 0.30 * fill) + 0.05 * pow(key, 16.0);
+    PSOut o;
+    o.color = float4(pow(col, 0.4545), 1.0);
+    float zb = 2.0 * fwidth(in.pos.z) + 1e-6;
+    o.depth = in.pos.z + (front ? 0.0 : zb);
+    return o;
 }
 )";
 
@@ -589,7 +606,7 @@ constexpr sg_pixel_format kDepthFormat = SG_PIXELFORMAT_DEPTH;
 // --- GeometryPreview -------------------------------------------------------------
 
 void GeometryPreview::init() {
-    static_assert(sizeof(FsParams) == 32, "2 x vec4 std140 block");
+    static_assert(sizeof(FsParams) == 48, "3 x vec4 std140 block");
     static_assert(sizeof(WireFsParams) == 16, "1 x vec4 std140 block");
     sg_shader_desc shd = {};
     const sg_backend backend = sg_query_backend();
@@ -631,8 +648,8 @@ void GeometryPreview::init() {
     shd.uniform_blocks[1].layout = SG_UNIFORMLAYOUT_STD140;
     shd.uniform_blocks[1].hlsl_register_b_n = 0;
     shd.uniform_blocks[1].msl_buffer_n = 0;
-    const char* fsNames[2] = {"light_dir", "highlight"};
-    for (int i = 0; i < 2; ++i) {
+    const char* fsNames[3] = {"light_dir", "fill_dir", "highlight"};
+    for (int i = 0; i < 3; ++i) {
         shd.uniform_blocks[1].glsl_uniforms[i].glsl_name = fsNames[i];
         shd.uniform_blocks[1].glsl_uniforms[i].type = SG_UNIFORMTYPE_FLOAT4;
         shd.uniform_blocks[1].glsl_uniforms[i].array_count = 1;
@@ -1061,11 +1078,18 @@ void GeometryPreview::render() {
         const glm::vec3 camRight(view[0][0], view[1][0], view[2][0]);
         const glm::vec3 camUp(view[0][1], view[1][1], view[2][1]);
         const glm::vec3 camBack(view[0][2], view[1][2], view[2][2]);  // towards the eye
+        // The fill comes from the other side, slightly low, so a face turned
+        // away from the key keeps its relief (tiles on a slope in shadow must
+        // not read as an empty slope).
         const glm::vec3 light = glm::normalize(camBack * 0.7f - camRight * 0.5f + camUp * 0.6f);
+        const glm::vec3 fill = glm::normalize(camBack * 0.5f + camRight * 0.8f - camUp * 0.15f);
         FsParams fs = {};
         fs.lightDir[0] = light.x;
         fs.lightDir[1] = light.y;
         fs.lightDir[2] = light.z;
+        fs.fillDir[0] = fill.x;
+        fs.fillDir[1] = fill.y;
+        fs.fillDir[2] = fill.z;
         fs.highlight[0] = 1.0f;
         fs.highlight[1] = 0.55f;
         fs.highlight[2] = 0.15f;

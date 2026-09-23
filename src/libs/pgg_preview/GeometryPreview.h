@@ -175,7 +175,8 @@ private:
         float mvp[16];
     };
     struct FsParams {
-        float lightDir[4];
+        float lightDir[4];   // key light (camera frame, upper left)
+        float fillDir[4];    // fill light (camera frame, opposite side)
         float highlight[4];  // rgb + strength (albedo itself is a vertex attribute)
     };
     struct WireFsParams {
