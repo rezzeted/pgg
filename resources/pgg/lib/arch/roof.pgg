@@ -7,7 +7,8 @@
 # плоскости скатов в тот же островок — обрезанные полигоны не вычисляются).
 # Покрытие — терминал на якорях (tile_anchors + stamp); фурнитура — терминалы на рёбрах
 # (pick_role + place_edge в файле здания). Прямой скелет произвольного контура — A4
-# (roof_wavefront); здесь аналитика: равные уклоны ⇒ вальмы/ендовы — биссектрисы 45°.
+# (roof_wavefront: нейтральный straight_skeleton ядра + разметка этого слоя); остальное
+# здесь — аналитика: равные уклоны ⇒ вальмы/ендовы — биссектрисы 45°.
 # Контракт: метры; карниз на y0; свес overhang по всем сторонам; уклоны в градусах от
 # горизонтали; конёк вдоль локального X. slope_id: 0 = лево, 1 = фронт, 2 = право, 3 = тыл.
 
@@ -509,4 +510,27 @@ def roof_cross(w: f32, d: f32, pitch: f32 = 45.0, overhang: f32 = 0.4, y0: f32 =
     gb_e_noridge = delete(gb_e, where = @role == kr)
     edges = merge(ga_e_noridge, gb_e_noridge, ridges, v0, v1, v2, v3)
     planes = merge(ga_pl, gb_pl, retarget(vol = ga_v, island = 11), retarget(vol = ga_v, island = 13), retarget(vol = gb_v, island = 1), retarget(vol = gb_v, island = 3))
+}
+
+def roof_wavefront(outline: geo<points>, pitch: f32 = 45.0, rise_max: f32 = 0.0, y0: f32 = 0.0, overhang: f32 = 0.0) -> (panels: geo<mesh>, edges: geo<points>, top: geo<points>, planes: geo<points>) {
+    """Крыша по прямому скелету произвольного контура (A4): straight_skeleton ядра + разметка
+    lib/arch. Контур — план CCW (lib/arch/plan); @pitch на вершине — уклон исходящего ребра,
+    90 — фронтон (вертикальная панель). rise_max — высота среза под палубу (0 — без среза),
+    overhang — свес оффсетом контура, y0 — высота карниза.
+    panels — face-scope'ы скатов: @kind = K_SLOPE, @slope_id = @island_id = ребро контура,
+    @slope_pitch, @eave_yaw (наружный азимут), @rk = 0, @variant = 0, группа roof.
+    edges — модель рёбер: контур R_EAVE, дуги R_HIP/R_VALLEY/R_RIDGE, у фронтонов R_RAKE,
+    кромка среза R_FLOOR_TOP. top — контур(ы) среза (@ring). planes — граничные плоскости
+    панелей для tile_anchors (@eave — карнизная, @part — выпуклая часть панели)."""
+    sk_f, sk_a, top, sk_pl = straight_skeleton(outline, pitch = pitch, cut = rise_max, y0 = y0, offset = overhang)
+    f1 = rename_attr(sk_f, "edge_id", "slope_id")
+    f2 = rename_attr(f1, "pitch", "slope_pitch")
+    f3 = rename_attr(f2, "out_yaw", "eave_yaw")
+    f4 = set(f3, "kind", k.K_SLOPE(), domain = faces)
+    f5 = set(f4, "rk", 0, domain = faces)
+    f6 = set(f5, "variant", 0, domain = faces)
+    panels = mark(f6, "roof", where = true, domain = faces)
+    a1 = set(sk_a, "role", @arc_class == 0 ? k.R_EAVE() : (@arc_class == 1 ? k.R_HIP() : (@arc_class == 2 ? k.R_VALLEY() : (@arc_class == 3 ? k.R_RIDGE() : (@arc_class == 4 ? k.R_RAKE() : k.R_FLOOR_TOP())))), domain = points)
+    edges = remove_attr(a1, "arc_class")
+    planes = rename_attr(sk_pl, "base", "eave")
 }

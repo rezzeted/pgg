@@ -1,5 +1,5 @@
-// A4 (docs/pgg/architecture_library_plan.md, spec §8 L1): the weighted
-// straight skeleton behind roof_wavefront. Convex outlines (rect = hip roof,
+// A4 (docs/pgg/architecture_library_plan.md, spec §8.12): the weighted
+// straight skeleton behind straight_skeleton / lib.arch.roof.roof_wavefront. Convex outlines (rect = hip roof,
 // square = pyramid peak cluster), reflex outlines (L with a valley, U/T with
 // split cascades), gable walls (speed 0 edges never move), and the closing
 // ridge of a two-vertex ring. Faces must tile the outline exactly (areas sum
@@ -366,6 +366,43 @@ TEST(RoofWavefront, BuiltinMatchesAnalyticHip) {
         const glm::vec3 d = (*rp1)[i] - (*rp0)[i];
         EXPECT_GT(d.x * d.x + d.z * d.z, 1e-6f) << "vertical edge, role " << (*rroles)[i];
     }
+}
+
+// The core builtin carries no architecture: arc classes and neutral face
+// attributes; lib/arch/roof.roof_wavefront maps them to K_SLOPE / R_* / roof.
+TEST(StraightSkeleton, BuiltinIsDomainNeutral) {
+    pgg::RunResult r = pgg::run(
+        "plan = set_position(mesh_line(count = 4, length = 0.0), pos = vec3(@index >= 2 ? 4.0 : -4.0, 0.0, "
+        "((@index == 1) | (@index == 2)) ? 2.5 : -2.5))\n"
+        "f, a, _, pl = straight_skeleton(plan, pitch = 45.0)\n"
+        "output f\n"
+        "output a\n"
+        "output pl\n");
+    pggtest::expectNoErrors(r);
+    pgg::GeoPtr f = pggtest::geoOutput(r, "f");
+    pgg::GeoPtr a = pggtest::geoOutput(r, "a");
+    pgg::GeoPtr pl = pggtest::geoOutput(r, "pl");
+    ASSERT_TRUE(f && a && pl);
+    ASSERT_TRUE(f->faceAttrs != nullptr);
+    for (const char* name : {"edge_id", "island_id", "pitch", "out_yaw"})
+        EXPECT_NE(f->faceAttrs->find(name), nullptr) << name;
+    for (const char* name : {"kind", "slope_id", "slope_pitch", "eave_yaw", "rk", "variant"})
+        EXPECT_EQ(f->faceAttrs->find(name), nullptr) << name;
+    EXPECT_FALSE(f->faceGroups && f->faceGroups->find("roof"));
+    EXPECT_EQ(a->pointAttrs->find("role"), nullptr);
+    const std::vector<int64_t>* cls = intCol(*a, "arc_class");
+    ASSERT_TRUE(cls != nullptr);
+    size_t outline = 0, convex = 0, ridge = 0;
+    for (int64_t c : *cls) {
+        outline += c == 0;
+        convex += c == 1;
+        ridge += c == 3;
+    }
+    EXPECT_EQ(outline, 4u);
+    EXPECT_EQ(convex, 4u);
+    EXPECT_EQ(ridge, 1u);
+    EXPECT_NE(pl->pointAttrs->find("base"), nullptr);
+    EXPECT_EQ(pl->pointAttrs->find("eave"), nullptr);
 }
 
 TEST(RoofWavefront, RiseMaxCutSealsRings) {

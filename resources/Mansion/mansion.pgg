@@ -103,7 +103,7 @@ tent = transform(mu.turret(lc = 3.0, p = 0.25, detail = detail), translate = vec
 
 # --- крыша ---------------------------------------------------------------------------
 # Контур кровли — план с выступами ризалитов (CCW): рёбра 3 и 9 — лица щипцов.
-# Свес ov даёт roof_wavefront(overhang); y0 опущен на свес, чтобы скат проходил
+# Свес ov даёт ar.roof_wavefront(overhang); y0 опущен на свес, чтобы скат проходил
 # через верх C3 по лицу стены.
 def pt(x: f32, z: f32) -> (out: geo<points>) {
     """Одна вершина контура кровли."""
@@ -122,7 +122,7 @@ outline = set(ap.plan_finish(pts = o1), "pitch", (@index == g_s) | (@index == g_
 tp = tan(radians(roof_pitch))
 y_roof = mc.Y_EAVE() - ov * tp
 rise = 4.2
-sl0, ed, top, pl0 = roof_wavefront(outline = outline, pitch = roof_pitch, rise_max = rise, y0 = y_roof, overhang = ov)
+sl0, ed, top, pl0 = ar.roof_wavefront(outline = outline, pitch = roof_pitch, rise_max = rise, y0 = y_roof, overhang = ov)
 # Вертикальные панели фронтонов (островки g_s, g_e) — это стены щипцов, их строит
 # mu.gable: панели и их карнизные плоскости (источник якорей) убраны, граничные
 # плоскости оставлены — они подрезают шифер соседних скатов по свесу щипца.

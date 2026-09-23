@@ -471,12 +471,12 @@ const std::vector<BuiltinSig>& registry() {
                          valDef("profile_closed", ScalarType::Bool, Value(true))},
                         Type{ScalarType::Geo, false, GeoKind::Mesh}));
         {
-            // §8 L1 roof_wavefront (v1.30): straight-skeleton roof over an
-            // arbitrary outline -> (panels, edges, top).
-            BuiltinSig s = sig(BuiltinId::RoofWavefront, "roof_wavefront",
+            // §8.12 straight_skeleton (v1.34): weighted straight skeleton of an
+            // outline swept into a surface -> (faces, arcs, top, planes).
+            BuiltinSig s = sig(BuiltinId::StraightSkeleton, "straight_skeleton",
                                {geoArg("outline", GeoKind::Points), valDef("pitch", ScalarType::F32, Value(45.0f)),
-                                valDef("rise_max", ScalarType::F32, Value(0.0f)), valDef("y0", ScalarType::F32, Value(0.0f)),
-                                valDef("overhang", ScalarType::F32, Value(0.0f))},
+                                valDef("cut", ScalarType::F32, Value(0.0f)), valDef("y0", ScalarType::F32, Value(0.0f)),
+                                valDef("offset", ScalarType::F32, Value(0.0f))},
                                Type{});
             s.results = {Type{ScalarType::Geo, false, GeoKind::Mesh},
                          Type{ScalarType::Geo, false, GeoKind::Points},
@@ -770,8 +770,8 @@ Value evalBuiltinCall(const BoundCall& bound, RunContext& run) {
             return evalSweepBuiltin(bound, run);
         case BuiltinId::BakeAo:
             return evalBakeBuiltin(bound, run);
-        case BuiltinId::RoofWavefront:
-            return evalRoofBuiltin(bound, run);
+        case BuiltinId::StraightSkeleton:
+            return evalSkeletonBuiltin(bound, run);
         case BuiltinId::Raycast:
             return evalQueryBuiltin(bound, run);
         case BuiltinId::Delete:
