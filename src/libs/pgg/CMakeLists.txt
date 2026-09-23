@@ -62,7 +62,7 @@ nw_add_lib_sources(
         src/eval/builtins_aggregate.cpp
         src/eval/builtins_sdf.cpp
         src/eval/builtins_fracture.cpp
-        src/eval/builtins_roof.cpp
+        src/eval/builtins_skeleton.cpp
         src/eval/builtins_query.cpp
         src/eval/topology_util.h
         src/eval/builtins_topology.cpp

@@ -90,7 +90,7 @@ door_slot = ls.pick(scopes = slots, kind = k.K_DOOR())
 door = select(count(door_slot) > 0, a = ls.place(g = door_manor(w = 1.0, h = 2.3), s = door_slot), b = empty_mesh())
 
 # --- крыша по прямому скелету ----------------------------------------------------
-sl, ed, top, pl = roof_wavefront(outline = plan, pitch = roof_pitch, overhang = 0.45, y0 = wall_h)
+sl, ed, top, pl = ar.roof_wavefront(outline = plan, pitch = roof_pitch, overhang = 0.45, y0 = wall_h)
 tiles = ls.stamp(scopes = ar.tile_anchors(slopes = sl, planes = pl), source = tb.tile_plain())
 ridges = foreach e in lse.pick_role(edges = ed, role = k.R_RIDGE()) {
     e = lse.place_edge(g = tb.ridge_cap(len = lse.edge_len(e)), e = e)

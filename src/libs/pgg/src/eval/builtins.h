@@ -41,7 +41,7 @@ enum class BuiltinId {
     // §8.3 second wave (v1.21)
     Extrude, Inset, Bevel, Separate, Triangulate, Subdivide, MergeByDistance, Mirror, Circle, Sweep, BezierPoints, ResamplePoints, BakeAo,
     // §8 L1 roof skeleton (v1.30)
-    RoofWavefront,
+    StraightSkeleton,
     // §8.9 geometry queries (v1.34)
     Raycast,
     // §8.8 scatter and instancing
@@ -177,7 +177,7 @@ Value evalTopologyOpsBuiltin(const BoundCall& bound, RunContext& run);
 // §8.3 circle (profile source) and sweep (builtins_sweep.cpp, v1.21).
 Value evalSweepBuiltin(const BoundCall& bound, RunContext& run);
 Value evalBakeBuiltin(const BoundCall& bound, RunContext& run);
-Value evalRoofBuiltin(const BoundCall& bound, RunContext& run);
+Value evalSkeletonBuiltin(const BoundCall& bound, RunContext& run);
 Value evalQueryBuiltin(const BoundCall& bound, RunContext& run);
 
 // Materializes geo<instances> into geo<mesh> (spec §8.8); host entry point

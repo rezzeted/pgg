@@ -74,7 +74,7 @@ def aisle_one(nave_w: f32, nave_len: f32, aisle_w: f32, aisle_h: f32, aisle_rise
     along = nave_len + 0.12
     outline0 = ap.plan_rect(w = run, d = along)
     outline = set(outline0, "pitch", @index == 2 ? pitch : 90.0, domain = points)
-    sl, ed, top_cut, pl = roof_wavefront(outline = outline, pitch = pitch, y0 = aisle_h - 0.04)
+    sl, ed, top_cut, pl = ar.roof_wavefront(outline = outline, pitch = pitch, y0 = aisle_h - 0.04)
     anc = tile_anchors_tint(anc0 = ar.tile_anchors(slopes = sl, planes = pl, row_pitch = 0.175, col_pitch = 0.22, lift = 0.010, margin = 0.04, top = 0.03, eave_over = 0.02), rng = rng)
     tiles = ls.stamp(scopes = anc, source = church_tile())
     deck = common.shed_volume(run = run, along = nave_len + 0.10, y0 = aisle_h - 0.04, rise = deck_rise, grp = "roof")

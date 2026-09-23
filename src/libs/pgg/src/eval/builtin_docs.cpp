@@ -456,17 +456,20 @@ const std::vector<BuiltinDoc>& docs() {
          "pieces come out watertight with @island_id (faces), ready for foreach. "
          "0 sites after dedup or an empty mesh is E608.",
          "pieces = fracture(g, planes = sites, rng = root)"},
-        // --- §8.12 roof skeleton (v1.30) -------------------------------------------
-        {"roof_wavefront", "topology",
-         "Straight-skeleton roof over an arbitrary plan outline (CCW from above, "
-         "the lib/arch/plan convention): returns (panels, edges, top). Panels are "
-         "the slope faces tagged as the arch face-scope contract (@kind = "
-         "K_SLOPE(7), @slope_id, @slope_pitch, @eave_yaw, @island_id, group roof); "
-         "edges are the §5.2 edge model (R_EAVE outline + R_RIDGE/HIP/VALLEY/RAKE/"
-         "FLOOR_TOP skeleton arcs); top is the rise_max cut contour (mansard "
-         "decks). Per-vertex @pitch on the outline overrides pitch per edge; "
-         "pitch = 90 is a vertical gable wall.",
-         "panels, edges, top = roof_wavefront(outline = plan, pitch = 45.0, y0 = 9.0)"},
+        // --- §8.12 straight skeleton (v1.34) ---------------------------------------
+        {"straight_skeleton", "topology",
+         "Weighted straight skeleton of a plan outline (CCW from above) swept "
+         "into a surface: every edge moves inward at plan speed 1/tan(pitch) and "
+         "rises (per-vertex @pitch overrides the outgoing edge; 90 = a vertical "
+         "wall that never moves). Returns (faces, arcs, top, planes): faces — one "
+         "face per source edge with @edge_id = @island_id, @pitch, @out_yaw; arcs "
+         "— edge model (@p0/@p1/@len/@yaw/@out/@pitch/@tilt/@orient) with "
+         "@arc_class 0 outline, 1 convex bisector, 2 reflex bisector, 3 ridge, "
+         "4 wall, 5 cut rim; top — the contour at height cut (0 = no cut); "
+         "planes — per-face boundary half-planes (@o/@n/@island_id/@base/@len/"
+         "@w_len/@cls/@part). offset grows the outline first. Domain-neutral: "
+         "roofs use lib.arch.roof.roof_wavefront, which adds the arch codes.",
+         "faces, arcs, top, planes = straight_skeleton(outline = plan, pitch = 30.0, cut = 2.0)"},
         // --- §8.9 geometry queries (v1.34) ------------------------------------------
         {"raycast", "scatter",
          "One ray per point of geo against target's triangles (BVH, both sides): "
