@@ -13,8 +13,10 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from tools.pgg_mcp.launch import _repo_root
 from tools.pgg_mcp.session import (
     PggSession,
+    default_repo_root,
     detect_platform,
     find_serve_binary,
     find_viewer_binary,
@@ -31,6 +33,27 @@ def _touch(root: str, rel: str) -> str:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(b"")
     return str(path)
+
+
+class RepoRootTests(unittest.TestCase):
+    def test_tilde_repo_root_expands_before_cwd_join(self) -> None:
+        home = Path.home()
+        raw = "~/sources/pgg"
+        expected = str((home / "sources" / "pgg").resolve())
+        self.assertEqual(default_repo_root({"PGG_REPO_ROOT": raw}), expected)
+        with mock.patch.dict(os.environ, {"PGG_REPO_ROOT": raw}, clear=False):
+            self.assertEqual(str(_repo_root()), expected)
+
+    def test_absolute_repo_root_unchanged(self) -> None:
+        root = str(Path("/tmp/pgg-root").resolve())
+        self.assertEqual(default_repo_root({"PGG_REPO_ROOT": root}), root)
+
+    def test_missing_repo_root_falls_back_to_checkout(self) -> None:
+        fallback = Path(__file__).resolve().parent.parent.parent
+        with mock.patch.dict(
+            os.environ, {"PGG_REPO_ROOT": "~/no-such-pgg-checkout"}, clear=False
+        ):
+            self.assertEqual(_repo_root(), fallback)
 
 
 class PlatformTests(unittest.TestCase):
