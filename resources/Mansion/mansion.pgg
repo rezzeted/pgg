@@ -102,30 +102,27 @@ corner = transform(mu.corner_block(lc = 3.0, p = 0.25, detail = detail), transla
 tent = transform(mu.turret(lc = 3.0, p = 0.25, detail = detail), translate = vec3(hw, mc.Y_EAVE(), hd))
 
 # --- крыша ---------------------------------------------------------------------------
-# Контур кровли — план с выступами ризалитов (CCW): рёбра 3 и 8 — лица щипцов.
-# Свес ov — контур, уже сдвинутый наружу на ov (все рёбра по осям: вершина уходит
-# на ±ov по обеим осям); встроенный overhang roof_wavefront на этом контуре
-# выдаёт вершину за сотни километров (см. docs/pgg/cheatsheet.md, «Грабли»).
-# y0 опущен на свес, чтобы скат проходил через верх C3 по лицу стены.
+# Контур кровли — план с выступами ризалитов (CCW): рёбра 3 и 9 — лица щипцов.
+# Свес ov даёт roof_wavefront(overhang); y0 опущен на свес, чтобы скат проходил
+# через верх C3 по лицу стены.
 def pt(x: f32, z: f32) -> (out: geo<points>) {
     """Одна вершина контура кровли."""
     out = set_position(mesh_line(count = 1, length = 0.0), pos = vec3(x, 0.0, z))
 }
 # Угол (+X, +Z) срезан по диагонали основания шатра (срез эркера c2 = 1.4 плюс вынос
 # шатра 0.16): вальма уходит под шатёр, а не торчит перед его диагональной гранью.
+# Свес сдвигает и диагональ — срез контура больше на ov·√2.
 ov = 0.2
-ex = hw + ov
-ez = hd + ov
-ch = 2.0 * ov - (2.0 * 0.25 - 1.4 + 0.16 * 1.41421)
-o0 = merge(pt(x = 0.0 - ex, z = 0.0 - ez), pt(x = 0.0 - ex, z = ez), pt(x = xs - rh - ov, z = ez), pt(x = xs - rh - ov, z = ez + rp), pt(x = xs + rh + ov, z = ez + rp), pt(x = xs + rh + ov, z = ez), pt(x = ex - ch, z = ez), pt(x = ex, z = ez - ch))
-o1 = merge(o0, pt(x = ex, z = zs + rh + ov), pt(x = ex + rp, z = zs + rh + ov), pt(x = ex + rp, z = zs - rh - ov), pt(x = ex, z = zs - rh - ov), pt(x = ex, z = 0.0 - ez))
+ch = 1.4 - 2.0 * 0.25 - 0.16 * 1.41421 + ov * 1.41421
+o0 = merge(pt(x = -hw, z = -hd), pt(x = -hw, z = hd), pt(x = xs - rh, z = hd), pt(x = xs - rh, z = hd + rp), pt(x = xs + rh, z = hd + rp), pt(x = xs + rh, z = hd), pt(x = hw - ch, z = hd), pt(x = hw, z = hd - ch))
+o1 = merge(o0, pt(x = hw, z = zs + rh), pt(x = hw + rp, z = zs + rh), pt(x = hw + rp, z = zs - rh), pt(x = hw, z = zs - rh), pt(x = hw, z = -hd))
 g_s = 3
 g_e = 9
 outline = set(ap.plan_finish(pts = o1), "pitch", (@index == g_s) | (@index == g_e) ? 90.0 : roof_pitch, domain = points)
 tp = tan(radians(roof_pitch))
 y_roof = mc.Y_EAVE() - ov * tp
 rise = 4.2
-sl0, ed, top, pl0 = roof_wavefront(outline = outline, pitch = roof_pitch, rise_max = rise, y0 = y_roof)
+sl0, ed, top, pl0 = roof_wavefront(outline = outline, pitch = roof_pitch, rise_max = rise, y0 = y_roof, overhang = ov)
 # Вертикальные панели фронтонов (островки g_s, g_e) — это стены щипцов, их строит
 # mu.gable: панели и их карнизные плоскости (источник якорей) убраны, граничные
 # плоскости оставлены — они подрезают шифер соседних скатов по свесу щипца.
