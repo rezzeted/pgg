@@ -896,6 +896,47 @@ TEST(Probe, FindEmptySubsetOmitsBbox) {
               "count 0 of 3");
 }
 
+TEST(Probe, HistDiscreteRowsPerValue) {
+    pgg::RunResult r = runProbe(kWhere, "m:hist[attr=@ord]");
+    pggtest::expectNoErrors(r);
+    ASSERT_EQ(r.probes.size(), 1u);
+    EXPECT_EQ(r.probes[0].inspector, "hist");
+    EXPECT_EQ(r.probes[0].text,
+              "hist[attr=@ord] n=3 of 3, min 0 max 2\n"
+              "0: 1 ##############\n"
+              "1: 1 ##############\n"
+              "2: 1 ##############");
+}
+
+TEST(Probe, HistBinsWhereAndSwizzle) {
+    pgg::RunResult r = runProbe(kWhere, "m:hist[attr=@P.z, bins=2, where=@ord > 0]");
+    pggtest::expectNoErrors(r);
+    ASSERT_EQ(r.probes.size(), 1u);
+    EXPECT_EQ(r.probes[0].text,
+              "hist[attr=@P.z,bins=2,where=@ord > 0] n=2 of 3, min 1 max 2\n"
+              "[1, 1.5): 1 ####################\n"
+              "[1.5, 2]: 1 ####################");
+}
+
+TEST(Probe, HistFacesDomain) {
+    const std::string src =
+        "b = box(size = (1, 1, 1))\n"
+        "m = set(b, \"h\", @P.y, domain = faces)\n"
+        "output m\n";
+    pgg::RunResult r = runProbe(src, "m:hist[attr=@h, domain=faces, bins=3]");
+    pggtest::expectNoErrors(r);
+    ASSERT_EQ(r.probes.size(), 1u);
+    EXPECT_NE(r.probes[0].text.find("n=6 of 6, min -0.5 max 0.5"), std::string::npos) << r.probes[0].text;
+}
+
+TEST(Probe, HistE606) {
+    EXPECT_TRUE(hasMessage(runProbe(kWhere, "m:hist"), "E606", "hist needs attr=<scalar field>"));
+    EXPECT_TRUE(hasMessage(runProbe(kWhere, "m:hist[attr=@P]"), "E606", "take a component (attr=@P.y)"));
+    EXPECT_TRUE(hasMessage(runProbe(kWhere, "m:hist[attr=@ord, bins=0]"), "E606", "bins must be an integer"));
+    EXPECT_TRUE(hasMessage(runProbe(kWhere, "m:hist[attr=@ord, domain=edges]"), "E606",
+                           "hist domain must be points or faces"));
+}
+
 TEST(Probe, WhereE606) {
     const std::string sdfSrc = "s = sdf_sphere(r = 1.0)\noutput s\n";
     // find without where

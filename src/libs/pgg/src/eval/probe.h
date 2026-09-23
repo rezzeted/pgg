@@ -30,13 +30,14 @@
 #include <string>
 #include <vector>
 
+#include "field.h"
 #include "value.h"
 
 namespace pgg {
 
 struct ProbeSpec {
     std::string path;
-    std::string inspector;  // "" = default (schema+stats); schema|stats|coverage|table|sample|slice|check|lattice|find
+    std::string inspector;  // "" = default (schema+stats); schema|stats|coverage|table|sample|slice|check|lattice|find|bbox|gap|hist
     int limit = 8;          // table row cap / check index-list cap
     bool hasLimit = false;  // limit explicitly given (valid for table and check only)
     bool aggregate = false; // aggregate=stats: merge per-instance lines (§9.4)
@@ -138,6 +139,14 @@ std::string probeGeoTable(const Geo& g, int limit, const BoolColumn* mask = null
 // (omitted when K = 0), `groups: g1 (K1), g2 (K2)` — points-domain groups with
 // K_i > 0 selected members (omitted when none). Header `find[where=<expr>]`.
 std::string probeGeoFind(const Geo& g, const BoolColumn& mask, const std::string& whereEcho);
+
+// `path:hist[attr=<expr>, bins=N, where=<expr>, domain=points|faces]` — the
+// distribution of one scalar per element. int/bool values with at most 64
+// distinct values print one row per value (`3: 120`); otherwise (or with an
+// explicit bins=) equal-width bins over [min, max]. Header
+// `hist[attr=…] n=K of M, min … max …`. false + err for a vector value.
+bool probeHist(const Buffer& values, const BoolColumn* mask, int bins, bool binsGiven, const std::string& echo,
+               std::string& out, std::string& err);
 
 // --- L2: sample (§9.6) ----------------------------------------------------------
 
