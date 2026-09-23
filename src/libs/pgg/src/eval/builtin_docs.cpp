@@ -297,8 +297,11 @@ const std::vector<BuiltinDoc>& docs() {
         {"clip", "topology",
          "Half-space clip (Houdini Clip / Blender Bisect): keeps the side the "
          "normal points to, caps closed cut loops with flat lids that inherit "
-         "the first cut face's attributes and join cap_group. Instances need "
-         "realize first; a zero normal is E612.",
+         "the first cut face's attributes and join cap_group. A face lying in "
+         "the plane is kept unless it faces the kept side and closes a removed "
+         "solid (an earlier cap on the same plane), so chained cuts on one "
+         "plane leave no duplicate faces. Instances need realize first; a zero "
+         "normal is E612.",
          "half = clip(g, origin = (0, 1, 0), normal = (0, 1, 0), cap_group = \"cut\")"},
         {"extrude", "topology",
          "Extrudes selected faces along their normals: region (one sheet with "
@@ -353,14 +356,17 @@ const std::vector<BuiltinDoc>& docs() {
          "even = resample_points(path, count = 32)"},
         {"bake_ao", "topology",
          "Bakes ambient occlusion into an f32 attribute (default @ao): rays "
-         "cosine-weighted hemisphere samples per element, hits closer than "
-         "distance darken; one-sided (backface hits ignored). Subdivide large "
-         "flat faces first — AO lands on vertices.",
+         "cosine-weighted samples per corner, started over the face patch the "
+         "corner owns (so a crease does not smear across a big face); hits "
+         "closer than distance darken; one-sided (backface hits ignored); "
+         "patch points covered by a surface right on top are left out. "
+         "domain = points averages the corners by visible area.",
          "a = bake_ao(g, rays = 32, distance = 1.5, rng = ao_rng)"},
         {"sweep", "topology",
          "Extrudes a profile (points in XY: circle, mesh_line) along an ordered "
          "path: tubes/beams/rails, and ribbons/leaves with profile_closed = "
-         "false. The parallel-transport frame does not accumulate twist; the "
+         "false. A closed profile faces outward in either point order. The "
+         "parallel-transport frame does not accumulate twist; the "
          "path's @scale/@profile_scale/@twist shape the profile per ring; ring "
          "points inherit the path's other columns and get @uv. A vertical path "
          "(along +Y) maps profile X to world Z (depth) and profile Y to world X "
