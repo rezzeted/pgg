@@ -98,9 +98,16 @@ def triple_bay(w: f32 = 3.9, win_w: f32 = 0.66, pitch: f32 = 1.30, detail: int =
     wall = mc.cut(g = mc.cut(g = mc.cut(g = f1, cx = 0.0 - pitch, y0 = mc.Y_SILL2(), w = win_w, h = h), cx = 0.0, y0 = mc.Y_SILL2(), w = win_w, h = h), cx = pitch, y0 = mc.Y_SILL2(), w = win_w, h = h)
     p0 = wall_body(w = w, y0 = -0.3, y1 = mc.Y_PLINTH())
     pl = mc.as_group(g = mc.cut(g = mc.cut(g = mc.cut(g = p0, cx = 0.0 - pitch, y0 = 0.32, w = 0.45, h = 0.62), cx = 0.0, y0 = 0.32, w = 0.45, h = 0.62), cx = pitch, y0 = 0.32, w = 0.45, h = 0.62), grp = "plaster")
-    win = mw.w1(w = win_w, h = h, cols = 2, detail = detail)
-    col = merge(at(g = win, x = 0.0, y = mc.Y_SILL1()), at(g = win, x = 0.0, y = mc.Y_SILL2()), at(g = mw.w6(w = 0.45, h = 0.62), x = 0.0, y = 0.32))
-    wins = merge(at(g = col, x = 0.0 - pitch, y = 0.0), col, at(g = col, x = pitch, y = 0.0))
+    # Штраба только по наружным краям аркады: при pitch = ширине наличника зубцы
+    # внутренних краёв легли бы на косяк соседа.
+    win_l = mw.w1(w = win_w, h = h, cols = 2, teeth_r = false, detail = detail)
+    win_m = mw.w1(w = win_w, h = h, cols = 2, teeth_l = false, teeth_r = false, detail = detail)
+    win_r = mw.w1(w = win_w, h = h, cols = 2, teeth_l = false, detail = detail)
+    w6 = at(g = mw.w6(w = 0.45, h = 0.62), x = 0.0, y = 0.32)
+    c_l = merge(at(g = win_l, x = 0.0, y = mc.Y_SILL1()), at(g = win_l, x = 0.0, y = mc.Y_SILL2()), w6)
+    c_m = merge(at(g = win_m, x = 0.0, y = mc.Y_SILL1()), at(g = win_m, x = 0.0, y = mc.Y_SILL2()), w6)
+    c_r = merge(at(g = win_r, x = 0.0, y = mc.Y_SILL1()), at(g = win_r, x = 0.0, y = mc.Y_SILL2()), w6)
+    wins = merge(at(g = c_l, x = 0.0 - pitch, y = 0.0), c_m, at(g = c_r, x = pitch, y = 0.0))
     out = merge(wall, pl, wins, belts_run(len = w, el = 0.0, er = 0.0, detail = detail))
 }
 
