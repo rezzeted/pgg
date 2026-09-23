@@ -882,9 +882,9 @@ private:
                             error("E610", c.span,
                                   "attribute '@" + nm + "' is a " + typeName(vt) +
                                       ": its typeinfo must be explicit",
-                                  "set(..., typeinfo = vector | normal | point | quaternion | none) — "
-                                  "vector/normal/point/quaternion ride with transform/realize, none is plain "
-                                  "data (colors, sizes)");
+                                  "add typeinfo: set(..., \"" + nm + "\", ..., typeinfo = none) for plain data "
+                                  "(sizes, offsets, colors); typeinfo = vector | normal | point | quaternion "
+                                  "makes the value follow transform/realize");
                         }
                         if (tiLit && ti != "auto") {
                             const AttrTypeInfo info = attrTypeInfoFromName(ti).value_or(AttrTypeInfo::None);

@@ -166,4 +166,40 @@ TEST(LangV133, TupleOfExpressionsIsVec) {
     EXPECT_TRUE(doc.hasErrors());
 }
 
+const pgg::Diagnostic* findCode(const std::vector<pgg::Diagnostic>& diags, const std::string& code) {
+    for (const pgg::Diagnostic& d : diags)
+        if (d.code == code) return &d;
+    return nullptr;
+}
+
+TEST(LangV133, HintsCarryTheFix) {
+    pgg::RunResult r = runSource(
+        "k = 2.0\n"
+        "def g(a: f32) -> (out: geo<mesh>) {\n"
+        "    b = box(size = (a, k, 1))\n"
+        "    out = b\n"
+        "    expect a > 0\n"
+        "    out = b\n"
+        "}\n"
+        "x = g(1)\n"
+        "y = set(x, \"dir\", @N)\n"
+        "output y\n");
+    const pgg::Diagnostic* e105 = findCode(r.diagnostics, "E105");
+    ASSERT_TRUE(e105);
+    EXPECT_NE(e105->message.find("line 1"), std::string::npos) << e105->message;
+    EXPECT_NE(e105->hint.find("k = k"), std::string::npos) << e105->hint;
+    const pgg::Diagnostic* e102 = findCode(r.diagnostics, "E102");
+    ASSERT_TRUE(e102);
+    EXPECT_NE(e102->message.find("line 4"), std::string::npos) << e102->message;
+    EXPECT_NE(e102->hint.find("out2"), std::string::npos) << e102->hint;
+    const pgg::Diagnostic* order = findCode(r.diagnostics, "E100");
+    ASSERT_TRUE(order);
+    EXPECT_NE(order->hint.find("above line 3"), std::string::npos) << order->hint;
+
+    pgg::RunResult t = runSource("x = box(size = (1, 1, 1))\ny = set(x, \"dir\", @N)\noutput y\n");
+    const pgg::Diagnostic* e610 = findCode(t.diagnostics, "E610");
+    ASSERT_TRUE(e610);
+    EXPECT_NE(e610->hint.find("typeinfo = none"), std::string::npos) << e610->hint;
+}
+
 }  // namespace
