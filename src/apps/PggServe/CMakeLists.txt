@@ -1,8 +1,4 @@
 # PggServe: headless GPU daemon for agent RPC (slots by .pgg path).
-if(EMSCRIPTEN)
-    return()
-endif()
-
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 

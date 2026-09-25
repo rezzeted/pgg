@@ -1,9 +1,5 @@
 # PggViewer: read-only node-graph projection of .pgg files (spec §10, stage E8).
 # Sibling tool of PggTool — a permanent viewer, not a one-off prototype.
-if(EMSCRIPTEN)
-    return()
-endif()
-
 find_package(imgui CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 

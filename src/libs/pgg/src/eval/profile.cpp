@@ -25,8 +25,6 @@ const char* isaTag() {
     return "x86_64";
 #elif defined(__aarch64__) || defined(_M_ARM64)
     return "aarch64";
-#elif defined(__wasm__) || defined(__EMSCRIPTEN__)
-    return "wasm32";
 #elif defined(__i386__) || defined(_M_IX86)
     return "x86";
 #else

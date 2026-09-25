@@ -36,7 +36,7 @@
   - Solution: `_intermediate_64\pgg.sln`.
   - Без обёртки: `cmake --preset vs2022`.
 - Сборка из CLI: `cmake --build --preset debug --target PggViewer`.
-- Бинарные директории: `_intermediate_64` (Windows и macOS), `_b-em` (Emscripten).
+- Бинарные директории: `_intermediate_64` (Windows и macOS).
 - **Не использовать** `build.sh` для Windows-флоу.
 
 ## Сборка (macOS, CMake + vcpkg)
