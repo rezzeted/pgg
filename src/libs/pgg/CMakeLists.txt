@@ -1,9 +1,4 @@
 # PGG: procedural geometry graph language — parser/AST/formatter/lint (E0).
-# Desktop-only: the wasm runtime ships baked geometry, no parser (spec §13.1).
-if(EMSCRIPTEN)
-    return()
-endif()
-
 find_package(antlr4-runtime CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
 

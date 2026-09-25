@@ -1,8 +1,4 @@
 # Shared offscreen geometry preview (PggViewer + PggServe). No ImGui.
-if(EMSCRIPTEN)
-    return()
-endif()
-
 find_package(glm CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 

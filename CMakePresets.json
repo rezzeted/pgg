@@ -24,20 +24,6 @@
       "inherits": "default"
     },
     {
-      "name": "emscripten",
-      "displayName": "Emscripten",
-      "binaryDir": "${sourceDir}/_b-em",
-      "generator": "Ninja Multi-Config",
-      "environment": {
-        "VCPKG_BINARY_SOURCES": "clear;http,https://cache.blackbox9.cc:9443/{name}/{version}/{triplet}/{sha},readwrite,$env{NEVERWHERE_VCPKG_CACHE_AUTH}"
-      },
-      "cacheVariables": {
-        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/toolchain/vcpkg/scripts/buildsystems/vcpkg.cmake",
-        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/toolchain/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
-        "VCPKG_TARGET_TRIPLET": "wasm32-emscripten"
-      }
-    },
-    {
       "name": "ide-index",
       "displayName": "Ninja (IDE indexing only, emits compile_commands.json)",
       "binaryDir": "${sourceDir}/_intermediate_ide",
@@ -128,8 +114,6 @@
   "buildPresets": [
     { "name": "debug", "configurePreset": "vs2022", "configuration": "Debug" },
     { "name": "release", "configurePreset": "vs2022", "configuration": "Release" },
-    { "name": "emscripten-debug", "configurePreset": "emscripten", "configuration": "Debug" },
-    { "name": "emscripten-release", "configurePreset": "emscripten", "configuration": "Release" },
     { "name": "macos-debug", "configurePreset": "macos", "configuration": "Debug" },
     { "name": "macos-release", "configurePreset": "macos", "configuration": "Release" },
     { "name": "macos-clion-debug", "configurePreset": "macos-clion" },

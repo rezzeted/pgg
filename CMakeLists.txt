@@ -26,13 +26,11 @@ if(APPLE)
     set(OpenGL_GL_PREFERENCE "GLVND" CACHE STRING "" FORCE)
     set(OPENGL_INCLUDE_DIR "/System/Library/Frameworks/OpenGL.framework/Headers" CACHE PATH "" FORCE)
     set(OPENGL_gl_LIBRARY "/System/Library/Frameworks/OpenGL.framework/OpenGL" CACHE FILEPATH "" FORCE)
-elseif(UNIX AND NOT EMSCRIPTEN)
+elseif(UNIX)
     set(OpenGL_GL_PREFERENCE "GLVND" CACHE STRING "" FORCE)
 endif()
 
-if(NOT EMSCRIPTEN)
-  find_package(spdlog CONFIG REQUIRED)
-endif()
+find_package(spdlog CONFIG REQUIRED)
 
 enable_testing()
 
