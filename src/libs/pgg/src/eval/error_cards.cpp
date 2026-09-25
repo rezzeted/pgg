@@ -326,6 +326,26 @@ const std::vector<ErrorCard>& cards() {
           "@variant outside [0, variants.size())"},
          "m = transform(inst, scale = (1, 2, 1))",
          "src = transform(src, scale = (1, 2, 1))\nm = instance_on_points(pts, source = src)  # non-uniform scale lives in the source"},
+        {"E614",
+         "cloth_drape cannot drape the sheet",
+         "The cloth bake refused the inputs: a negative step count, a non-positive "
+         "timestep, a non-finite parameter, a sheet with no area, or a collider with "
+         "no triangles. The cloth mesh is returned unchanged (spec §8.15).",
+         {"steps = -1 or dt = 0",
+          "a cloth mesh with no faces",
+          "a collider mesh with no triangles"},
+         "tarp = cloth_drape(empty_mesh(), collider = pile, steps = 30)",
+         "tarp = cloth_drape(grid(size = (1, 1), res = (4, 4)), collider = pile, steps = 180)"},
+        {"E613",
+         "rigid_settle cannot bake a rest pose",
+         "The rigid bake refused the inputs: a negative step count, a non-positive "
+         "timestep, a non-finite parameter, or an island with no volume (the convex "
+         "hull could not be built). The input mesh is returned unchanged (spec §8.14).",
+         {"steps = -1 or dt = 0",
+          "a flat or collinear island (a single edge, all points on a line)",
+          "NaN gravity, friction, or restitution"},
+         "s = rigid_settle(edge, steps = 30)",
+         "s = rigid_settle(merge(box(size = (1, 1, 1)), upper), static = floor, steps = 60)"},
         {"E612",
          "plane normal must be a non-zero finite vector",
          "clip/mirror got a zero or non-finite normal (constant values are "

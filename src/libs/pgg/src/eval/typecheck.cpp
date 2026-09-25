@@ -1299,6 +1299,13 @@ private:
                 storeSchema(&c, std::move(s));
                 break;
             }
+            case BuiltinId::RigidSettle:
+            case BuiltinId::ClothDrape: {
+                // Topology and attributes are kept; only positions (and, for
+                // cloth, @N) move. Points/instances are E204 at the signature.
+                storeSchema(&c, argSchema(byParam, 0));
+                break;
+            }
             case BuiltinId::Count:
                 checkFieldArgs(argSchema(byParam, 0), byParam, {2});  // where
                 break;

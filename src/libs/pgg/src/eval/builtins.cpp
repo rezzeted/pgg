@@ -586,6 +586,29 @@ const std::vector<BuiltinSig>& registry() {
                         {geoArg("geo", GeoKind::Mesh), geoArg("planes", GeoKind::Points),
                          val("rng", ScalarType::Rng, true)},
                         Type{ScalarType::Geo, false, GeoKind::Mesh}));
+        {
+            ParamSig ground = geoArg("static", GeoKind::Mesh);
+            ground.required = false;
+            ground.optional = true;
+            ground.hasDefValue = true;
+            ParamSig shape = valDef("shape", ScalarType::String, Value(std::string("convex")));
+            shape.enumValues = {"convex"};
+            r.push_back(sig(BuiltinId::RigidSettle, "rigid_settle",
+                            {geoArg("pieces", GeoKind::Mesh), ground,
+                             valDef("steps", ScalarType::Int, Value(int64_t{180})),
+                             valDef("dt", ScalarType::F32, Value(1.0f / 60.0f)),
+                             valDef("gravity", ScalarType::Vec3, Value(glm::vec3(0.0f, -9.81f, 0.0f))),
+                             valDef("friction", ScalarType::F32, Value(0.6f)),
+                             valDef("restitution", ScalarType::F32, Value(0.05f)), shape},
+                            Type{ScalarType::Geo, false, GeoKind::Mesh}));
+            r.push_back(sig(BuiltinId::ClothDrape, "cloth_drape",
+                            {geoArg("cloth", GeoKind::Mesh), geoArg("collider", GeoKind::Mesh),
+                             valDef("steps", ScalarType::Int, Value(int64_t{180})),
+                             valDef("dt", ScalarType::F32, Value(1.0f / 60.0f)),
+                             valDef("gravity", ScalarType::Vec3, Value(glm::vec3(0.0f, -9.81f, 0.0f))),
+                             valDef("friction", ScalarType::F32, Value(0.8f))},
+                            Type{ScalarType::Geo, false, GeoKind::Mesh}));
+        }
 
         // --- §8.9 geometry queries (v1.34) ----------------------------------------
         {
@@ -754,6 +777,10 @@ Value evalBuiltinCall(const BoundCall& bound, RunContext& run) {
         case BuiltinId::Islands:
         case BuiltinId::Fracture:
             return evalFractureBuiltin(bound, run);
+        case BuiltinId::RigidSettle:
+            return evalSettleBuiltin(bound, run);
+        case BuiltinId::ClothDrape:
+            return evalClothBuiltin(bound, run);
         case BuiltinId::Extrude:
         case BuiltinId::Inset:
         case BuiltinId::Bevel:

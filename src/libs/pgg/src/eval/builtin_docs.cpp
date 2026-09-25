@@ -462,6 +462,21 @@ const std::vector<BuiltinDoc>& docs() {
          "pieces come out watertight with @island_id (faces), ready for foreach. "
          "0 sites after dedup or an empty mesh is E608.",
          "pieces = fracture(g, planes = sites, rng = root)"},
+        {"rigid_settle", "fracture",
+         "Bakes a rigid rest pose (Jolt 5.5, one thread, exactly `steps` of `dt`). "
+         "Each connected island of pieces is a dynamic convex hull; static is a "
+         "triangle soup of infinite mass and is not part of the output. steps = 0 "
+         "is identity. A negative step count, dt <= 0, a non-finite parameter, or "
+         "an island with no volume is E613 and returns the input unchanged. "
+         "geo<points>/geo<instances> are E204.",
+         "rest = rigid_settle(merge(a, b), static = floor, steps = 180)"},
+        {"cloth_drape", "fracture",
+         "Drops a cloth mesh onto a collider and bakes the rest pose (Jolt 5.5 soft body, "
+         "one thread, exactly `steps` of `dt`). Each collider island is a static convex hull "
+         "and is not part of the output. Stretch is stiff and bilateral, shear and bend are off. "
+         "steps = 0 is identity. A negative step count, dt <= 0, a non-finite parameter, a "
+         "sheet with no area, or a collider with no volume is E614. @N is rebuilt from the draped faces.",
+         "tarp = cloth_drape(sheet, collider = pile, steps = 180)"},
         // --- §8.12 straight skeleton (v1.34) ---------------------------------------
         {"straight_skeleton", "topology",
          "Weighted straight skeleton of a plan outline (CCW from above) swept "
