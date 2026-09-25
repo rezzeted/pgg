@@ -1,6 +1,7 @@
 # PGG: procedural geometry graph language — parser/AST/formatter/lint (E0).
 find_package(antlr4-runtime CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
+find_package(Jolt CONFIG REQUIRED)
 
 # Generated ANTLR artifacts are committed (regen: tools/pgg/regen_parser.sh).
 file(GLOB PARSER_GEN CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/parser_gen/*.cpp")
@@ -57,6 +58,7 @@ nw_add_lib_sources(
         src/eval/builtins_aggregate.cpp
         src/eval/builtins_sdf.cpp
         src/eval/builtins_fracture.cpp
+        src/eval/builtins_settle.cpp
         src/eval/builtins_skeleton.cpp
         src/eval/builtins_query.cpp
         src/eval/topology_util.h
@@ -90,6 +92,7 @@ nw_add_lib_sources(
     LIBS
         antlr4_static
         glm::glm-header-only
+        Jolt::Jolt
 )
 
 target_include_directories(pgg PUBLIC include)

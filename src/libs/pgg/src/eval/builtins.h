@@ -53,6 +53,10 @@ enum class BuiltinId {
     SdfIntersect, SdfDisplace, SdfInstanceOnPoints, SdfFromMesh, MeshFromSdf, SdfGrind,
     // §8.3 islands / §8.11 fracture (E7)
     Islands, Fracture,
+    // §8.14 rigid rest pose (v1.37)
+    RigidSettle,
+    // §8.15 cloth drape (v1.38)
+    ClothDrape,
     // Known but not supported at this stage.
     Deferred,
 };
@@ -166,6 +170,12 @@ Value evalSdfBuiltin(const BoundCall& bound, RunContext& run);
 
 // §8.3 islands and §8.11 fracture nodes, value level (builtins_fracture.cpp, E7).
 Value evalFractureBuiltin(const BoundCall& bound, RunContext& run);
+
+// §8.14 rigid rest pose (builtins_settle.cpp, v1.37).
+Value evalSettleBuiltin(const BoundCall& bound, RunContext& run);
+
+// §8.15 cloth drape (builtins_settle.cpp, v1.38).
+Value evalClothBuiltin(const BoundCall& bound, RunContext& run);
 
 // §8.3 delete (element removal with cascade) and clip, value level (builtins_topology.cpp).
 Value evalTopologyBuiltin(const BoundCall& bound, RunContext& run);

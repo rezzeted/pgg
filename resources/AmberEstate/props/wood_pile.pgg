@@ -45,14 +45,14 @@ def place_log(len: f32, r: f32, bite: f32, at: vec3, roll: f32, yaw: f32, pitch:
     out = set(placed, "tint", vec3(shade * 1.04, shade, shade * 0.94), domain = faces)
 }
 
-def anchor_row(len: f32, r: f32, layer: int, rows: int, rng: rng) -> (out: geo<points>) {
-    """Опорные карманы одного слоя; верх уже, соседние слои имеют разное число поленьев."""
+def anchor_row(len: f32, r: f32, layer: int, rows: int, rng: rng, loose: f32 = 0.0) -> (out: geo<points>) {
+    """Опорные карманы одного слоя; верх уже, соседние слои имеют разное число поленьев. loose > 0 — редкий сброс для rigid_settle."""
     expect rows >= 3: "anchor_row: мало рядов"
     top = layer == rows - 1
     n = rows + 1 - layer
-    spacing = r * (layer == 0 ? 0.95 : 1.10)
+    spacing = r * (loose > 0.0 ? 2.05 : (layer == 0 ? 0.95 : 1.10))
     span = spacing * f32(n - 1)
-    y0 = r * 0.070 + f32(layer) * r * 0.64
+    y0 = loose > 0.0 ? (0.20 + f32(layer) * r * 2.40) : (r * 0.070 + f32(layer) * r * 0.64)
     row_bias = f32(layer % 3 - 1) * r * 0.025
     base0 = mesh_line(count = n, length = span, dir = (0, 0, 1))
     base = transform(base0, translate = vec3(0, y0, row_bias - span * 0.5))
@@ -90,9 +90,28 @@ def make_pile(len: f32, rows: int, rng: rng) -> (out: geo<mesh>) {
     out = stacked
 }
 
+def make_drop(len: f32, rows: int, rng: rng) -> (out: geo<mesh>) {
+    """Те же поленья, но с зазором: rigid_settle кладёт их на землю."""
+    expect rows >= 3: "make_drop: мало рядов"
+    expect len > 0.2: "make_drop: короткое"
+    r = 0.092
+    anchors = repeat (empty_points(), iterations = rows) |acc| {
+        row = anchor_row(len = len, r = r, layer = @iteration, rows = rows, rng = split_rng(rng, key = @iteration), loose = 1.0)
+        acc = merge(acc, row)
+    }
+    stacked = foreach a in anchors {
+        placed = place_log(len = value(@log_len, on = a), r = value(@radius, on = a), bite = value(@bite, on = a), at = value(@P, on = a), roll = value(@roll, on = a), yaw = value(@yaw, on = a), pitch = value(@pitch, on = a), shade = value(@shade, on = a))
+        # Срез и кора не делят вершины: без сварки это два тела в одном объёме.
+        a = merge_by_distance(placed, dist = 0.004)
+    }
+    span = r * 2.05 * f32(rows)
+    ground = transform(box(size = (len * 1.6, 0.20, span + r * 6.0)), translate = vec3(0, -0.10, 0))
+    out = rigid_settle(stacked, static = ground, steps = 180)
+}
+
 def assemble(len: f32, rows: int, rng: rng) -> (out: geo<mesh>) {
-    """Стопка дров с окраской."""
-    out = paint(make_pile(len = len, rows = rows, rng = split_rng(rng, key = "pile")), rng = rng)
+    """Стопка дров с окраской: поза покоя, не аналитические карманы."""
+    out = paint(make_drop(len = len, rows = rows, rng = split_rng(rng, key = "pile")), rng = rng)
 }
 
 root_rng = rng_from_seed(seed)
@@ -103,6 +122,6 @@ log = paint(a0, rng = split_rng(root_rng, key = "log"))
 v1 = transform(paint(a1, rng = split_rng(root_rng, key = "b")), translate = vec3(0, 0, 0.22))
 v2 = transform(paint(a2, rng = split_rng(root_rng, key = "c")), translate = vec3(0, 0, 0.0 - 0.22))
 variants = merge(log, v1, v2)
-pile = make_pile(len = log_len, rows = n_rows, rng = split_rng(root_rng, key = "pile"))
+pile = make_drop(len = log_len, rows = n_rows, rng = split_rng(root_rng, key = "pile"))
 scene = paint(pile, rng = split_rng(root_rng, key = "ao"))
 output scene
