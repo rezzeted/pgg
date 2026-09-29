@@ -75,7 +75,7 @@ public:
 
     AutoReloadResult autoReloadIfChanged();
 
-    pgg::RunParams makeRunParams() const;
+    pgg::RunParams makeRunParams(std::string& paramErr) const;
     std::vector<std::string> importRoots() const;
     std::vector<std::string> boundParamNames() const;
     nlohmann::json paramsJson() const;
@@ -166,7 +166,6 @@ nlohmann::json vec3Json(const glm::vec3& v);
 nlohmann::json valueStatsJson(const pgg::Value& v, double ms);
 nlohmann::json silhouetteJson(const SilhouetteMetrics& m);
 std::array<std::uint8_t, 3> previewClearRgb8();
-pgg::Value parseCliValue(const std::string& v);
 std::string jsonToParamText(const nlohmann::json& v);
 std::string literalText(const pgg::Expr* e);
 CameraTargetSpec parseCameraTargetSpec(const std::string& text);

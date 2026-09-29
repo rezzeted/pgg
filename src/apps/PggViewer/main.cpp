@@ -41,6 +41,7 @@
 #include <pgg/pgg.h>
 #include <pgg/src/eval/cache.h>
 #include <pgg/src/eval/modules.h>
+#include <pgg/src/eval/param_text.h>
 #include <pgg/src/graph.h>
 #include <pgg/src/layout.h>
 
@@ -370,32 +371,22 @@ std::string probePathFor(const pgg::GraphNode& n) {
     return scopePath.empty() ? base : scopePath + "." + base;
 }
 
-// CLI value parsing for probe runs (same rules as PggTool --param).
-pgg::Value parseCliValue(const std::string& v) {
-    if (v == "true") return pgg::Value(true);
-    if (v == "false") return pgg::Value(false);
-    if (v.size() >= 5 && v.front() == '(' && v.back() == ')') {
-        std::vector<float> comps;
-        std::stringstream ss(v.substr(1, v.size() - 2));
-        std::string item;
-        bool ok = true;
-        while (std::getline(ss, item, ',')) {
-            char* end = nullptr;
-            const float f = std::strtof(item.c_str(), &end);
-            if (end == item.c_str() || *end != '\0') ok = false;
-            comps.push_back(f);
+// Binds the Params panel texts (scalars + @points-file) into rp.
+// Relative @paths resolve against the loaded .pgg file's directory.
+// False + err when a file param cannot be loaded.
+bool bindLaunchParams(pgg::RunParams& rp, std::string& err) {
+    const std::string baseDir = std::filesystem::path(g_filePath).parent_path().string();
+    for (const auto& [name, text] : g_paramValues) {
+        if (text.empty()) continue;
+        pgg::Value bound;
+        std::string perr;
+        if (!pgg::parseParamText(text, baseDir, bound, &perr)) {
+            err = "param " + name + ": " + perr;
+            return false;
         }
-        if (ok && comps.size() == 2) return pgg::Value(glm::vec2(comps[0], comps[1]));
-        if (ok && comps.size() == 3) return pgg::Value(glm::vec3(comps[0], comps[1], comps[2]));
-        if (ok && comps.size() == 4) return pgg::Value(glm::vec4(comps[0], comps[1], comps[2], comps[3]));
-        return pgg::Value(v);
+        rp.values.push_back({name, std::move(bound)});
     }
-    char* end = nullptr;
-    const long long iv = std::strtoll(v.c_str(), &end, 10);
-    if (end && *end == '\0' && end != v.c_str()) return pgg::Value(static_cast<int64_t>(iv));
-    const float fv = std::strtof(v.c_str(), &end);
-    if (end && *end == '\0' && end != v.c_str()) return pgg::Value(fv);
-    return pgg::Value(v);
+    return true;
 }
 
 void runProbe(const std::string& inspector) {
@@ -408,8 +399,11 @@ void runProbe(const std::string& inspector) {
         return;
     }
     pgg::RunParams rp;
-    for (const auto& [name, text] : g_paramValues)
-        if (!text.empty()) rp.values.push_back({name, parseCliValue(text)});
+    std::string paramErr;
+    if (!bindLaunchParams(rp, paramErr)) {
+        g_probeText = paramErr;
+        return;
+    }
     rp.importRoots = sessionImportRoots();
     rp.cache = g_memoryCache.get();
     rp.profile = true;  // E: status carries the last run's per-binding times
@@ -533,8 +527,12 @@ bool pullBindingPreview(const std::string& path) {
     g_bindingTargetResolved = false;
     g_bindingTargetPath = path;
     pgg::RunParams rp;
-    for (const auto& [name, text] : g_paramValues)
-        if (!text.empty()) rp.values.push_back({name, parseCliValue(text)});
+    std::string paramErr;
+    if (!bindLaunchParams(rp, paramErr)) {
+        g_cameraTargetError = paramErr;
+        spdlog::warn("PggViewer: preview-target {}", g_cameraTargetError);
+        return false;
+    }
     rp.importRoots = sessionImportRoots();
     rp.cache = g_memoryCache.get();
     rp.profile = true;
@@ -659,8 +657,15 @@ void applyCameraTarget() {
 void runPreview(const std::string& target) {
     if (target.empty() || g_filePath.empty()) return;
     pgg::RunParams rp;
-    for (const auto& [name, text] : g_paramValues)
-        if (!text.empty()) rp.values.push_back({name, parseCliValue(text)});
+    std::string paramErr;
+    if (!bindLaunchParams(rp, paramErr)) {
+        g_lastPreviewError = paramErr;
+        g_preview.setError(paramErr);
+        g_preview.setSummary(target + ": run failed");
+        g_showPreview = true;
+        g_framesSincePreviewRun = 0;
+        return;
+    }
     rp.importRoots = sessionImportRoots();
     rp.cache = g_memoryCache.get();
     rp.profile = true;
@@ -892,6 +897,7 @@ void drawPanel(int w, int h) {
         if (missingParam)
             ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f),
                                "required: params without a default must be set before a run");
+        ImGui::TextDisabled("@path binds a geo<points> file (pgg-points/1), relative to this file");
         for (auto& [name, text] : g_paramValues) {
             char buf[256];
             std::snprintf(buf, sizeof(buf), "%s", text.c_str());

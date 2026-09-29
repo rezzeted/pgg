@@ -53,6 +53,7 @@
 #include <pgg/src/eval/geo_diff.h>      // diffGeo/formatGeoDiff for diff
 #include <pgg/src/eval/modules.h>       // loadModuleClosure for the check static stage
 #include <pgg/src/eval/obj_export.h>    // writeObj for the --obj export
+#include <pgg/src/eval/param_text.h>   // parseParamText for --param (scalars + @points-file)
 #include <pgg/src/eval/sdf.h>           // sdf output summaries
 #include <pgg/src/eval/typecheck.h>     // typecheckFlat for the check static stage
 
@@ -74,7 +75,12 @@ void usage() {
                  "                        [--fingerprint] [--json] [--profile]\n"
                  "                        [--eval '<expr>' --on <binding>] [--update-goldens]\n"
                  "                                      run the graph, print output summaries\n"
-                 "                                      (--obj writes one Wavefront OBJ per geo output;\n"
+                 "                                      (--param k=v binds a launch param: bool, int,\n"
+                 "                                      f32, (x, y[, z[, w]]) vectors, strings; k=@file\n"
+                 "                                      loads a geo<points> JSON file (pgg-points/1),\n"
+                 "                                      relative paths resolve against the .pgg file's\n"
+                 "                                      directory; k=@@s binds the literal string @s;\n"
+                 "                                      --obj writes one Wavefront OBJ per geo output;\n"
                  "                                      --obj-split-groups splits the export into one OBJ\n"
                  "                                      per faces-group (<output>.<group>.obj, faces in no\n"
                  "                                      group -> <output>._nogroup.obj);\n"
@@ -272,32 +278,13 @@ int cmdFmt(const std::string& path, bool inPlace, bool checkOnly) {    pgg::Docu
     return 0;
 }
 
-// CLI value parsing for --param k=v: bool / int / f32 / (vec) / string.
-pgg::Value parseCliValue(const std::string& v) {
-    if (v == "true") return pgg::Value(true);
-    if (v == "false") return pgg::Value(false);
-    if (v.size() >= 5 && v.front() == '(' && v.back() == ')') {
-        std::vector<float> comps;
-        std::stringstream ss(v.substr(1, v.size() - 2));
-        std::string item;
-        bool ok = true;
-        while (std::getline(ss, item, ',')) {
-            char* end = nullptr;
-            const float f = std::strtof(item.c_str(), &end);
-            if (end == item.c_str() || *end != '\0') ok = false;
-            comps.push_back(f);
-        }
-        if (ok && comps.size() == 2) return pgg::Value(glm::vec2(comps[0], comps[1]));
-        if (ok && comps.size() == 3) return pgg::Value(glm::vec3(comps[0], comps[1], comps[2]));
-        if (ok && comps.size() == 4) return pgg::Value(glm::vec4(comps[0], comps[1], comps[2], comps[3]));
-        return pgg::Value(v);
-    }
-    char* end = nullptr;
-    const long long iv = std::strtoll(v.c_str(), &end, 10);
-    if (end && *end == '\0' && end != v.c_str()) return pgg::Value(static_cast<int64_t>(iv));
-    const float fv = std::strtof(v.c_str(), &end);
-    if (end && *end == '\0' && end != v.c_str()) return pgg::Value(fv);
-    return pgg::Value(v);
+// CLI value parsing for --param k=v: bool / int / f32 / (vec) / string,
+// plus @path.json references that load a geo<points> file (param_text.h).
+// Golden comments record the invocation text: file params stay as "@path"
+// (contents are not fingerprinted here — output fingerprints cover them).
+std::string goldenParamText(const std::string& v) {
+    if (pgg::isFileParamRef(v)) return v;
+    return pgg::valueToString(pgg::parseScalarParamText(v));
 }
 
 // The geo detail text after "name: " (geo<kind> points=N [corners/faces |
@@ -474,7 +461,7 @@ int writeGoldenFile(const std::string& path,
     content << "# pgg golden, updated by PggTool run --update-goldens\n";
     if (!params.empty()) {
         content << "# params:";
-        for (const auto& [k, v] : params) content << " " << k << "=" << pgg::valueToString(parseCliValue(v));
+        for (const auto& [k, v] : params) content << " " << k << "=" << goldenParamText(v);
         content << "\n";
     }
     size_t n = 0;
@@ -517,7 +504,16 @@ int cmdRun(const std::string& path, const std::vector<std::pair<std::string, std
            bool debug, bool fingerprint, bool json, bool profile, const pgg::EvalSpec* eval,
            bool updateGoldens, bool objSplitGroups, bool objColorCheck) {
     pgg::RunParams rp;
-    for (const auto& [k, v] : params) rp.values.push_back({k, parseCliValue(v)});
+    const std::string paramBaseDir = std::filesystem::path(path).parent_path().string();
+    for (const auto& [k, v] : params) {
+        pgg::Value bound;
+        std::string paramErr;
+        if (!pgg::parseParamText(v, paramBaseDir, bound, &paramErr)) {
+            std::fprintf(stderr, "param %s: %s\n", k.c_str(), paramErr.c_str());
+            return 2;
+        }
+        rp.values.push_back({k, std::move(bound)});
+    }
     rp.threads = threads;
     rp.importRoots = libRoots;
     addProductLibRoot(rp.importRoots, path);

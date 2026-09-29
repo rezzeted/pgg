@@ -14,6 +14,7 @@
 #include <pgg/src/eval/expand.h>
 #include <pgg/src/eval/fingerprint.h>
 #include <pgg/src/eval/geometry.h>
+#include <pgg/src/eval/param_text.h>
 #include <pgg/src/eval/sdf.h>
 #include <pgg/src/eval/typecheck.h>
 
@@ -185,33 +186,6 @@ std::array<std::uint8_t, 3> previewClearRgb8() {
     return bg;
 }
 
-pgg::Value parseCliValue(const std::string& v) {
-    if (v == "true") return pgg::Value(true);
-    if (v == "false") return pgg::Value(false);
-    if (v.size() >= 5 && v.front() == '(' && v.back() == ')') {
-        std::vector<float> comps;
-        std::stringstream ss(v.substr(1, v.size() - 2));
-        std::string item;
-        bool ok = true;
-        while (std::getline(ss, item, ',')) {
-            char* end = nullptr;
-            const float f = std::strtof(item.c_str(), &end);
-            if (end == item.c_str() || *end != '\0') ok = false;
-            comps.push_back(f);
-        }
-        if (ok && comps.size() == 2) return pgg::Value(glm::vec2(comps[0], comps[1]));
-        if (ok && comps.size() == 3) return pgg::Value(glm::vec3(comps[0], comps[1], comps[2]));
-        if (ok && comps.size() == 4) return pgg::Value(glm::vec4(comps[0], comps[1], comps[2], comps[3]));
-        return pgg::Value(v);
-    }
-    char* end = nullptr;
-    const long long iv = std::strtoll(v.c_str(), &end, 10);
-    if (end && *end == '\0' && end != v.c_str()) return pgg::Value(static_cast<int64_t>(iv));
-    const float fv = std::strtof(v.c_str(), &end);
-    if (end && *end == '\0' && end != v.c_str()) return pgg::Value(fv);
-    return pgg::Value(v);
-}
-
 std::string jsonToParamText(const nlohmann::json& v) {
     if (v.is_string()) return v.get<std::string>();
     if (v.is_boolean()) return v.get<bool>() ? "true" : "false";
@@ -344,10 +318,20 @@ std::vector<std::string> DocumentSession::importRoots() const {
     return roots;
 }
 
-pgg::RunParams DocumentSession::makeRunParams() const {
+pgg::RunParams DocumentSession::makeRunParams(std::string& paramErr) const {
     pgg::RunParams rp;
-    for (const auto& [name, text] : m_paramValues)
-        if (!text.empty()) rp.values.push_back({name, parseCliValue(text)});
+    paramErr.clear();
+    const std::string baseDir = std::filesystem::path(m_resolvedPath).parent_path().string();
+    for (const auto& [name, text] : m_paramValues) {
+        if (text.empty()) continue;
+        pgg::Value bound;
+        std::string err;
+        if (!pgg::parseParamText(text, baseDir, bound, &err)) {
+            paramErr = "param " + name + ": " + err;
+            break;
+        }
+        rp.values.push_back({name, std::move(bound)});
+    }
     rp.importRoots = importRoots();
     rp.cache = m_cache.get();
     rp.profile = true;
@@ -542,7 +526,12 @@ AutoReloadResult DocumentSession::autoReloadIfChanged() {
 bool DocumentSession::runOutputsFingerprints(
     std::vector<std::pair<std::string, std::optional<uint64_t>>>& outFps, double& outMs,
     std::string& why) {
-    pgg::RunParams rp = makeRunParams();
+    std::string paramErr;
+    pgg::RunParams rp = makeRunParams(paramErr);
+    if (!paramErr.empty()) {
+        why = paramErr;
+        return false;
+    }
     const double t0 = wallNowSec();
     pgg::RunResult r = pgg::runFile(m_resolvedPath, rp);
     outMs = (wallNowSec() - t0) * 1000.0;
@@ -566,7 +555,12 @@ bool DocumentSession::runOutputsFingerprints(
 
 DocumentSession::PullResult DocumentSession::pullGeometry(const std::string& node) {
     PullResult out;
-    pgg::RunParams rp = makeRunParams();
+    std::string paramErr;
+    pgg::RunParams rp = makeRunParams(paramErr);
+    if (!paramErr.empty()) {
+        out.error = paramErr;
+        return out;
+    }
     rp.pulls = {node};
     const double t0 = wallNowSec();
     pgg::RunResult r = pgg::runFile(m_resolvedPath, rp);
@@ -605,7 +599,17 @@ DocumentSession::PullResult DocumentSession::pullGeometry(const std::string& nod
 }
 
 pgg::RunResult DocumentSession::runProbes(const std::vector<std::string>& specs, double& ms) {
-    pgg::RunParams rp = makeRunParams();
+    std::string paramErr;
+    pgg::RunParams rp = makeRunParams(paramErr);
+    if (!paramErr.empty()) {
+        pgg::RunResult failed;
+        pgg::Diagnostic d;
+        d.code = "E604";
+        d.message = paramErr;
+        failed.diagnostics.push_back(std::move(d));
+        ms = 0.0;
+        return failed;
+    }
     rp.probes = specs;
     const double t0 = wallNowSec();
     pgg::RunResult r = pgg::runFile(m_resolvedPath, rp);
