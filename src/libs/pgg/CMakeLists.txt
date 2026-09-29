@@ -2,6 +2,7 @@
 find_package(antlr4-runtime CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
 find_package(Jolt CONFIG REQUIRED)
+find_package(nlohmann_json CONFIG REQUIRED)
 
 # Generated ANTLR artifacts are committed (regen: tools/pgg/regen_parser.sh).
 file(GLOB PARSER_GEN CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/parser_gen/*.cpp")
@@ -38,6 +39,10 @@ nw_add_lib_sources(
         src/eval/cache.cpp
         src/eval/geometry.h
         src/eval/geometry.cpp
+        src/eval/geo_file.h
+        src/eval/geo_file.cpp
+        src/eval/param_text.h
+        src/eval/param_text.cpp
         src/eval/value.h
         src/eval/field.h
         src/eval/field.cpp
@@ -93,6 +98,7 @@ nw_add_lib_sources(
         antlr4_static
         glm::glm-header-only
         Jolt::Jolt
+        nlohmann_json::nlohmann_json
 )
 
 target_include_directories(pgg PUBLIC include)
