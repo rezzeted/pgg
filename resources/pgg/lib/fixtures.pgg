@@ -47,32 +47,40 @@ def lantern(at: vec3) -> (out: geo<mesh>) {
     link2 = ring(center = vec3(0, 0.25, 0.32), radius = 0.024, r = 0.005, yaw_deg = 90)
     finial = mark(transform(ico_sphere(subdiv = 1, radius = 0.018), translate = vec3(0, 0.225, 0.32)), "iron", where = true, domain = faces)
     cap = pyramid_cap(base = vec3(0, 0.155, 0.32), half = 0.13, h = 0.07, tip = 0.02)
-    rim = parts.piece(size = vec3(0.26, 0.015, 0.26), pos = vec3(0, 0.1475, 0.32), grp = "iron")
-    # Каркас: четыре стойки и две квадратные обвязки (верх/низ).
-    post_a = parts.piece(size = vec3(0.016, 0.29, 0.016), pos = vec3(0.10, 0.0, 0.42), grp = "iron")
-    post_b = parts.piece(size = vec3(0.016, 0.29, 0.016), pos = vec3(-0.10, 0.0, 0.42), grp = "iron")
-    post_c = parts.piece(size = vec3(0.016, 0.29, 0.016), pos = vec3(0.10, 0.0, 0.22), grp = "iron")
-    post_d = parts.piece(size = vec3(0.016, 0.29, 0.016), pos = vec3(-0.10, 0.0, 0.22), grp = "iron")
-    rail_tf = parts.piece(size = vec3(0.216, 0.016, 0.016), pos = vec3(0, 0.137, 0.42), grp = "iron")
-    rail_tb = parts.piece(size = vec3(0.216, 0.016, 0.016), pos = vec3(0, 0.137, 0.22), grp = "iron")
-    rail_tl = parts.piece(size = vec3(0.016, 0.016, 0.216), pos = vec3(-0.10, 0.137, 0.32), grp = "iron")
-    rail_tr = parts.piece(size = vec3(0.016, 0.016, 0.216), pos = vec3(0.10, 0.137, 0.32), grp = "iron")
-    rail_bf = parts.piece(size = vec3(0.216, 0.016, 0.016), pos = vec3(0, -0.137, 0.42), grp = "iron")
-    rail_bb = parts.piece(size = vec3(0.216, 0.016, 0.016), pos = vec3(0, -0.137, 0.22), grp = "iron")
-    rail_bl = parts.piece(size = vec3(0.016, 0.016, 0.216), pos = vec3(-0.10, -0.137, 0.32), grp = "iron")
-    rail_br = parts.piece(size = vec3(0.016, 0.016, 0.216), pos = vec3(0.10, -0.137, 0.32), grp = "iron")
-    # Стёкла — утоплены на 4 мм от плоскости стоек, средник — по середине каждого.
-    glass_f = parts.piece(size = vec3(0.19, 0.27, 0.006), pos = vec3(0, 0.0, 0.414), grp = "lamp")
-    glass_b = parts.piece(size = vec3(0.19, 0.27, 0.006), pos = vec3(0, 0.0, 0.226), grp = "lamp")
-    glass_l = parts.piece(size = vec3(0.006, 0.27, 0.19), pos = vec3(-0.094, 0.0, 0.32), grp = "lamp")
-    glass_r = parts.piece(size = vec3(0.006, 0.27, 0.19), pos = vec3(0.094, 0.0, 0.32), grp = "lamp")
-    mull_f = parts.piece(size = vec3(0.19, 0.012, 0.012), pos = vec3(0, 0.0, 0.42), grp = "iron")
-    mull_b = parts.piece(size = vec3(0.19, 0.012, 0.012), pos = vec3(0, 0.0, 0.22), grp = "iron")
-    mull_l = parts.piece(size = vec3(0.012, 0.012, 0.19), pos = vec3(-0.10, 0.0, 0.32), grp = "iron")
-    mull_r = parts.piece(size = vec3(0.012, 0.012, 0.19), pos = vec3(0.10, 0.0, 0.32), grp = "iron")
-    # Донце с капелькой.
+    rim = parts.piece(size = vec3(0.26, 0.015, 0.26), pos = vec3(0, 0.152, 0.32), grp = "iron")
+    # Каркас: четыре стойки и две квадратные обвязки (верх/низ). Плоскости деталей
+    # разнесены: стыки «встык» и обвязки одной высоты дают копланарные пары граней
+    # (z-fighting; delve F11/elements такое отклоняет). Каждая плоскость либо >=1 мм
+    # от чужой, либо утоплена в соседнюю деталь: концы обвязок/средников — в центрах
+    # сечений стоек, стойки на 1 мм внутри rim/донца, продольные обвязки на 2 мм ниже
+    # поперечных, капелька и крышка начинаются внутри донца/обода.
+    post_a = parts.piece(size = vec3(0.016, 0.292, 0.016), pos = vec3(0.10, 0.0, 0.42), grp = "iron")
+    post_b = parts.piece(size = vec3(0.016, 0.292, 0.016), pos = vec3(-0.10, 0.0, 0.42), grp = "iron")
+    post_c = parts.piece(size = vec3(0.016, 0.292, 0.016), pos = vec3(0.10, 0.0, 0.22), grp = "iron")
+    post_d = parts.piece(size = vec3(0.016, 0.292, 0.016), pos = vec3(-0.10, 0.0, 0.22), grp = "iron")
+    rail_tf = parts.piece(size = vec3(0.20, 0.016, 0.016), pos = vec3(0, 0.133, 0.416), grp = "iron")
+    rail_tb = parts.piece(size = vec3(0.20, 0.016, 0.016), pos = vec3(0, 0.133, 0.224), grp = "iron")
+    rail_tl = parts.piece(size = vec3(0.016, 0.016, 0.20), pos = vec3(-0.096, 0.131, 0.32), grp = "iron")
+    rail_tr = parts.piece(size = vec3(0.016, 0.016, 0.20), pos = vec3(0.096, 0.131, 0.32), grp = "iron")
+    rail_bf = parts.piece(size = vec3(0.20, 0.016, 0.016), pos = vec3(0, -0.133, 0.416), grp = "iron")
+    rail_bb = parts.piece(size = vec3(0.20, 0.016, 0.016), pos = vec3(0, -0.133, 0.224), grp = "iron")
+    rail_bl = parts.piece(size = vec3(0.016, 0.016, 0.20), pos = vec3(-0.096, -0.131, 0.32), grp = "iron")
+    rail_br = parts.piece(size = vec3(0.016, 0.016, 0.20), pos = vec3(0.096, -0.131, 0.32), grp = "iron")
+    # Стёкла — утоплены на 4 мм от плоскости стоек, средник — по середине каждого
+    # (продольные средники подняты на 2.5 мм: перекрестие одной высоты копланарно).
+    # Ширина стёкол 0.18 — на углах между панелями щель 1 мм: торцевые грани соседних
+    # стёкол одной высоты, пересекись они, были бы копланарны.
+    glass_f = parts.piece(size = vec3(0.18, 0.27, 0.006), pos = vec3(0, 0.0, 0.414), grp = "lamp")
+    glass_b = parts.piece(size = vec3(0.18, 0.27, 0.006), pos = vec3(0, 0.0, 0.226), grp = "lamp")
+    glass_l = parts.piece(size = vec3(0.006, 0.27, 0.18), pos = vec3(-0.094, 0.0, 0.32), grp = "lamp")
+    glass_r = parts.piece(size = vec3(0.006, 0.27, 0.18), pos = vec3(0.094, 0.0, 0.32), grp = "lamp")
+    mull_f = parts.piece(size = vec3(0.20, 0.012, 0.012), pos = vec3(0, 0.0, 0.419), grp = "iron")
+    mull_b = parts.piece(size = vec3(0.20, 0.012, 0.012), pos = vec3(0, 0.0, 0.221), grp = "iron")
+    mull_l = parts.piece(size = vec3(0.012, 0.012, 0.20), pos = vec3(-0.099, 0.0025, 0.32), grp = "iron")
+    mull_r = parts.piece(size = vec3(0.012, 0.012, 0.20), pos = vec3(0.099, 0.0025, 0.32), grp = "iron")
+    # Донце с капелькой (основание капельки внутри донца, не в его плоскости).
     base = parts.piece(size = vec3(0.24, 0.02, 0.24), pos = vec3(0, -0.155, 0.32), grp = "iron")
-    drop = pyramid_cap(base = vec3(0, -0.165, 0.32), half = 0.06, h = -0.05, tip = 0.008)
+    drop = pyramid_cap(base = vec3(0, -0.160, 0.32), half = 0.06, h = -0.05, tip = 0.008)
     frame = merge(post_a, post_b, post_c, post_d, rail_tf, rail_tb, rail_tl, rail_tr, rail_bf, rail_bb, rail_bl, rail_br)
     glass = merge(glass_f, glass_b, glass_l, glass_r, mull_f, mull_b, mull_l, mull_r)
     hang = merge(plate, arm, brace, curl, link1, link2, finial)
