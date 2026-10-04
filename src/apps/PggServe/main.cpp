@@ -1,9 +1,11 @@
 // PggServe: GPU daemon for agent RPC (docs/pgg/serve_rpc.md).
-//   PggServe [--port=9878] [--host=127.0.0.1]
+//   PggServe [--port=9878] [--host=127.0.0.1] [--headless]
 //   PggServe --smoke
 // Tiny Sokol window is the GPU context only (no ImGui, no graph). Slots are
 // keyed by the canonical .pgg path; Engine work on different files runs in
 // parallel, PNG capture is serialized on the Sokol thread.
+// --headless: the GPU context is created without a window (Linux: GLX
+// pbuffer; other platforms fail with a clear error) — MCP launches it so.
 
 #include "pch.h"
 
@@ -39,6 +41,10 @@
 #include <sokol_glue.h>
 #include <sokol_log.h>
 #include <sokol_time.h>
+
+#include <csignal>
+
+#include "HeadlessGlx.h"
 
 #if defined(SOKOL_METAL) && defined(__APPLE__)
     #import <Foundation/Foundation.h>
@@ -119,20 +125,91 @@ void cleanup() {
 
 void event(const sapp_event*) {}
 
+std::atomic<bool> g_headlessQuit{false};
+
+void onHeadlessSignal(int) { g_headlessQuit.store(true, std::memory_order_relaxed); }
+
+// Windowless twin of init/frame/cleanup: RPC poll + GPU jobs, no swapchain.
+int runHeadless(const std::string& host, uint16_t port) {
+    g_frameLoopAlive.store(true, std::memory_order_relaxed);
+    spdlog::set_level(spdlog::level::info);
+    stm_setup();
+
+    ServeRpcServer rpc;
+    ServeRuntime runtime(rpc);
+    runtime.startWorkers();
+    runtime.registerHandlers();
+    g_rpc = &rpc;
+    g_runtime = &runtime;
+
+    if (!rpc.start(host, port)) {
+        spdlog::error("PggServe: cannot listen on {}:{}", host, port);
+        return 1;
+    }
+
+    PggHeadlessGl gl;
+    std::string err;
+    if (!pggHeadlessGlSetup(gl, err)) {
+        spdlog::error("PggServe --headless: {}", err);
+        rpc.stop();
+        return 1;
+    }
+    sg_desc desc = {};
+    desc.environment.defaults.color_format = SG_PIXELFORMAT_RGBA8;
+    desc.environment.defaults.depth_format = SG_PIXELFORMAT_DEPTH_STENCIL;
+    desc.environment.defaults.sample_count = 1;
+    desc.logger.func = slog_func;
+    sg_setup(&desc);
+    g_gfxOk = sg_isvalid();
+    if (!g_gfxOk) {
+        spdlog::error("PggServe --headless: sg_setup FAILED");
+        pggHeadlessGlTeardown(gl);
+        rpc.stop();
+        return 1;
+    }
+    g_preview.init();
+    runtime.startTimeSec = wallNowSec();
+    runtime.setGpuReady(true);
+    spdlog::info("PggServe: headless GL context, no window");
+
+    std::signal(SIGINT, onHeadlessSignal);
+    std::signal(SIGTERM, onHeadlessSignal);
+    while (!g_headlessQuit.load(std::memory_order_relaxed) && rpc.running()) {
+        rpc.poll();
+        runtime.beginGpuFrame(g_preview);
+        runtime.finishGpuFrame(g_preview);
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+
+    runtime.setGpuReady(false);
+    runtime.stopWorkers();
+    rpc.stop();
+    g_preview.shutdown();
+    if (sg_isvalid()) sg_shutdown();
+    pggHeadlessGlTeardown(gl);
+    g_rpc = nullptr;
+    g_runtime = nullptr;
+    return 0;
+}
+
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
     bool smoke = false;
+    bool headless = false;
     for (int i = 1; i < argc; ++i) {
         const std::string arg(argv[i]);
         if (arg == "--smoke") {
             smoke = true;
+        } else if (arg == "--headless") {
+            headless = true;
         } else if (arg.rfind("--port=", 0) == 0) {
             g_port = static_cast<uint16_t>(std::atoi(arg.substr(7).c_str()));
         } else if (arg.rfind("--host=", 0) == 0) {
             g_host = arg.substr(7);
         } else if (arg == "--help" || arg == "-h") {
-            spdlog::info("PggServe [--port=9878] [--host=127.0.0.1] | PggServe --smoke");
+            spdlog::info("PggServe [--port=9878] [--host=127.0.0.1] [--headless] | PggServe --smoke");
             return 0;
         }
     }
@@ -141,6 +218,8 @@ int main(int argc, char* argv[]) {
         spdlog::set_level(spdlog::level::info);
         return runPggServeSmokeTest() ? 0 : 1;
     }
+
+    if (headless) return runHeadless(g_host, g_port);
 
     ServeRpcServer rpc;
     ServeRuntime runtime(rpc);

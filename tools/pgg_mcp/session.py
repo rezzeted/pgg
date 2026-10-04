@@ -335,6 +335,10 @@ class PggSession:
 
         env = self._env()
         cmd: list[str] = [serve, f"--port={self.port}", f"--host={self.host}"]
+        if self.platform == "linux":
+            # GLX pbuffer instead of the tiny 64x64 window; a display
+            # connection is still required (xvfb fallback below stays).
+            cmd.append("--headless")
         if self.platform == "linux" and not env.get("DISPLAY"):
             xvfb = self.which_fn("xvfb-run")
             if xvfb:
