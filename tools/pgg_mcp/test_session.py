@@ -268,7 +268,7 @@ class SessionEnsureTests(unittest.TestCase):
             )
             self.addCleanup(lambda: session._log_file.close() if session._log_file else None)
             self.assertIsNone(session.ensure())
-            self.assertEqual(cmds, [[binary, "--port=9878", "--host=127.0.0.1"]])
+            self.assertEqual(cmds, [[binary, "--port=9878", "--host=127.0.0.1", "--headless"]])
             self.assertEqual(session.binary_path, binary)
 
     def test_call_returns_need_build_without_client(self) -> None:
