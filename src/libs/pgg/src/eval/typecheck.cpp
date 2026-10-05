@@ -8,6 +8,7 @@
 #include "../formatter.h"
 #include "builtins.h"
 #include "schema.h"
+#include "suggest.h"
 
 namespace pgg {
 namespace {
@@ -1555,7 +1556,11 @@ private:
             case NodeKind::Ident: {
                 const auto* id = static_cast<const Ident*>(e);
                 if (auto it = env_.find(id->name); it != env_.end()) return it->second;
-                error("E103", e->span, "'" + id->name + "' is used before definition");
+                std::vector<std::string> names;
+                names.reserve(env_.size());
+                for (const auto& [n, t] : env_) names.push_back(n);
+                error("E103", e->span, "'" + id->name + "' is used before definition",
+                      didYouMeanHint(id->name, names));
                 return {};
             }
             case NodeKind::AttrRef:
@@ -1843,7 +1848,16 @@ private:
         const std::string& name = c->path[0];
         const BuiltinSig* sig = findBuiltin(name);
         if (!sig) {
-            error("E201", c->span, "unknown operation '" + name + "'", "see the built-in catalog (spec §8)");
+            static const std::vector<std::string> kBuiltinNames = [] {
+                std::vector<std::string> v;
+                v.reserve(builtinRegistry().size());
+                for (const BuiltinSig& s : builtinRegistry()) v.push_back(s.name);
+                return v;
+            }();
+            std::string hint = didYouMeanHint(name, kBuiltinNames);
+            if (!hint.empty()) hint += "; ";
+            error("E201", c->span, "unknown operation '" + name + "'",
+                  hint + "see the built-in catalog (spec §8)");
             return {};
         }
         if (sig->deferredStage) {

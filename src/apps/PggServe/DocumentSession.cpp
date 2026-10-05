@@ -8,6 +8,7 @@
 #include <cstring>
 #include <fstream>
 #include <sstream>
+#include <unordered_map>
 
 #include <spdlog/spdlog.h>
 
@@ -16,6 +17,7 @@
 #include <pgg/src/eval/geometry.h>
 #include <pgg/src/eval/param_text.h>
 #include <pgg/src/eval/sdf.h>
+#include <pgg/src/eval/suggest.h>
 #include <pgg/src/eval/typecheck.h>
 
 #include "ServeRpcServer.h"
@@ -351,8 +353,10 @@ nlohmann::json DocumentSession::paramsJson() const {
     return out;
 }
 
-void DocumentSession::setParams(const nlohmann::json& args, nlohmann::json& unknown) {
+void DocumentSession::setParams(const nlohmann::json& args, nlohmann::json& unknown,
+                                nlohmann::json& suggestions) {
     unknown = nlohmann::json::array();
+    suggestions = nlohmann::json::object();
     for (const auto& [name, val] : args.items()) {
         if (name == "file") continue;
         bool found = false;
@@ -361,7 +365,14 @@ void DocumentSession::setParams(const nlohmann::json& args, nlohmann::json& unkn
                 ptext = jsonToParamText(val);
                 found = true;
             }
-        if (!found) unknown.push_back(name);
+        if (!found) {
+            unknown.push_back(name);
+            std::vector<std::string> names;
+            names.reserve(m_paramValues.size());
+            for (const auto& [pname, ptext] : m_paramValues) names.push_back(pname);
+            const std::vector<std::string> near = pgg::suggestNames(name, names);
+            if (!near.empty()) suggestions[name] = near;
+        }
     }
 }
 
@@ -450,12 +461,22 @@ bool DocumentSession::loadFromDisk(const std::string& resolvedPath, const std::v
             pgg::loadModuleClosure(*m_doc.file, importRoots(), diags));
         m_allDiags.insert(m_allDiags.end(), diags.begin(), diags.end());
     }
+    // Param bindings survive a reload — explicit `load` and F4 auto-reload
+    // alike (the MCP `pgg_params` contract): restore the previous text for
+    // params the reloaded file still declares; renamed/dropped params fall
+    // back to the fresh default (empty old text = never bound, so the new
+    // default wins).
+    std::unordered_map<std::string, std::string> keptParams;
+    for (const auto& [name, text] : m_paramValues)
+        if (!text.empty()) keptParams[name] = text;
     m_paramValues.clear();
     if (m_doc.file) {
         for (const pgg::Node* item : m_doc.file->items) {
             if (item->kind != pgg::NodeKind::ParamDecl) continue;
             const auto* p = static_cast<const pgg::ParamDecl*>(item);
-            m_paramValues.push_back({p->name, p->hasDefault ? literalText(p->def) : std::string{}});
+            std::string text = p->hasDefault ? literalText(p->def) : std::string{};
+            if (auto it = keptParams.find(p->name); it != keptParams.end()) text = it->second;
+            m_paramValues.push_back({p->name, std::move(text)});
         }
     }
     mainFileFromRpcSource = fromRpcSource;

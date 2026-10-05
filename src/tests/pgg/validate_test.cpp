@@ -70,6 +70,18 @@ TEST(Validate, ForwardReferenceIsE103) {
     EXPECT_EQ(countCode(doc, "E103"), 1);
 }
 
+TEST(Validate, E103SuggestsNearName) {
+    pgg::Document doc = pgg::parse(
+        "height = 1\n"
+        "a = heigth + 1\n"
+        "output a\n");
+    EXPECT_EQ(countCode(doc, "E103"), 1);
+    bool suggested = false;
+    for (const pgg::Diagnostic& d : doc.diagnostics)
+        if (d.code == "E103" && d.hint.find("'height'") != std::string::npos) suggested = true;
+    EXPECT_TRUE(suggested);
+}
+
 TEST(Validate, UseInsideZoneSeesOuterDefinitions) {
     pgg::Document doc = pgg::parse(
         "a = 1\n"

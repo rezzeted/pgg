@@ -89,6 +89,8 @@ nw_add_lib_sources(
         src/eval/error_cards.cpp
         src/eval/builtin_docs.h
         src/eval/builtin_docs.cpp
+        src/eval/suggest.h
+        src/eval/suggest.cpp
         src/eval/geo_diff.h
         src/eval/geo_diff.cpp
         src/eval/engine.h

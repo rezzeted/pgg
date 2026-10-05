@@ -5,6 +5,7 @@
 #include <unordered_set>
 
 #include "builtins.h"
+#include "suggest.h"
 
 namespace pgg {
 namespace {
@@ -347,14 +348,24 @@ private:
                     outDef = d->second;
                     return Resolution::Def;
                 }
+                std::vector<std::string> names;
+                names.reserve(ns->second->defs.size());
+                for (const auto& [n, def] : ns->second->defs) names.push_back(n);
+                std::string hint = didYouMeanHint(c.path[1], names);
+                if (!hint.empty()) hint += "; ";
                 error("E505", c.span,
                       "module '" + c.path[0] + "' has no def '" + c.path[1] + "'",
-                      "only top-level defs are visible through a namespace (§7.6)");
+                      hint + "only top-level defs are visible through a namespace (§7.6)");
                 return Resolution::Error;
             }
         }
+        std::vector<std::string> names;
+        names.reserve(scope.namespaces.size());
+        for (const auto& [n, m] : scope.namespaces) names.push_back(n);
+        std::string hint = didYouMeanHint(c.path[0], names);
+        if (!hint.empty()) hint += "; ";
         error("E505", c.span, "unknown qualified symbol '" + qualified(c.path) + "'",
-              "import the module first (spec §7.6)");
+              hint + "import the module first (spec §7.6)");
         return Resolution::Error;
     }
 

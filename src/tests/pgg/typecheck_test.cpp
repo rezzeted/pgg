@@ -36,6 +36,19 @@ TEST(Typecheck, E201UnknownOperation) {
     EXPECT_TRUE(r.hasErrors());
 }
 
+TEST(Typecheck, E201SuggestsNearBuiltin) {
+    pgg::RunResult r = runSrc("x = ico_sphere(subdiv = 1, radius = 1.0)\ny = selct(true, x, x)\noutput y\n");
+    EXPECT_EQ(countCode(r, "E201"), 1);
+    bool suggested = false;
+    for (const pgg::Diagnostic& d : r.diagnostics)
+        if (d.code == "E201" && d.hint.find("'select'") != std::string::npos) suggested = true;
+    EXPECT_TRUE(suggested);
+    // A name with no near neighbour keeps the plain catalog hint.
+    pgg::RunResult far = runSrc("x = zzqq(1)\noutput x\n");
+    for (const pgg::Diagnostic& d : far.diagnostics)
+        if (d.code == "E201") EXPECT_TRUE(d.hint.find("did you mean") == std::string::npos);
+}
+
 TEST(Typecheck, E202Arity) {
     // Missing required argument.
     EXPECT_EQ(countCode(runSrc("x = ico_sphere(subdiv = 1)\noutput x\n"), "E202"), 1);

@@ -6,6 +6,8 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "eval/suggest.h"
+
 namespace pgg {
 namespace {
 
@@ -171,8 +173,13 @@ private:
                       "give that output a name in the destructuring (a, name = f(...))");
                 return;
             }
+            std::vector<std::string> names;
+            for (const Scope* s = &scope; s; s = s->parent)
+                for (const auto& [n, b] : s->defined) names.push_back(n);
+            std::string hint = didYouMeanHint(name, names);
+            if (!hint.empty()) hint += "; ";
             error("E103", span, "'" + name + "' is used before definition",
-                  "define the name above this line (define-before-use)");
+                  hint + "define the name above this line (define-before-use)");
             return;
         }
         if (capturedAcrossDefBoundary(scope, name, *info)) {
