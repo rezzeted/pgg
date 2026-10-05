@@ -2,6 +2,8 @@
 
 #include "builtin_docs.h"
 
+#include "suggest.h"
+
 namespace pgg {
 namespace {
 
@@ -523,17 +525,10 @@ const BuiltinDoc* findBuiltinDoc(const std::string& name) {
 }
 
 std::vector<std::string> suggestBuiltinNames(const std::string& name, size_t cap) {
-    std::vector<std::string> near;
-    if (name.empty() || cap == 0) return near;
-    for (const BuiltinDoc& d : docs())
-        if (d.name.rfind(name, 0) == 0 || (name.size() >= 3 && name.rfind(d.name, 0) == 0))
-            near.push_back(d.name);
-    if (near.empty())
-        for (const BuiltinDoc& d : docs())
-            if (d.name.find(name) != std::string::npos) near.push_back(d.name);
-    std::sort(near.begin(), near.end());
-    if (near.size() > cap) near.resize(cap);
-    return near;
+    std::vector<std::string> names;
+    names.reserve(docs().size());
+    for (const BuiltinDoc& d : docs()) names.push_back(d.name);
+    return suggestNames(name, names, cap);
 }
 
 const std::vector<BuiltinDoc>& allBuiltinDocs() { return docs(); }

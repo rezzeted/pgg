@@ -137,6 +137,31 @@ TEST(Module, OnlyDefsAreVisibleThroughNamespace) {
     EXPECT_TRUE(hasMessage(r, "E505", "secret"));
 }
 
+TEST(Module, E505SuggestsNearDefAndNamespace) {
+    // Typo in the def name: the hint names the closest def of the module.
+    pgg::RunResult r = runWithLib(
+        "import lib.rocks\n"
+        "root = rng_from_seed(1)\n"
+        "x = rocks.make_pebl(size = 1.0, rng = root)\n"
+        "output x\n");
+    EXPECT_EQ(countCode(r, "E505"), 1);
+    bool defSuggested = false;
+    for (const pgg::Diagnostic& d : r.diagnostics)
+        if (d.code == "E505" && d.hint.find("'make_pebble'") != std::string::npos) defSuggested = true;
+    EXPECT_TRUE(defSuggested);
+    // Typo in the namespace: the hint names the closest imported namespace.
+    pgg::RunResult r2 = runWithLib(
+        "import lib.rocks\n"
+        "root = rng_from_seed(1)\n"
+        "x = rock.make_pebble(size = 1.0, rng = root)\n"
+        "output x\n");
+    EXPECT_EQ(countCode(r2, "E505"), 1);
+    bool nsSuggested = false;
+    for (const pgg::Diagnostic& d : r2.diagnostics)
+        if (d.code == "E505" && d.hint.find("'rocks'") != std::string::npos) nsSuggested = true;
+    EXPECT_TRUE(nsSuggested);
+}
+
 TEST(Module, NamespaceConflictsAreE102) {
     // Two imports binding one namespace.
     pgg::RunResult r = runWithLib(

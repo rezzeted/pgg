@@ -394,8 +394,12 @@ json ServeRuntime::handleParams(uint64_t clientId, const json& args) {
     auto session = resolveSlot(clientId, args);
     std::lock_guard<std::mutex> engine(session->engineMu);
     json unknown;
-    session->setParams(args, unknown);
-    return {{"params", session->paramsJson()}, {"unknown", unknown}, {"session", session->sessionEcho()}};
+    json suggestions;
+    session->setParams(args, unknown, suggestions);
+    return {{"params", session->paramsJson()},
+            {"unknown", unknown},
+            {"suggestions", suggestions},
+            {"session", session->sessionEcho()}};
 }
 
 json ServeRuntime::handleViews(uint64_t clientId, const json& args) {

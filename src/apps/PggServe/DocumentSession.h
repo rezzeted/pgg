@@ -79,7 +79,7 @@ public:
     std::vector<std::string> importRoots() const;
     std::vector<std::string> boundParamNames() const;
     nlohmann::json paramsJson() const;
-    void setParams(const nlohmann::json& args, nlohmann::json& unknown);
+    void setParams(const nlohmann::json& args, nlohmann::json& unknown, nlohmann::json& suggestions);
 
     nlohmann::json viewsJson() const;
     nlohmann::json mergeNamedViewArgs(const nlohmann::json& args, std::string& err) const;
