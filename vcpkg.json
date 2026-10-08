@@ -1,13 +1,16 @@
 {
   "dependencies": [
     "antlr4",
+    "boost-graph",
+    "fmt",
     "glm",
-    "nlohmann-json",
-    "spdlog",
-    "gtest",
-    "sokol",
     "imgui",
+    "joltphysics",
+    "nlohmann-json",
+    "sokol",
+    "spdlog",
     "stb",
-    "joltphysics"
+    "yaml-cpp",
+    "gtest"
   ]
 }
