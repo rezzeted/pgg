@@ -1,6 +1,6 @@
 // Delve topo view model (delve::topo): projection of the level graph and
 // the generated layout into GUI-free view data (the DelveViewer Topo tab
-// input). Pure projection — no edgar, no PGG.
+// input). Pure projection — no dungeon_topology_generator, no PGG.
 
 #include <gtest/gtest.h>
 

@@ -14,7 +14,7 @@
 struct Selection;  // panel.h
 
 // Plan pane camera, pane-local points: screen = offset + world * zoom, where
-// world is in world grid cells (1 unit = one edgar cell).
+// world is in world grid cells (1 unit = one dungeon_topology_generator cell).
 struct TopoCam {
     float offsetX = 60.0f;
     float offsetY = 60.0f;

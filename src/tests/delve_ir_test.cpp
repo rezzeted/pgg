@@ -390,7 +390,7 @@ TEST(IrCorner, ChaseOnWall) {
     for (const auto& f : n5->faces) EXPECT_TRUE(f.zones.empty());
 }
 
-TEST(IrCorner, RetuneWithoutEdgar) {
+TEST(IrCorner, RetuneWithoutTopologyGenerator) {
     delve::Project p = loadFixtureProject();
     p.fill.cell = 2.5;
     p.fill.wall_t = 0.8;

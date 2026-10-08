@@ -15,13 +15,13 @@ std::filesystem::path repo_root_from_this_file() {
 } // namespace
 
 TEST(PresetLoader, MissingPath_returnsError) {
-    using namespace edgar::generator::grid2d;
+    using namespace dungeon_topology_generator::generator::grid2d;
     auto r = load_preset_catalog_with_status("Z:/nonexistent/levelsynth_preset_test_42");
     EXPECT_FALSE(r.error.empty());
 }
 
 TEST(PresetLoader, TinyFixture_loads) {
-    using namespace edgar::generator::grid2d;
+    using namespace dungeon_topology_generator::generator::grid2d;
     const std::filesystem::path base = repo_root_from_this_file() / "test_data" / "gui_presets";
     ASSERT_TRUE(std::filesystem::exists(base)) << base.string();
 
@@ -36,10 +36,10 @@ TEST(PresetLoader, TinyFixture_loads) {
 
 /// Original Edgar maps use `rooms: [8]:` style keys; yaml-cpp exposes them as sequence keys, not strings.
 TEST(PresetLoader, NineVertices_bracketRoomKey_parses) {
-    using namespace edgar::generator::grid2d;
-    const std::filesystem::path base = repo_root_from_this_file() / "resources" / "edgar_gui";
+    using namespace dungeon_topology_generator::generator::grid2d;
+    const std::filesystem::path base = repo_root_from_this_file() / "resources" / "dungeon_topology_generator_gui";
     if (!std::filesystem::exists(base)) {
-        GTEST_SKIP() << "resources/edgar_gui not in tree";
+        GTEST_SKIP() << "resources/dungeon_topology_generator_gui not in tree";
     }
 
     auto r = load_preset_catalog_with_status(base.string());

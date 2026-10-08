@@ -15,7 +15,7 @@
 1. Создать **`docs/level-synth/parity_dod.md`** с таблицей строк (пример колонок):
    - `ID` (D1, D2, …)
    - `Критерий` (кратко: воспроизводимость по seed; нет overlap на эталонных графах; события SA; энергия zero / incident≈2×total; опционально — одна метрика как в C# для КП/позиций)
-   - `Проверка` — имя `TEST(...)` в [`src/tests/edgar_tests.cpp`](../src/tests/edgar_tests.cpp) или [`edgar_parity_tests.cpp`](../src/tests/edgar_parity_tests.cpp), либо «TBD» с пометкой, какой тест добавить позже (без обязательства в ит. 0, если достаточно ссылки на ближайший существующий)
+   - `Проверка` — имя `TEST(...)` в [`src/tests/dungeon_topology_generator_tests.cpp`](../src/tests/dungeon_topology_generator_tests.cpp) или [`dungeon_topology_generator_parity_tests.cpp`](../src/tests/dungeon_topology_generator_parity_tests.cpp), либо «TBD» с пометкой, какой тест добавить позже (без обязательства в ит. 0, если достаточно ссылки на ближайший существующий)
 2. Явно перечислить **эталонные мини-уровни** в тексте (какие `TEST` считаются эталоном для D2/D3), чтобы дальше не спорить, «какой граф эталонный».
 
 **Готово, когда:** файл существует, у каждого заявленного критерия есть тест или осознанный TBD.

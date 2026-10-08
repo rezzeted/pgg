@@ -1,6 +1,6 @@
 #pragma once
 
-// Delve F3 generation (docs/delve/generate_v1.md): project + catalog -> edgar
+// Delve F3 generation (docs/delve/generate_v1.md): project + catalog -> dungeon_topology_generator
 // layouts with seed, budgets, cancel and attempts; layout/0 serialization.
 
 #include <atomic>
@@ -9,8 +9,8 @@
 #include <string>
 #include <vector>
 
-#include "edgar/generator/grid2d/graph_based_generator_grid2d.hpp"
-#include "edgar/generator/grid2d/layout_grid2d.hpp"
+#include "dungeon_topology_generator/generator/grid2d/graph_based_generator_grid2d.hpp"
+#include "dungeon_topology_generator/generator/grid2d/layout_grid2d.hpp"
 
 #include "catalog.h"
 #include "project.h"
@@ -25,7 +25,7 @@ struct GenerateOptions {
 
 struct LayoutResult {
     // room = graph index (index_to_id maps it to the stable graph id).
-    edgar::generator::grid2d::LayoutGrid2D<int> layout;
+    dungeon_topology_generator::generator::grid2d::LayoutGrid2D<int> layout;
     std::vector<std::string> index_to_id;
     int seed_used = 0;
     int attempt_used = 0;
@@ -49,7 +49,7 @@ public:
 
 private:
     std::mutex mu_;
-    edgar::generator::grid2d::GraphBasedGeneratorGrid2D<int>* active_ = nullptr;  // guarded
+    dungeon_topology_generator::generator::grid2d::GraphBasedGeneratorGrid2D<int>* active_ = nullptr;  // guarded
     bool cancelable_ = false;   // guarded
     bool sticky_cancel_ = false;  // guarded
 };

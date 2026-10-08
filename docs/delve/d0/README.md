@@ -9,6 +9,6 @@
 - `reference.png` — PNG `DungeonDrawer` той же раскладки (эталон ориентации §5.1).
 
 Перегенерация (платформенно-зависима, N1): `DelveD0Dump --resources
-resources/edgar_gui --map tutorial_corridors.yml
+resources/dungeon_topology_generator_gui --map tutorial_corridors.yml
 --out docs/d0 --seed 1 --cell 2.0`. Проверка — `ctest -R delve_d0_test`
-(работает без edgar, на committed-артефактах).
+(работает без dungeon_topology_generator, на committed-артефактах).

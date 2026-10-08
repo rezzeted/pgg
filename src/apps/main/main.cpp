@@ -33,19 +33,19 @@
 #include <unistd.h>
 #endif
 
-#include "edgar/edgar.hpp"
-#include "edgar/generator/grid2d/layout_door_computation.hpp"
-#include "edgar/io/layout_json.hpp"
+#include "dungeon_topology_generator/dungeon_topology_generator.hpp"
+#include "dungeon_topology_generator/generator/grid2d/layout_door_computation.hpp"
+#include "dungeon_topology_generator/io/layout_json.hpp"
 
 namespace ls {
 
-edgar::generator::grid2d::PresetCatalog g_catalog;
+dungeon_topology_generator::generator::grid2d::PresetCatalog g_catalog;
 bool g_catalog_loaded = false;
 int g_selected_preset = 0;
 
-edgar::generator::grid2d::GraphBasedGeneratorConfiguration g_gen_config;
+dungeon_topology_generator::generator::grid2d::GraphBasedGeneratorConfiguration g_gen_config;
 
-std::vector<edgar::generator::grid2d::LayoutGrid2D<int>> g_layouts;
+std::vector<dungeon_topology_generator::generator::grid2d::LayoutGrid2D<int>> g_layouts;
 int g_layout_index = 0;
 bool g_use_random_seed = false;
 int g_seed = 42;
@@ -92,13 +92,13 @@ std::string get_executable_dir() {
     return std::string(path);
 }
 
-/// Walk up from the executable directory until `resources/edgar_gui` contains Maps/ and Rooms/ (repo layout).
-static std::string resolve_edgar_gui_base_directory() {
+/// Walk up from the executable directory until `resources/dungeon_topology_generator_gui` contains Maps/ and Rooms/ (repo layout).
+static std::string resolve_dungeon_topology_generator_gui_base_directory() {
     namespace fs = std::filesystem;
     try {
         fs::path dir = get_executable_dir();
         for (int depth = 0; depth < 12; ++depth) {
-            const fs::path candidate = dir / "resources" / "edgar_gui";
+            const fs::path candidate = dir / "resources" / "dungeon_topology_generator_gui";
             if (fs::is_directory(candidate / "Maps") && fs::is_directory(candidate / "Rooms")) {
                 std::error_code ec;
                 const fs::path canon = fs::weakly_canonical(candidate, ec);
@@ -119,21 +119,21 @@ static std::string resolve_edgar_gui_base_directory() {
         namespace fs = std::filesystem;
         std::error_code ec;
         const fs::path fb =
-            fs::weakly_canonical(fs::path(get_executable_dir()) / "resources" / "edgar_gui", ec);
-        return (ec ? fs::path(get_executable_dir()) / "resources" / "edgar_gui" : fb).string();
+            fs::weakly_canonical(fs::path(get_executable_dir()) / "resources" / "dungeon_topology_generator_gui", ec);
+        return (ec ? fs::path(get_executable_dir()) / "resources" / "dungeon_topology_generator_gui" : fb).string();
     } catch (...) {
-        return get_executable_dir() + "/resources/edgar_gui";
+        return get_executable_dir() + "/resources/dungeon_topology_generator_gui";
     }
 }
 
 static void assign_default_resources_path() {
-    const std::string p = resolve_edgar_gui_base_directory();
+    const std::string p = resolve_dungeon_topology_generator_gui_base_directory();
     std::strncpy(g_resources_path, p.c_str(), sizeof(g_resources_path) - 1);
     g_resources_path[sizeof(g_resources_path) - 1] = '\0';
 }
 
-void apply_catalog_load(edgar::generator::grid2d::PresetCatalogLoadResult&& r) {
-    using namespace edgar::generator::grid2d;
+void apply_catalog_load(dungeon_topology_generator::generator::grid2d::PresetCatalogLoadResult&& r) {
+    using namespace dungeon_topology_generator::generator::grid2d;
     if (!r.error.empty()) {
         g_catalog = PresetCatalog{};
         g_catalog_loaded = false;
@@ -153,12 +153,12 @@ void apply_catalog_load(edgar::generator::grid2d::PresetCatalogLoadResult&& r) {
 }
 
 void reload_catalog_from_resources_dir(const std::string& dir) {
-    using namespace edgar::generator::grid2d;
+    using namespace dungeon_topology_generator::generator::grid2d;
     apply_catalog_load(load_preset_catalog_with_status(dir));
 }
 
 void reload_catalog_from_map_file(const std::string& map_path) {
-    using namespace edgar::generator::grid2d;
+    using namespace dungeon_topology_generator::generator::grid2d;
     apply_catalog_load(load_preset_catalog_from_map_file(map_path));
 }
 
@@ -192,7 +192,7 @@ void parse_cli_args(int argc, char** argv) {
 }
 
 void generate_from_preset(int preset_idx, unsigned rng_seed) {
-    using namespace edgar::generator::grid2d;
+    using namespace dungeon_topology_generator::generator::grid2d;
 
     g_layouts.clear();
     g_layout_index = 0;
@@ -243,8 +243,8 @@ void generate_from_preset(int preset_idx, unsigned rng_seed) {
 }
 
 void generate_hardcoded(unsigned rng_seed) {
-    using namespace edgar;
-    using namespace edgar::generator::grid2d;
+    using namespace dungeon_topology_generator;
+    using namespace dungeon_topology_generator::generator::grid2d;
 
     g_layouts.clear();
     g_layout_index = 0;
@@ -432,7 +432,7 @@ int main(int argc, char* argv[])
                                 ls::g_resources_path[sizeof(ls::g_resources_path) - 1] = '\0';
                                 ls::reload_catalog_from_resources_dir(dropped);
                             } else {
-                                app_log_push("Drop ignored: folder must contain Maps/ and Rooms/ (edgar_gui root).");
+                                app_log_push("Drop ignored: folder must contain Maps/ and Rooms/ (dungeon_topology_generator_gui root).");
                             }
                         }
                     }
@@ -495,7 +495,7 @@ int main(int argc, char* argv[])
             ls::g_export_pending = false;
             try {
                 const auto& layout_json = ls::g_layouts[static_cast<size_t>(ls::g_layout_index)];
-                auto j = edgar::io::layout_to_json(layout_json);
+                auto j = dungeon_topology_generator::io::layout_to_json(layout_json);
                 std::string json_str = j.dump(2);
                 std::string out_path;
                 if (pick_save_json_file(out_path)) {

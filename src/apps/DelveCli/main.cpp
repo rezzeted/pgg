@@ -75,7 +75,7 @@ void printUsage(std::ostream& out) {
         "commands:\n"
         "  validate <project.json>                                 F1: load + check the project\n"
         "  layout   <project.json> [--seed N] [--attempts N] [-o layout.json]\n"
-        "                                                          F2/F3: catalog + edgar layout\n"
+        "                                                          F2/F3: catalog + dungeon_topology_generator layout\n"
         "  ir       <project.json> [--layout f | --ir f] [-o ir.json]\n"
         "                                                          F4/F5: build or normalize the IR\n"
         "  fill     <project.json> [--ir f | --layout f] [--threads N]\n"
@@ -214,7 +214,7 @@ bool ensureProject(Context& ctx, const CliArgs& args, std::vector<delve::Diag>& 
     return true;
 }
 
-// Catalog + edgar + the delve-layout/0 handoff (serialize, parse back) — or a
+// Catalog + dungeon_topology_generator + the delve-layout/0 handoff (serialize, parse back) — or a
 // --layout file read directly.
 bool ensureLayout(Context& ctx, const CliArgs& args, std::vector<delve::Diag>& diags) {
     if (ctx.hasLayout) return true;

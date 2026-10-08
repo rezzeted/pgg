@@ -98,7 +98,7 @@ D400 (слот R-A3), D500 (прогон PGG); `message` — err библиот�
 ### Семантика fill (тёплая петля)
 
 1. Нет `layoutData` в слоте → авто-layout с дефолтами (первый `fill`
-   холодный: каталог + edgar + полный fill).
+   холодный: каталог + dungeon_topology_generator + полный fill).
 2. Проект delve-project/0 (нет layout-яруса) → `no_layout` с hint'ом:
    frozen-IR ввод serve v1 не принимает — собери delve-project/1 или иди
    через DelveCli.

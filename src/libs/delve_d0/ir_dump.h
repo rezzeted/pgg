@@ -1,6 +1,6 @@
 #pragma once
 
-// Delve D0: one-shot frozen-IR dump from an edgar layout (requirements §11 D0).
+// Delve D0: one-shot frozen-IR dump from an dungeon_topology_generator layout (requirements §11 D0).
 // Scaffold: replaced by the F4 IR builder at D1. The delve-ir/0 schema here is
 // minimal (rooms with meter contours + doors + the axis mapping under test)
 // and versioned so D1 can migrate or reject it (N7).
@@ -9,7 +9,7 @@
 #include <utility>
 #include <vector>
 
-#include "edgar/generator/grid2d/layout_grid2d.hpp"
+#include "dungeon_topology_generator/generator/grid2d/layout_grid2d.hpp"
 
 namespace delve::d0 {
 
@@ -27,17 +27,17 @@ struct DumpConfig {
 inline double grid_to_x(int gx, double cell) { return static_cast<double>(gx) * cell; }
 inline double grid_to_z(int gy, double cell) { return static_cast<double>(gy) * cell; }
 
-// Signed area * 2 of a grid contour (shoelace). edgar outlines are clockwise
+// Signed area * 2 of a grid contour (shoelace). dungeon_topology_generator outlines are clockwise
 // in the math view (x right, y up), i.e. area2 < 0 — which under the identity
 // mapping is exactly the CCW-seen-from-+Y that PGG plans require (§5.1).
 long long contour_area2(const std::vector<std::pair<int, int>>& contour);
 
 // Writes frozen_ir.json, rooms.points.json (pgg-points/1), d0_view.pgg and
 // reference.png (DungeonDrawer) into out_dir. False + err on failure.
-bool dump_frozen_ir(const edgar::generator::grid2d::LayoutGrid2D<int>& layout, const DumpConfig& cfg,
+bool dump_frozen_ir(const dungeon_topology_generator::generator::grid2d::LayoutGrid2D<int>& layout, const DumpConfig& cfg,
                     const std::string& out_dir, std::string& err);
 
-// Pure regeneration of d0_view.pgg from frozen_ir.json text (no edgar) —
+// Pure regeneration of d0_view.pgg from frozen_ir.json text (no dungeon_topology_generator) —
 // the platform-stable half of the D0 test. False + err on bad input.
 bool render_view_pgg(const std::string& ir_json_text, std::string& pgg_text, std::string& err);
 

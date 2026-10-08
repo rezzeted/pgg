@@ -2,8 +2,8 @@
 
 **PGG** is a procedural geometry language: a text-first node graph for LLM agents, with a node projection for humans. This repository is the language, library, CLI, viewer, tests, and art examples — and the monorepo home of the projects built on it:
 
-- **Delve** — a dungeon orchestrator on top of PGG (slot assets) and edgar (layout generation): project files, IR, fill, checks, OBJ export, viewer, CLI and RPC daemon. Docs: [`docs/delve`](docs/delve/requirements.md), demo projects under `projects/`.
-- **level-synth / edgar** — a C++20 port of [Edgar-DotNet](https://github.com/OndrejNepozitek/Edgar-DotNet) graph-based 2D layout generation (`src/libs/edgar`), with an SDL3 + ImGui viewer (`src/apps/main`). Docs: [`docs/level-synth`](docs/level-synth/README.md).
+- **Delve** — a dungeon orchestrator on top of PGG (slot assets) and dungeon_topology_generator (layout generation): project files, IR, fill, checks, OBJ export, viewer, CLI and RPC daemon. Docs: [`docs/delve`](docs/delve/requirements.md), demo projects under `projects/`.
+- **level-synth / dungeon_topology_generator** — a C++20 port of [Edgar-DotNet](https://github.com/OndrejNepozitek/Edgar-DotNet) graph-based 2D layout generation (`src/libs/dungeon_topology_generator`), with an SDL3 + ImGui viewer (`src/apps/main`). Docs: [`docs/level-synth`](docs/level-synth/README.md).
 
 | [Spire House](resources/AmberEstate/spire_house.pgg) | [Cottage](resources/AmberEstate/cottage.pgg) |
 |---|---|
@@ -17,7 +17,7 @@ How the shots were framed and how to regenerate them: [`docs/gallery/README.md`]
 |---|---|
 | `src/libs/pgg` | PGG library: parser (ANTLR4 4.13.2), AST, execution core |
 | `src/libs/pgg_preview` | Headless preview capture used by delve and tooling |
-| `src/libs/edgar` | Layout generation library (Edgar-DotNet port) |
+| `src/libs/dungeon_topology_generator` | Layout generation library (Edgar-DotNet port) |
 | `src/libs/drui` | ImGui font/UI helpers for the level-synth viewer |
 | `src/libs/delve*` | Delve pipeline: project/IR, layout, fill, check, export, d0 |
 | `src/apps/PggTool` | PGG CLI: `check` / `fmt` / `ast` / `run` / `docs` / `diff` |
@@ -27,11 +27,11 @@ How the shots were framed and how to regenerate them: [`docs/gallery/README.md`]
 | `src/apps/DelveCli` | Delve machine loop: `validate` / `layout` / `fill` / `export` / `check` |
 | `src/apps/DelveServe` | Delve RPC daemon: warm project slots |
 | `src/apps/main` | level-synth SDL3 + ImGui viewer (legacy target name) |
-| `src/tests` | gtest suites: `pgg/`, `delve_*_test.cpp`, edgar tests |
+| `src/tests` | gtest suites: `pgg/`, `delve_*_test.cpp`, dungeon_topology_generator tests |
 | `resources/pgg` | PGG shared `lib/` and art examples (inn_hotel, clocktower, …) |
 | `resources/AmberEstate` | Estate mini-project: cottages, spire house, church, stone arch, props |
 | `resources/Mansion` | Brick-style mansion built from photo references (`reference/`, `analysis.md`) |
-| `resources/edgar_gui` | level-synth viewer data (MapDescriptions, Images, …) |
+| `resources/dungeon_topology_generator_gui` | level-synth viewer data (MapDescriptions, Images, …) |
 | `assets/` | Delve slot assets (rooms, walls, doors, decor, patterns) |
 | `projects/` | Delve demo projects |
 | `test_data/` | level-synth parity/preset fixtures |
@@ -47,7 +47,7 @@ Build is CMake + vcpkg: submodule `toolchain/vcpkg`, presets in `CMakePresets.js
 ```sh
 git submodule update --init toolchain/vcpkg
 ./build_linux.sh                          # cmake --preset linux
-cmake --build --preset linux-debug        # everything: pgg, delve, edgar
+cmake --build --preset linux-debug        # everything: pgg, delve, dungeon_topology_generator
 ctest --test-dir _int_linux --output-on-failure
 ```
 

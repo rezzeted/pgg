@@ -11,9 +11,9 @@
 
 | Направление | Статус |
 |---|---|
-| Геометрия (полигоны, ортогональные линии, overlap, разбиение, Clipper2) | паритет по смыслу, тесты `EdgarGeometry.*` |
-| Графы (связность, дерево, двудольность, планарность, Hopcroft–Karp) | паритет, `EdgarGraphs.*` |
-| Декомпозиция на цепи (BreadthFirst old/new, TwoStage) | паритет, `EdgarChainDecomposition.*` |
+| Геометрия (полигоны, ортогональные линии, overlap, разбиение, Clipper2) | паритет по смыслу, тесты `DungeonTopologyGeneratorGeometry.*` |
+| Графы (связность, дерево, двудольность, планарность, Hopcroft–Karp) | паритет, `DungeonTopologyGeneratorGraphs.*` |
+| Декомпозиция на цепи (BreadthFirst old/new, TwoStage) | паритет, `DungeonTopologyGeneratorChainDecomposition.*` |
 | Констрейнты и энергия (итерация 1: Basic/Corridor/MinDistance, `ConstraintsEvaluatorGrid2D`) | done |
 | SA через layout controller + configuration spaces (итерация 3, основной путь) | реализовано, legacy random-walk сохранён |
 | Mapping и RoomShapesHandler (итерация 2) | реализовано **упрощённо** (без полного `IntAlias`/`TwoWayDictionary`) |
@@ -41,7 +41,7 @@
 6. Сканирование `Maps/` без рекурсии — `Maps/Thesis/` и подобные недоступны из UI.
 7. Нет диалога «сохранить файл» вне Windows (экспорт пишет фиксированный `layout_export.json`).
 8. Нет превью-миниатюр в списке карт и отдельного диалога открытия файла (частично зафиксировано как осознанный skip).
-9. Ресурсы `RandomGraphs/`, `MapDescriptions/` (не-YAML) из `resources/edgar_gui` не используются.
+9. Ресурсы `RandomGraphs/`, `MapDescriptions/` (не-YAML) из `resources/dungeon_topology_generator_gui` не используются.
 
 **Осознанно вне скоупа (не трогаем без отдельного запроса):** Unity, meta-optimization, evolution sandbox, platformers, entropy/graph analysis, `DungeonGenerator` 1:1, `SimpleBitVector32`.
 
@@ -65,7 +65,7 @@
 
 - Портировать сценарии `RoomShapesHandlerTests.cs`: выбор шаблона, repeat mode (allow/deny/…), смена формы при фиксированном графе.
 - Портировать `MapDescriptionMappingTests.cs`: комната ↔ индекс, согласованность с графом.
-- Дополнить `MapDescriptionTests`-покрытие по смыслу (`EdgarLevelDescription.*`).
+- Дополнить `MapDescriptionTests`-покрытие по смыслу (`DungeonTopologyGeneratorLevelDescription.*`).
 - При необходимости довести alias-логику до семантики `IntAlias`/`TwoWayDictionary` точечно (не переписывая архитектуру).
 
 **Критерий:** 3 строки `blocked (2)` → `done`; `ctest` зелёный.
@@ -76,7 +76,7 @@
 - Новые тесты допустимости: после шага perturb позиция остаётся в объединении КП с соседями (микро-уровни из референса).
 - Тест детерминизма: два прогона с одним seed → идентичная последовательность событий/layout.
 
-**Критерий:** 5 строк `blocked (3)` → `done`; регрессия `edgar_tests`/`edgar_parity_tests` зелёная.
+**Критерий:** 5 строк `blocked (3)` → `done`; регрессия `dungeon_topology_generator_tests`/`dungeon_topology_generator_parity_tests` зелёная.
 
 ### Этап D. Двери (итерация 4, ~2–3 дня)
 
@@ -114,7 +114,7 @@
 | Этап | Статус | Коммит |
 |---|---|---|
 | A Подготовка | ✅ `_edgar_ref` @ `258c83a`, матрица почищена | `Port RoomShapesHandler/MapDescriptionMapping...` |
-| B Mapping/shapes (ит. 2) | ✅ 10 новых тестов (`EdgarRoomShapesCsharpParity`, `EdgarMappingCsharpParity`); контрактация коридоров в `get_stage_one_graph` | тот же |
+| B Mapping/shapes (ит. 2) | ✅ 10 новых тестов (`DungeonTopologyGeneratorRoomShapesCsharpParity`, `DungeonTopologyGeneratorMappingCsharpParity`); контрактация коридоров в `get_stage_one_graph` | тот же |
 | C Configuration spaces (ит. 3) | ✅ точечные C#-множества КП; point-двери как в C#; `get_room_template_instances` с дедупликацией симметрий; degenerate-направления линий | `Close configuration-spaces parity...` |
 | D Двери (ит. 4) | ✅ все 7 сценариев Overlap/SpecificPositions с точными (from,to,dir,length) | `Port door mode handler tests...` |
 | E Golden-пайплайн | ✅ 3 сценария × оба движка, логические инварианты зелёные (`parity_golden_test`, `tools/parity_runner_cs`) | `Add golden parity pipeline...` |

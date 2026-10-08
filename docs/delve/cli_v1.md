@@ -12,7 +12,7 @@ smoke-прогоны `DelveCli_smoke_*` в ctest.
 DelveCli <command> [args] [--json] [--assets <dir>]
   validate <project.json>                                  F1: загрузка и проверка проекта
   layout   <project.json> [--seed N] [--attempts N] [-o layout.json]
-                                                           F2/F3: каталог + раскладка edgar
+                                                           F2/F3: каталог + раскладка dungeon_topology_generator
   ir       <project.json> [--layout f | --ir f] [-o ir.json]
                                                            F4/F5: построить или нормализовать IR
   fill     <project.json> [--ir f | --layout f] [--threads N]

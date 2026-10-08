@@ -57,7 +57,7 @@ struct TopoEdge {
 };
 
 // A door segment of the plan (world grid cells), door type resolved through
-// the passage graph by the (room, to) pair (R-G1: edgar sockets do not
+// the passage graph by the (room, to) pair (R-G1: dungeon_topology_generator sockets do not
 // survive the layout).
 struct TopoDoor {
     std::string room;

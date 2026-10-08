@@ -12,8 +12,8 @@
 #include <string>
 
 #include "catalog.h"
-#include "edgar/generator/grid2d/manual_door_mode_grid2d.hpp"
-#include "edgar/generator/grid2d/simple_door_mode_grid2d.hpp"
+#include "dungeon_topology_generator/generator/grid2d/manual_door_mode_grid2d.hpp"
+#include "dungeon_topology_generator/generator/grid2d/simple_door_mode_grid2d.hpp"
 #include "generate.h"
 #include "project.h"
 
@@ -91,11 +91,11 @@ TEST(Catalog, ParametricDoorsAndTransforms) {
     const auto* e = findEntry(c, "corridor_2x3");
     ASSERT_NE(e, nullptr);
     const auto* simple =
-        dynamic_cast<const edgar::generator::grid2d::SimpleDoorModeGrid2D*>(&e->edgar.doors());
+        dynamic_cast<const dungeon_topology_generator::generator::grid2d::SimpleDoorModeGrid2D*>(&e->dungeon_topology_generator.doors());
     ASSERT_NE(simple, nullptr);
     EXPECT_EQ(simple->door_length(), 1);
     EXPECT_EQ(simple->corner_distance(), 1);
-    EXPECT_EQ(e->edgar.allowed_transformations().size(), 4u);
+    EXPECT_EQ(e->dungeon_topology_generator.allowed_transformations().size(), 4u);
     EXPECT_EQ(e->roles, std::vector<std::string>{"corridor"});
     const auto* r = findEntry(c, "rect_4x5");
     ASSERT_NE(r, nullptr);
@@ -110,13 +110,13 @@ TEST(Catalog, ExplicitWindingAndDefaults) {
     const auto* e = findEntry(c, "grand_hall");
     ASSERT_NE(e, nullptr);
     // Fixture contour is area2 > 0; the catalog flips it (first point kept).
-    const auto& pts = e->edgar.outline().points();
+    const auto& pts = e->dungeon_topology_generator.outline().points();
     ASSERT_EQ(pts.size(), 6u);
     EXPECT_EQ(pts[0].x, 0);
     EXPECT_EQ(pts[0].y, 0);
     EXPECT_EQ(pts[1].x, 0);
     EXPECT_EQ(pts[1].y, 3);
-    EXPECT_EQ(e->edgar.allowed_transformations().size(), 4u);  // default rotations
+    EXPECT_EQ(e->dungeon_topology_generator.allowed_transformations().size(), 4u);  // default rotations
     EXPECT_TRUE(e->fill.style.has_value());
     EXPECT_EQ(*e->fill.style, "brick");
 }
@@ -132,9 +132,9 @@ TEST(Catalog, ExplicitEmptyTransformsIsIdentityOnly) {
     const auto* e = findEntry(c, "grand_hall");
     ASSERT_NE(e, nullptr);
     // The port normalizes an empty list to identity-only in the ctor.
-    ASSERT_EQ(e->edgar.allowed_transformations().size(), 1u);
-    EXPECT_EQ(e->edgar.allowed_transformations()[0],
-              edgar::geometry::TransformationGrid2D::Identity);
+    ASSERT_EQ(e->dungeon_topology_generator.allowed_transformations().size(), 1u);
+    EXPECT_EQ(e->dungeon_topology_generator.allowed_transformations()[0],
+              dungeon_topology_generator::geometry::TransformationGrid2D::Identity);
 }
 
 TEST(Catalog, ManualDoors) {
@@ -148,7 +148,7 @@ TEST(Catalog, ManualDoors) {
     const auto* e = findEntry(c, "grand_hall");
     ASSERT_NE(e, nullptr);
     const auto* manual =
-        dynamic_cast<const edgar::generator::grid2d::ManualDoorModeGrid2D*>(&e->edgar.doors());
+        dynamic_cast<const dungeon_topology_generator::generator::grid2d::ManualDoorModeGrid2D*>(&e->dungeon_topology_generator.doors());
     ASSERT_NE(manual, nullptr);
     EXPECT_EQ(manual->doors().size(), 1u);
     EXPECT_EQ(manual->doors()[0].from.x, 2);
@@ -171,7 +171,7 @@ TEST(Catalog, RoomDescriptions) {
     delve::layout::Catalog c;
     std::string err;
     ASSERT_TRUE(delve::layout::build_catalog(p, c, err)) << err;
-    std::map<std::string, edgar::generator::grid2d::RoomDescriptionGrid2D> desc;
+    std::map<std::string, dungeon_topology_generator::generator::grid2d::RoomDescriptionGrid2D> desc;
     ASSERT_TRUE(delve::layout::build_room_descriptions(p, c, desc, err)) << err;
     ASSERT_EQ(desc.size(), 3u);
     EXPECT_EQ(desc.at("hall").room_templates().size(), 5u);  // 4 rects + grand_hall
@@ -210,8 +210,8 @@ TEST(Catalog, CorridorWidthRegenerates) {
     // The width is baked into the contour: outlines must differ.
     const auto outlinesEqual = [](const delve::layout::CatalogEntry& a,
                                   const delve::layout::CatalogEntry& b) {
-        const auto& pa = a.edgar.outline().points();
-        const auto& pb = b.edgar.outline().points();
+        const auto& pa = a.dungeon_topology_generator.outline().points();
+        const auto& pb = b.dungeon_topology_generator.outline().points();
         if (pa.size() != pb.size()) return false;
         for (size_t i = 0; i < pa.size(); ++i)
             if (pa[i].x != pb[i].x || pa[i].y != pb[i].y) return false;
@@ -226,7 +226,7 @@ TEST(Catalog, CorridorWidthRegenerates) {
         ASSERT_NE(b, nullptr) << name;
         EXPECT_TRUE(outlinesEqual(*a, *b)) << name;
         EXPECT_EQ(a->roles, b->roles) << name;
-        EXPECT_EQ(a->edgar.allowed_transformations(), b->edgar.allowed_transformations()) << name;
+        EXPECT_EQ(a->dungeon_topology_generator.allowed_transformations(), b->dungeon_topology_generator.allowed_transformations()) << name;
         EXPECT_EQ(a->fill.style, b->fill.style) << name;
         EXPECT_EQ(a->parametric, b->parametric) << name;
     }
@@ -260,7 +260,7 @@ delve::Project loadData(const std::string& name) {
 
 // World-space door segments of a result room: ((to index), (min, max)).
 std::vector<std::pair<int, std::pair<delve::CellPt, delve::CellPt>>> roomDoors(
-    const edgar::generator::grid2d::LayoutRoomGrid2D<int>& room) {
+    const dungeon_topology_generator::generator::grid2d::LayoutRoomGrid2D<int>& room) {
     std::vector<std::pair<int, std::pair<delve::CellPt, delve::CellPt>>> out;
     for (const auto& d : room.doors) {
         delve::CellPt a{d.door_line.from.x + room.position.x, d.door_line.from.y + room.position.y};
@@ -441,7 +441,7 @@ TEST(Generate, MinDistanceHoldsOnNonNeighbours) {
             std::map<std::string, int> idx;
             for (size_t k = 0; k < r.index_to_id.size(); ++k) idx[r.index_to_id[k]] = (int)k;
             auto bbox = [&](int ri) {
-                const edgar::generator::grid2d::LayoutRoomGrid2D<int>* room = nullptr;
+                const dungeon_topology_generator::generator::grid2d::LayoutRoomGrid2D<int>* room = nullptr;
                 for (const auto& rm : r.layout.rooms)
                     if (rm.room == ri) room = &rm;
                 EXPECT_NE(room, nullptr);

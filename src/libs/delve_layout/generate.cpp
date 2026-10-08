@@ -13,14 +13,14 @@
 
 #include <nlohmann/json.hpp>
 
-#include "edgar/generator/grid2d/layout_door_computation.hpp"
-#include "edgar/generator/grid2d/level_description_grid2d.hpp"
-#include "edgar/geometry/overlap.hpp"
+#include "dungeon_topology_generator/generator/grid2d/layout_door_computation.hpp"
+#include "dungeon_topology_generator/generator/grid2d/level_description_grid2d.hpp"
+#include "dungeon_topology_generator/geometry/overlap.hpp"
 
 namespace delve::layout {
 namespace {
 
-namespace grid2d = edgar::generator::grid2d;
+namespace grid2d = dungeon_topology_generator::generator::grid2d;
 
 // A layout is usable when every graph room is placed exactly once, every
 // passage has a door on both sides with the same world segment, and no two
@@ -65,14 +65,14 @@ std::string valid_layout(const grid2d::LayoutGrid2D<int>& layout, const LayoutPa
     }
     for (size_t i = 0; i < layout.rooms.size(); ++i)
         for (size_t j = i + 1; j < layout.rooms.size(); ++j)
-            if (edgar::geometry::polygons_overlap_area(layout.rooms[i].outline,
+            if (dungeon_topology_generator::geometry::polygons_overlap_area(layout.rooms[i].outline,
                                                        layout.rooms[i].position,
                                                        layout.rooms[j].outline,
                                                        layout.rooms[j].position))
                 return "rooms " + std::to_string(layout.rooms[i].room) + " and " +
                        std::to_string(layout.rooms[j].room) + " overlap by area";
     // Minimum room distance (§9.1): bbox-Manhattan gap on non-neighbour pairs,
-    // mirroring edgar's MinimumDistanceConstraint (passage neighbours exempt).
+    // mirroring dungeon_topology_generator's MinimumDistanceConstraint (passage neighbours exempt).
     // Rechecked here so validity never depends on port energy internals.
     if (l.min_room_distance > 0) {
         std::set<std::pair<int, int>> adjacent;

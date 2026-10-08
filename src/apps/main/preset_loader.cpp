@@ -9,7 +9,7 @@
 #include <string>
 #include <unordered_map>
 
-namespace edgar::generator::grid2d {
+namespace dungeon_topology_generator::generator::grid2d {
 
 namespace {
 
@@ -66,7 +66,7 @@ PresetRoomSet::RoomEntry parse_room_entry(const std::string& name, const YAML::N
     const auto& shape_node = node["shape"];
     if (shape_node && shape_node.IsSequence()) {
         for (const auto& pt : shape_node) {
-            entry.shape.push_back(edgar::geometry::Vector2Int{pt[0].as<int>(), pt[1].as<int>()});
+            entry.shape.push_back(dungeon_topology_generator::geometry::Vector2Int{pt[0].as<int>(), pt[1].as<int>()});
         }
     }
 
@@ -87,8 +87,8 @@ PresetRoomSet::RoomEntry parse_room_entry(const std::string& name, const YAML::N
             entry.door_mode = "SpecificPositionsMode";
             for (const auto& dp : dm["doorPositions"]) {
                 entry.specific_doors.push_back({
-                    edgar::geometry::Vector2Int{dp[0][0].as<int>(), dp[0][1].as<int>()},
-                    edgar::geometry::Vector2Int{dp[1][0].as<int>(), dp[1][1].as<int>()},
+                    dungeon_topology_generator::geometry::Vector2Int{dp[0][0].as<int>(), dp[0][1].as<int>()},
+                    dungeon_topology_generator::geometry::Vector2Int{dp[1][0].as<int>(), dp[1][1].as<int>()},
                 });
             }
         }
@@ -456,8 +456,8 @@ static const PresetRoomSet::RoomEntry* find_room_entry(
 }
 
 static RoomTemplateGrid2D build_room_template(const PresetRoomSet::RoomEntry& entry) {
-    std::vector<edgar::geometry::Vector2Int> pts = entry.shape;
-    edgar::geometry::PolygonGrid2D poly(pts);
+    std::vector<dungeon_topology_generator::geometry::Vector2Int> pts = entry.shape;
+    dungeon_topology_generator::geometry::PolygonGrid2D poly(pts);
 
     std::shared_ptr<IDoorModeGrid2D> door_mode;
     if (entry.door_mode == "SpecificPositionsMode" && !entry.specific_doors.empty()) {
@@ -540,7 +540,7 @@ LevelDescriptionGrid2D<int> build_level_from_preset(const PresetMap& map, const 
             RoomDescriptionGrid2D desc(false, it->second);
             level.add_room(id, desc);
         } else {
-            auto square = RoomTemplateGrid2D(edgar::geometry::PolygonGrid2D::get_square(8),
+            auto square = RoomTemplateGrid2D(dungeon_topology_generator::geometry::PolygonGrid2D::get_square(8),
                                              std::make_shared<SimpleDoorModeGrid2D>(1, 1));
             RoomDescriptionGrid2D desc(false, {square});
             level.add_room(id, desc);
@@ -558,4 +558,4 @@ LevelDescriptionGrid2D<int> build_level_from_preset(const PresetMap& map, const 
     return build_level_from_preset(map, catalog.room_sets);
 }
 
-} // namespace edgar::generator::grid2d
+} // namespace dungeon_topology_generator::generator::grid2d

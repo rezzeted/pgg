@@ -2,10 +2,10 @@
 
 #include "drui/drui.h"
 
-#include "edgar/geometry/orthogonal_line_grid2d.hpp"
-#include "edgar/geometry/polygon_grid2d.hpp"
-#include "edgar/io/layout_grid_cells.hpp"
-#include "edgar/io/layout_outline_with_door_gaps.hpp"
+#include "dungeon_topology_generator/geometry/orthogonal_line_grid2d.hpp"
+#include "dungeon_topology_generator/geometry/polygon_grid2d.hpp"
+#include "dungeon_topology_generator/io/layout_grid_cells.hpp"
+#include "dungeon_topology_generator/io/layout_outline_with_door_gaps.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -39,10 +39,10 @@ void dash_line_screen(ImDrawList* dl, ImVec2 a, ImVec2 b, ImU32 col, float thick
 bool g_preview_grid_lines = true;
 bool g_preview_shading = false;
 
-void draw_layout_preview_imgui(const edgar::generator::grid2d::LayoutGrid2D<int>& layout,
+void draw_layout_preview_imgui(const dungeon_topology_generator::generator::grid2d::LayoutGrid2D<int>& layout,
                                int layout_view_id) {
-    using namespace edgar::generator::grid2d;
-    using namespace edgar::geometry;
+    using namespace dungeon_topology_generator::generator::grid2d;
+    using namespace dungeon_topology_generator::geometry;
     if (layout.rooms.empty()) {
         return;
     }
@@ -174,7 +174,7 @@ void draw_layout_preview_imgui(const edgar::generator::grid2d::LayoutGrid2D<int>
         for (const auto& d : room.doors) {
             door_lines.push_back(d.door_line);
         }
-        auto outline_local = edgar::io::layout_outline_with_door_gaps(room.outline, std::move(door_lines));
+        auto outline_local = dungeon_topology_generator::io::layout_outline_with_door_gaps(room.outline, std::move(door_lines));
 
         if (g_preview_shading && !outline_local.empty()) {
             ImVec2 last = to_screen(outline_local.back().first.x + room.position.x,
@@ -191,7 +191,7 @@ void draw_layout_preview_imgui(const edgar::generator::grid2d::LayoutGrid2D<int>
         const ImU32 fill_col = room.is_corridor ? k_fill_corridor : k_fill_room;
         for (int y = rmin_y; y <= rmax_y; ++y) {
             for (int x = rmin_x; x <= rmax_x; ++x) {
-                if (edgar::io::point_in_polygon_xy({x, y}, world_poly)) {
+                if (dungeon_topology_generator::io::point_in_polygon_xy({x, y}, world_poly)) {
                     const ImVec2 p0 = to_screen(x, y);
                     const ImVec2 p1 = to_screen(x + 1, y);
                     const ImVec2 p2 = to_screen(x + 1, y + 1);
@@ -204,16 +204,16 @@ void draw_layout_preview_imgui(const edgar::generator::grid2d::LayoutGrid2D<int>
 
         if (g_preview_grid_lines) {
             const PolygonGrid2D poly_world = room.outline + room.position;
-            const std::vector<Vector2Int> lattice = edgar::io::grid_cell_lattice_points(poly_world);
-            const auto lattice_set = edgar::io::grid_cell_lattice_point_set(lattice);
+            const std::vector<Vector2Int> lattice = dungeon_topology_generator::io::grid_cell_lattice_points(poly_world);
+            const auto lattice_set = dungeon_topology_generator::io::grid_cell_lattice_point_set(lattice);
             for (const auto& p : lattice) {
                 const Vector2Int right{p.x + 1, p.y};
                 const Vector2Int bottom{p.x, p.y - 1};
-                if (edgar::io::lattice_set_contains(lattice_set, right)) {
+                if (dungeon_topology_generator::io::lattice_set_contains(lattice_set, right)) {
                     dash_line_screen(dl, to_screen(p.x, p.y), to_screen(right.x, right.y), k_grid,
                                      k_grid_line_thickness, k_grid_dash_px, k_grid_gap_px);
                 }
-                if (edgar::io::lattice_set_contains(lattice_set, bottom)) {
+                if (dungeon_topology_generator::io::lattice_set_contains(lattice_set, bottom)) {
                     dash_line_screen(dl, to_screen(p.x, p.y), to_screen(bottom.x, bottom.y), k_grid,
                                      k_grid_line_thickness, k_grid_dash_px, k_grid_gap_px);
                 }
@@ -225,7 +225,7 @@ void draw_layout_preview_imgui(const edgar::generator::grid2d::LayoutGrid2D<int>
         for (const auto& d : room.doors) {
             door_lines.push_back(d.door_line);
         }
-        outline_local = edgar::io::layout_outline_with_door_gaps(room.outline, std::move(door_lines));
+        outline_local = dungeon_topology_generator::io::layout_outline_with_door_gaps(room.outline, std::move(door_lines));
         if (outline_local.empty()) {
             continue;
         }

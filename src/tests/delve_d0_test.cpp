@@ -1,5 +1,5 @@
 // Delve D0 test (requirements §11 D0, §5.1, §9.2): verifies the committed
-// frozen IR without running edgar (platform-stable; generation itself is
+// frozen IR without running dungeon_topology_generator (platform-stable; generation itself is
 // reproducible only on one platform/build per N1).
 #include <gtest/gtest.h>
 

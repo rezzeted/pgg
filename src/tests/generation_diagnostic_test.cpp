@@ -6,13 +6,13 @@
 
 #include "preset_loader.hpp"
 
-#include "edgar/generator/grid2d/configuration_spaces_generator.hpp"
-#include "edgar/generator/grid2d/graph_based_generator_configuration.hpp"
-#include "edgar/generator/grid2d/graph_based_generator_grid2d.hpp"
-#include "edgar/generator/grid2d/layout_door_computation.hpp"
-#include "edgar/graphs/undirected_graph.hpp"
-#include "edgar/geometry/overlap.hpp"
-#include "edgar/geometry/vector2_int.hpp"
+#include "dungeon_topology_generator/generator/grid2d/configuration_spaces_generator.hpp"
+#include "dungeon_topology_generator/generator/grid2d/graph_based_generator_configuration.hpp"
+#include "dungeon_topology_generator/generator/grid2d/graph_based_generator_grid2d.hpp"
+#include "dungeon_topology_generator/generator/grid2d/layout_door_computation.hpp"
+#include "dungeon_topology_generator/graphs/undirected_graph.hpp"
+#include "dungeon_topology_generator/geometry/overlap.hpp"
+#include "dungeon_topology_generator/geometry/vector2_int.hpp"
 
 #include <nlohmann/json.hpp>
 #include <spdlog/sinks/ostream_sink.h>
@@ -30,11 +30,11 @@
 namespace {
 
 namespace fs = std::filesystem;
-using edgar::generator::grid2d::ConfigurationSpacesGenerator;
-using edgar::generator::grid2d::LayoutGrid2D;
-using edgar::generator::grid2d::LayoutRoomGrid2D;
-using edgar::geometry::Vector2Int;
-using edgar::graphs::UndirectedAdjacencyListGraph;
+using dungeon_topology_generator::generator::grid2d::ConfigurationSpacesGenerator;
+using dungeon_topology_generator::generator::grid2d::LayoutGrid2D;
+using dungeon_topology_generator::generator::grid2d::LayoutRoomGrid2D;
+using dungeon_topology_generator::geometry::Vector2Int;
+using dungeon_topology_generator::graphs::UndirectedAdjacencyListGraph;
 
 fs::path repo_root_from_this_file() {
     return fs::path(__FILE__).parent_path().parent_path().parent_path();
@@ -80,7 +80,7 @@ void world_bbox(const LayoutRoomGrid2D<int>& r, int& min_x, int& min_y, int& max
 
 void trace_door_pipeline(const std::shared_ptr<spdlog::logger>& L, const LayoutGrid2D<int>& layout,
                          const UndirectedAdjacencyListGraph<int>& graph) {
-    using namespace edgar::generator::grid2d;
+    using namespace dungeon_topology_generator::generator::grid2d;
     ConfigurationSpacesGenerator cs_gen;
     std::unordered_set<int> processed;
     for (std::size_t ai = 0; ai < layout.rooms.size(); ++ai) {
@@ -131,10 +131,10 @@ void trace_door_pipeline(const std::shared_ptr<spdlog::logger>& L, const LayoutG
 } // namespace
 
 TEST(GenerationDiagnostic, Seed46_LogsGraphGeometryAndDoors) {
-    namespace grid2d = edgar::generator::grid2d;
+    namespace grid2d = dungeon_topology_generator::generator::grid2d;
     const auto L = make_jsonl_logger();
 
-    const fs::path resources = repo_root_from_this_file() / "resources" / "edgar_gui";
+    const fs::path resources = repo_root_from_this_file() / "resources" / "dungeon_topology_generator_gui";
     ASSERT_TRUE(fs::exists(resources)) << "Missing " << resources.string();
 
     auto loaded = grid2d::load_preset_catalog_with_status(resources.string());
@@ -230,9 +230,9 @@ TEST(GenerationDiagnostic, Seed46_LogsGraphGeometryAndDoors) {
             const auto* rb = find_layout_room(layout, u);
             ASSERT_NE(ra, nullptr);
             ASSERT_NE(rb, nullptr);
-            const bool touch = edgar::geometry::polygons_touch(ra->outline, ra->position, rb->outline, rb->position);
+            const bool touch = dungeon_topology_generator::geometry::polygons_touch(ra->outline, ra->position, rb->outline, rb->position);
             const bool overlap =
-                edgar::geometry::polygons_overlap_area(ra->outline, ra->position, rb->outline, rb->position);
+                dungeon_topology_generator::geometry::polygons_overlap_area(ra->outline, ra->position, rb->outline, rb->position);
             log_json(L, nlohmann::json{{"event", "geometry.edge"},
                                          {"u", v},
                                          {"v", u},

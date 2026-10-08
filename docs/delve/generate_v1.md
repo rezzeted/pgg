@@ -1,16 +1,16 @@
 # Delve: вызов раскладки v1 (D2, F3)
 
 `src/libs/delve_layout/generate.{h,cpp}`: проект v1 + каталог → вызов
-edgar (`GraphBasedGeneratorGrid2D`) с сидом, бюджетами, отменой и
+dungeon_topology_generator (`GraphBasedGeneratorGrid2D`) с сидом, бюджетами, отменой и
 повторными попытками; сериализация результата в `delve-layout/0`
 (`src/libs/delve/layout.{h,cpp}`: `LayoutData`, `read_layout_json`).
 
-## Отображение на edgar
+## Отображение на dungeon_topology_generator
 
 - Комнаты графа нумеруются по порядку объявления (`index_to_id`);
-  рёбра графа — соединения edgar; роль `corridor` — коридорная комната
+  рёбра графа — соединения dungeon_topology_generator; роль `corridor` — коридорная комната
   второй стадии (C# `CorridorRoomDescription` всегда stage 2).
-- `min_room_distance` проекта — поле уровня edgar (штраф только для
+- `min_room_distance` проекта — поле уровня dungeon_topology_generator (штраф только для
   пар без общего ребра: соединённые дверью комнаты обязаны касаться).
 - Шаблоны и описания комнат — из каталога (`docs/delve/catalog_v1.md`).
 - Двери вычисляются проходом `compute_layout_doors` со своим сидом
@@ -51,7 +51,7 @@ no-op (ограничение порта: отмена и ранняя оста�
 
 Стабильные ключи (N6): `format`, `source{project, seed}`,
 `rooms[]` по возрастанию `id`: `id`, `role`, `template`, `corridor`,
-`grid` (контур в клетках edgar, `area2 < 0`), `doors[]` по
+`grid` (контур в клетках dungeon_topology_generator, `area2 < 0`), `doors[]` по
 `(to, g0, g1)`: `to` (id соседа), `grid` (отрезок, лексически меньшая
 точка первой). Тип двери здесь не хранится — он берётся из ребра
 графа проекта при построении IR (`build_ir_from_layout`, D2.3b, F4 v2).

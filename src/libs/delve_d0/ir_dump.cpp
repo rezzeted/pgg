@@ -10,15 +10,15 @@
 
 #include <nlohmann/json.hpp>
 
-#include "edgar/geometry/grid_polygon_partitioning.hpp"
-#include "edgar/io/dungeon_drawer.hpp"
-#include "edgar/io/layout_grid_cells.hpp"
+#include "dungeon_topology_generator/geometry/grid_polygon_partitioning.hpp"
+#include "dungeon_topology_generator/io/dungeon_drawer.hpp"
+#include "dungeon_topology_generator/io/layout_grid_cells.hpp"
 
 namespace delve::d0 {
 namespace {
 
 namespace fs = std::filesystem;
-namespace grid2d = edgar::generator::grid2d;
+namespace grid2d = dungeon_topology_generator::generator::grid2d;
 
 std::string fmt_num(double v) {
     char buf[32];
@@ -85,7 +85,7 @@ bool dump_frozen_ir(const grid2d::LayoutGrid2D<int>& layout, const DumpConfig& c
         e.corridor = room.is_corridor;
         for (const auto& p : room.outline.points()) e.grid.push_back({p.x + room.position.x, p.y + room.position.y});
         // §5.1: Delve normalizes the winding; PGG gets CCW seen from +Y (area2 < 0 in (x, z),
-        // which under the identity mapping is area2 < 0 in (gx, gy) — what edgar already emits).
+        // which under the identity mapping is area2 < 0 in (gx, gy) — what dungeon_topology_generator already emits).
         if (contour_area2(e.grid) > 0) std::reverse(e.grid.begin(), e.grid.end());
         for (const auto& d : room.doors) {
             const int other = (d.from_room == room.room) ? d.to_room : d.from_room;
@@ -155,7 +155,7 @@ bool dump_frozen_ir(const grid2d::LayoutGrid2D<int>& layout, const DumpConfig& c
     };
     std::vector<Pt> points;
     for (const auto& room : layout.rooms) {
-        std::vector<edgar::geometry::Vector2Int> world;
+        std::vector<dungeon_topology_generator::geometry::Vector2Int> world;
         for (const auto& p : room.outline.points()) world.push_back(p + room.position);
         int min_x = world[0].x, min_y = world[0].y, max_x = world[0].x, max_y = world[0].y;
         for (const auto& p : world) {
@@ -166,7 +166,7 @@ bool dump_frozen_ir(const grid2d::LayoutGrid2D<int>& layout, const DumpConfig& c
         }
         for (int y = min_y; y <= max_y; ++y)
             for (int x = min_x; x <= max_x; ++x)
-                if (edgar::io::point_in_polygon_xy({x, y}, world))
+                if (dungeon_topology_generator::io::point_in_polygon_xy({x, y}, world))
                     points.push_back({room.room, room.is_corridor, x, y});
     }
     std::sort(points.begin(), points.end(), [](const Pt& a, const Pt& b) {
@@ -224,7 +224,7 @@ bool dump_frozen_ir(const grid2d::LayoutGrid2D<int>& layout, const DumpConfig& c
 
     // --- reference.png (DungeonDrawer: the orientation etalon for §5.1) ---
     try {
-        edgar::io::DungeonDrawer<int> drawer;
+        dungeon_topology_generator::io::DungeonDrawer<int> drawer;
         drawer.draw_layout_and_save(layout, (fs::path(out_dir) / "reference.png").string());
     } catch (const std::exception& e) {
         err = std::string("reference.png: ") + e.what();
@@ -254,8 +254,8 @@ bool render_view_pgg(const std::string& ir_json_text, std::string& pgg_text, std
         err = "bad IR rooms";
         return false;
     }
-    // Rect partition per room (pure grid math on the IR contour — no edgar layout needed,
-    // but the partition itself is edgar's public util over the stored grid contour).
+    // Rect partition per room (pure grid math on the IR contour — no dungeon_topology_generator layout needed,
+    // but the partition itself is dungeon_topology_generator's public util over the stored grid contour).
     std::vector<WorldRect> rects;
     try {
         for (const auto& jr : ir["rooms"]) {
@@ -265,7 +265,7 @@ bool render_view_pgg(const std::string& ir_json_text, std::string& pgg_text, std
                 err = "bad IR contour";
                 return false;
             }
-            std::vector<edgar::geometry::Vector2Int> grid;
+            std::vector<dungeon_topology_generator::geometry::Vector2Int> grid;
             for (const auto& pt : jr["grid"]) {
                 if (!pt.is_array() || pt.size() != 2 || !pt[0].is_number_integer() ||
                     !pt[1].is_number_integer()) {
@@ -278,10 +278,10 @@ bool render_view_pgg(const std::string& ir_json_text, std::string& pgg_text, std
                 err = "bad IR contour";
                 return false;
             }
-            std::vector<edgar::geometry::RectangleGrid2D> parts;
+            std::vector<dungeon_topology_generator::geometry::RectangleGrid2D> parts;
             try {
-                parts = edgar::geometry::partition_orthogonal_polygon_to_rectangles(
-                    edgar::geometry::PolygonGrid2D(grid));
+                parts = dungeon_topology_generator::geometry::partition_orthogonal_polygon_to_rectangles(
+                    dungeon_topology_generator::geometry::PolygonGrid2D(grid));
             } catch (const std::exception& e) {
                 err = std::string("partition failed: ") + e.what();
                 return false;

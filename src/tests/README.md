@@ -1,11 +1,11 @@
-# C++ tests (Edgar parity / port)
+# C++ tests (dungeon_topology_generator, parity with Edgar-DotNet)
 
 Тесты собираются как цели CMake в этом каталоге. Основные исполняемые файлы:
 
 | Target | Источник | Назначение |
 |--------|-----------|------------|
-| `edgar_tests` | `edgar_tests.cpp` | Юнит-тесты на C++ (Graph, GridPolygon, IntVector2, …) через Catch2 |
-| `edgar_parity_tests` | `edgar_parity_tests.cpp` | Тесты, ориентированные на паритет с `_edgar_ref` и точечные C# сценарии |
+| `dungeon_topology_generator_tests` | `dungeon_topology_generator_tests.cpp` | Юнит-тесты на C++ (Graph, GridPolygon, IntVector2, …) через Catch2 |
+| `dungeon_topology_generator_parity_tests` | `dungeon_topology_generator_parity_tests.cpp` | Тесты, ориентированные на паритет с `_edgar_ref` и точечные C# сценарии |
 
 ## Сборка и запуск (Windows, MSVC)
 
@@ -19,8 +19,8 @@ ctest --test-dir _build -C Debug --output-on-failure
 Или только тестовые бинарники:
 
 ```bat
-_build\bin\Debug\edgar_tests.exe
-_build\bin\Debug\edgar_parity_tests.exe
+_build\bin\Debug\dungeon_topology_generator_tests.exe
+_build\bin\Debug\dungeon_topology_generator_parity_tests.exe
 ```
 
 ## Definition of Done и матрица C# → C++

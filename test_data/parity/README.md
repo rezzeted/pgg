@@ -31,10 +31,10 @@ for s in four_room_cycle three_room_corridor_line six_room_star; do
 done
 ```
 
-2. **C++-сторона** — тест `parity_golden_test` (suite `EdgarGoldenParity`): генерирует layout по тому же сценарию, пишет `actual/<name>.cpp.json` и проверяет логические инварианты у обоих движков. Если `<name>.cs.json` отсутствует — тест **skip** (валидность C++ всё равно проверяется).
+2. **C++-сторона** — тест `parity_golden_test` (suite `DungeonTopologyGeneratorGoldenParity`): генерирует layout по тому же сценарию, пишет `actual/<name>.cpp.json` и проверяет логические инварианты у обоих движков. Если `<name>.cs.json` отсутствует — тест **skip** (валидность C++ всё равно проверяется).
 
 ```sh
-ctest --test-dir _build -R EdgarGoldenParity --output-on-failure
+ctest --test-dir _build -R DungeonTopologyGeneratorGoldenParity --output-on-failure
 ```
 
 ## Проверяемые инварианты (обе реализации)
@@ -46,5 +46,5 @@ ctest --test-dir _build -R EdgarGoldenParity --output-on-failure
 
 ## Связь с тестами
 
-- C++ тесты: [src/tests/README.md](../../src/tests/README.md), `edgar_tests`, `edgar_parity_tests`, `parity_golden_test`.
+- C++ тесты: [src/tests/README.md](../../src/tests/README.md), `dungeon_topology_generator_tests`, `dungeon_topology_generator_parity_tests`, `parity_golden_test`.
 - Матрица покрытия C#: [docs/test_matrix_iteration0.md](../../docs/test_matrix_iteration0.md) (все строки закрыты: done или skip(na)).
