@@ -3,7 +3,7 @@
 **PGG** is a procedural geometry language: a text-first node graph for LLM agents, with a node projection for humans. This repository is the language, library, CLI, viewer, tests, and art examples — and the monorepo home of the projects built on it:
 
 - **DungeonGeometryGenerator** — a dungeon orchestrator on top of PGG (slot assets) and dungeon_topology_generator (layout generation): project files, IR, fill, checks, OBJ export, viewer, CLI and RPC daemon. Docs: [`docs/dungeon_geometry_generator`](docs/dungeon_geometry_generator/requirements.md), demo projects under `projects/`.
-- **level-synth / dungeon_topology_generator** — a C++20 port of [Edgar-DotNet](https://github.com/OndrejNepozitek/Edgar-DotNet) graph-based 2D layout generation (`src/libs/dungeon_topology_generator`), with an SDL3 + ImGui viewer (`src/apps/main`). Docs: [`docs/level-synth`](docs/level-synth/README.md).
+- **level-synth / dungeon_topology_generator** — a C++20 port of [Edgar-DotNet](https://github.com/OndrejNepozitek/Edgar-DotNet) graph-based 2D layout generation (`src/libs/dungeon_topology_generator`), with an SDL3 + ImGui viewer (`src/apps/DungeonTopologyGeneratorViewer`). Docs: [`docs/level-synth`](docs/level-synth/README.md).
 
 | [Spire House](resources/AmberEstate/spire_house.pgg) | [Cottage](resources/AmberEstate/cottage.pgg) |
 |---|---|
@@ -26,7 +26,7 @@ How the shots were framed and how to regenerate them: [`docs/gallery/README.md`]
 | `src/apps/DungeonGeometryGeneratorViewer` | DungeonGeometryGenerator layout/fill preview |
 | `src/apps/DungeonGeometryGeneratorCli` | DungeonGeometryGenerator machine loop: `validate` / `layout` / `fill` / `export` / `check` |
 | `src/apps/DungeonGeometryGeneratorServe` | DungeonGeometryGenerator RPC daemon: warm project slots |
-| `src/apps/main` | level-synth SDL3 + ImGui viewer (legacy target name) |
+| `src/apps/DungeonTopologyGeneratorViewer` | level-synth SDL3 + ImGui viewer |
 | `src/tests` | gtest suites: `pgg/`, `dungeon_geometry_generator_*_test.cpp`, dungeon_topology_generator tests |
 | `resources/pgg` | PGG shared `lib/` and art examples (inn_hotel, clocktower, …) |
 | `resources/AmberEstate` | Estate mini-project: cottages, spire house, church, stone arch, props |

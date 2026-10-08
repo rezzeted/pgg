@@ -3,7 +3,7 @@
 > **Исторический документ standalone-репозитория level-synth** (до слияния в
 > монорепозиторий pgg). Пути сборки ниже описывают старый репозиторий; в
 > монорепо актуальны корневые `README.md` и `AGENTS.md`, библиотека dungeon_topology_generator —
-> `src/libs/dungeon_topology_generator`, приложение — `src/apps/main`, данные — `test_data/`.
+> `src/libs/dungeon_topology_generator`, приложение — `src/apps/DungeonTopologyGeneratorViewer`, данные — `test_data/`.
 
 Приложение **LevelSynth** на C++20 с Dear ImGui, SDL3 и OpenGL 3 (CMake-проект в репозитории: `ImguiPlayground`). Библиотека **dungeon_topology_generator** — порт [Edgar-DotNet](https://github.com/OndrejNepozitek/Edgar-DotNet) для процедурной раскладки комнат. Сборка через **CMake**; зависимости задаются **манифестом vcpkg** ([`vcpkg.json`](vcpkg.json)), сам **vcpkg** — **git submodule** в [`toolchain/vcpkg`](toolchain/vcpkg).
 
@@ -48,12 +48,12 @@ cmake --preset macos-release    # Release в отдельном каталоге
 cmake --build --preset release-macos
 ```
 
-Исполняемый файл: `_build/bin/main` (Release: `_build-release/bin/main`), тесты — `_build/bin/dungeon_topology_generator_tests` и др.; запуск тестов: `ctest --test-dir _build` (или `_build-release`). Бенчмарк генерации: `python3 tools/benchmark_layout_generation.py --check` (использует `_build-release`, fallback `_build`; кроссплатформенная замена `tools/benchmark_layout_generation.ps1`).
+Исполняемый файл: `_build/bin/DungeonTopologyGeneratorViewer` (Release: `_build-release/bin/DungeonTopologyGeneratorViewer`), тесты — `_build/bin/dungeon_topology_generator_tests` и др.; запуск тестов: `ctest --test-dir _build` (или `_build-release`). Бенчмарк генерации: `python3 tools/benchmark_layout_generation.py --check` (использует `_build-release`, fallback `_build`; кроссплатформенная замена `tools/benchmark_layout_generation.ps1`).
 
 Особенности macOS: OpenGL линкуется как системный фреймворк (не XQuartz libGL); контекст запрашивается **OpenGL 3.2 Core** (macOS не поддерживает Core 3.0), GLSL `#version 150`; путь к exe определяется через `_NSGetExecutablePath`. Диалога сохранения на macOS нет — экспорт JSON пишет `layout_export.json` рядом с рабочим каталогом.
 
 
-Исполняемый файл приложения: `_build/bin/<Config>/main.exe`. Тесты: `_build/bin/<Config>/dungeon_topology_generator_tests.exe`, `dungeon_topology_generator_parity_tests.exe`, `preset_loader_tests.exe`, `generation_diagnostic_test.exe`.
+Исполняемый файл приложения: `_build/bin/<Config>/DungeonTopologyGeneratorViewer.exe`. Тесты: `_build/bin/<Config>/dungeon_topology_generator_tests.exe`, `dungeon_topology_generator_parity_tests.exe`, `preset_loader_tests.exe`, `generation_diagnostic_test.exe`.
 
 Пакеты из манифеста устанавливаются в каталог **`vcpkg_installed/`** рядом с билдом (в `.gitignore`).
 
@@ -86,7 +86,7 @@ cmake --build --preset release-macos
 ├── thirdparty/CMakeLists.txt # find_package + imgui_impl INTERFACE
 ├── src/libs/dungeon_topology_generator/           # библиотека dungeon_topology_generator (генерация уровней)
 ├── src/libs/drui/            # темы, тосты, иконки поверх ImGui
-├── src/apps/main/
+├── src/apps/DungeonTopologyGeneratorViewer/
 ├── src/tests/
 ├── test_data/                # сценарии для ручных/parity-прогонов (см. test_data/parity/)
 ├── resources/dungeon_topology_generator_gui/      # копия из референса (см. ниже)
@@ -98,15 +98,15 @@ cmake --build --preset release-macos
     …
 ```
 
-### Приложение LevelSynth (main) и YAML
+### Приложение LevelSynth (DungeonTopologyGeneratorViewer) и YAML
 
 Паритет сценариев с Edgar.GUI (ресурсы, экспорт): [`docs/level-synth/app_gui_parity.md`](docs/level-synth/app_gui_parity.md). Схема ключей YAML пресетов: [`docs/level-synth/app_yaml_preset.md`](docs/level-synth/app_yaml_preset.md).
 
-- **Корень ресурсов по умолчанию:** при старте ищется каталог `resources/dungeon_topology_generator_gui`, содержащий подпапки **`Maps/`** и **`Rooms/`**: обход вверх от каталога `main.exe` (удобно при запуске из `_build/bin/...` в клоне репозитория). Рядом с exe CMake **копирует** `resources/dungeon_topology_generator_gui` из репозитория.
+- **Корень ресурсов по умолчанию:** при старте ищется каталог `resources/dungeon_topology_generator_gui`, содержащий подпапки **`Maps/`** и **`Rooms/`**: обход вверх от каталога `DungeonTopologyGeneratorViewer.exe` (удобно при запуске из `_build/bin/...` в клоне репозитория). Рядом с exe CMake **копирует** `resources/dungeon_topology_generator_gui` из репозитория.
 - **Каталог карт:** в выпадающем списке показываются только **`.yml`/`.yaml` непосредственно в `Maps/`** (без рекурсии в подпапки). Подпись в UI указывает на `<repo>/resources/dungeon_topology_generator_gui/Maps/`.
 - **Панель Map:** комбо выбора карты, отображение текущего пути ресурсов, кнопка **Reload catalog**. Экспорт JSON — через меню **File → Export JSON** (на Windows — диалог сохранения).
 - **Перетаскивание на окно:** можно сбросить **папку** с `Maps/` и `Rooms/` (корень `dungeon_topology_generator_gui`) или отдельный файл карты — каталог обновится соответственно.
-- **CLI:** опциональный аргумент — путь к файлу **`*.yml` / `*.yaml`** карты; загружается эта карта, база ресурсов выводится из пути (см. [`preset_loader.cpp`](src/apps/main/preset_loader.cpp)).
+- **CLI:** опциональный аргумент — путь к файлу **`*.yml` / `*.yaml`** карты; загружается эта карта, база ресурсов выводится из пути (см. [`preset_loader.cpp`](src/apps/DungeonTopologyGeneratorViewer/preset_loader.cpp)).
 
 ### Ресурсы Edgar.GUI (копия из референса)
 
@@ -116,7 +116,7 @@ cmake --build --preset release-macos
 robocopy %CD%\_edgar_ref\src\Resources %CD%\resources\dungeon_topology_generator_gui /E
 ```
 
-При сборке `main` CMake **копирует** `resources/dungeon_topology_generator_gui` рядом с `main.exe` в `resources/dungeon_topology_generator_gui/`, чтобы пути относительно исполняемого файла совпадали с ожидаемой раскладкой папок.
+При сборке `DungeonTopologyGeneratorViewer` CMake **копирует** `resources/dungeon_topology_generator_gui` рядом с `DungeonTopologyGeneratorViewer.exe` в `resources/dungeon_topology_generator_gui/`, чтобы пути относительно исполняемого файла совпадали с ожидаемой раскладкой папок.
 
 ---
 

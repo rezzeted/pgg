@@ -11,7 +11,7 @@
 | Аспект | Оригинал | Порт |
 |--------|----------|------|
 | Стек | C# / .NET, решение `EdgarDotNet.sln` | C++20, CMake, vcpkg; сборки macOS (Debug/Release пресеты), Windows, Linux |
-| Демо / редактор | WPF `Edgar.GUI`, примеры, песочницы | Одно приложение SDL3 + ImGui (`src/apps/main`) |
+| Демо / редактор | WPF `Edgar.GUI`, примеры, песочницы | Одно приложение SDL3 + ImGui (`src/apps/DungeonTopologyGeneratorViewer`) |
 | Unity | Проект `Edgar.UnityBuild` | Нет |
 | Производительность | `Edgar.PerformanceTests` (BenchmarkDotNet, ручной запуск) | `tools/benchmark_layout_generation.py` с гейтами `--check` по bundled-картам |
 | Дополнительно в порте | — | YAML-пресеты, экспорт layout в JSON, свой `layout_json` |

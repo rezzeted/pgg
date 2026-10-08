@@ -2,7 +2,7 @@ find_package(yaml-cpp CONFIG REQUIRED)
 find_package(SDL3 CONFIG REQUIRED)
 find_package(imgui CONFIG REQUIRED)
 
-# Interface target keeps `main` linking unchanged (imgui + OpenGL)
+# Interface target keeps the viewer linking unchanged (imgui + OpenGL)
 add_library(imgui_impl INTERFACE)
 target_link_libraries(imgui_impl INTERFACE imgui::imgui)
 if(WIN32)
@@ -22,28 +22,28 @@ if(WIN32)
     list(APPEND MAIN_SOURCES file_dialogs.cpp)
 endif()
 
-add_executable(main ${MAIN_SOURCES})
-target_link_libraries(main PRIVATE imgui_impl dungeon_topology_generator yaml-cpp::yaml-cpp drui)
-target_include_directories(main PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+add_executable(DungeonTopologyGeneratorViewer ${MAIN_SOURCES})
+target_link_libraries(DungeonTopologyGeneratorViewer PRIVATE imgui_impl dungeon_topology_generator yaml-cpp::yaml-cpp drui)
+target_include_directories(DungeonTopologyGeneratorViewer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 set(LEVELSYNTH_FONT_RESOURCES "${CMAKE_SOURCE_DIR}/resources/fonts")
 if(EXISTS "${LEVELSYNTH_FONT_RESOURCES}")
     add_custom_command(
-        TARGET main
+        TARGET DungeonTopologyGeneratorViewer
         POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:main>/resources/fonts"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:DungeonTopologyGeneratorViewer>/resources/fonts"
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${LEVELSYNTH_FONT_RESOURCES}"
-                "$<TARGET_FILE_DIR:main>/resources/fonts"
-        COMMENT "Copy resources/fonts next to main (Font Awesome optional)")
+                "$<TARGET_FILE_DIR:DungeonTopologyGeneratorViewer>/resources/fonts"
+        COMMENT "Copy resources/fonts next to DungeonTopologyGeneratorViewer (Font Awesome optional)")
 endif()
 
 # Bundle Edgar.GUI-style assets (trimmed copy of Edgar-DotNet `src/Resources`: Maps, Rooms, Images)
 set(LEVELSYNTH_DUNGEON_TOPOLOGY_GENERATOR_GUI_RESOURCES "${CMAKE_SOURCE_DIR}/resources/dungeon_topology_generator_gui")
 if(EXISTS "${LEVELSYNTH_DUNGEON_TOPOLOGY_GENERATOR_GUI_RESOURCES}")
     add_custom_command(
-        TARGET main
+        TARGET DungeonTopologyGeneratorViewer
         POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${LEVELSYNTH_DUNGEON_TOPOLOGY_GENERATOR_GUI_RESOURCES}"
-                "$<TARGET_FILE_DIR:main>/resources/dungeon_topology_generator_gui"
-        COMMENT "Copy resources/dungeon_topology_generator_gui next to main (Maps, Rooms, Images)")
+                "$<TARGET_FILE_DIR:DungeonTopologyGeneratorViewer>/resources/dungeon_topology_generator_gui"
+        COMMENT "Copy resources/dungeon_topology_generator_gui next to DungeonTopologyGeneratorViewer (Maps, Rooms, Images)")
 endif()
