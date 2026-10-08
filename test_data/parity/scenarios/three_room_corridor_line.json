@@ -1,0 +1,14 @@
+{
+  "name": "three_room_corridor_line",
+  "seed": 99,
+  "expected_rooms": 3,
+  "expected_corridors": 1,
+  "templates": [
+    {"name": "square8", "rect": [8, 8], "door_length": 1, "corner_distance": 1}
+  ],
+  "corridor_templates": [
+    {"name": "corr8x2", "rect": [8, 2], "door_length": 1, "corner_distance": 1}
+  ],
+  "rooms": [{"id": 0}, {"id": 1, "corridor": true}, {"id": 2}],
+  "connections": [[0, 1], [1, 2]]
+}

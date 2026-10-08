@@ -1,0 +1,13 @@
+{
+  "name": "six_room_star",
+  "seed": 7,
+  "expected_rooms": 6,
+  "expected_corridors": 0,
+  "templates": [
+    {"name": "square8", "rect": [8, 8], "door_length": 1, "corner_distance": 1},
+    {"name": "rect6x10", "rect": [6, 10], "door_length": 1, "corner_distance": 1}
+  ],
+  "corridor_templates": [],
+  "rooms": [{"id": 0}, {"id": 1}, {"id": 2}, {"id": 3}, {"id": 4}, {"id": 5}],
+  "connections": [[0, 1], [0, 2], [0, 3], [0, 4], [0, 5]]
+}
