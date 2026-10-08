@@ -9,8 +9,8 @@
 - **PGG** — язык процедурной геометрии: библиотека, CLI, вьюер, тесты,
   арт-примеры. Устройство языка и грабли реализации — `docs/pgg/`; правя код,
   обновляй `docs/pgg/implementation.md`, а не этот файл.
-- **Delve** — оркестратор подземелий поверх PGG (слот-ассеты `assets/`) и
-  dungeon_topology_generator (раскладки). Нормативный документ — `docs/delve/requirements.md`
+- **DungeonGeometryGenerator** — оркестратор подземелий поверх PGG (слот-ассеты `assets/`) и
+  dungeon_topology_generator (раскладки). Нормативный документ — `docs/dungeon_geometry_generator/requirements.md`
   (§5–§9 — конвейер F1–F11, N-хвосты — сквозные требования).
 - **level-synth / dungeon_topology_generator** — порт Edgar-DotNet: библиотека раскладок
   `src/libs/dungeon_topology_generator`, SDL3-вьюер `src/apps/main`, данные `test_data/`,
@@ -22,7 +22,7 @@
 - Идентификаторы и комментарии в исходниках (`src/`, `tools/`, CMake) — на английском.
 - Документацию пиши на русском. Исключение: `README.md` — на английском.
 - Сообщения git-коммитов (subject и тело) — на английском (конвенция базового
-  репозитория pgg; история delve на русском — наследие standalone-эпохи).
+  репозитория pgg; история dungeon_geometry_generator на русском — наследие standalone-эпохи).
 - Коммиты и PR **не подписывать агентом**: никаких `Co-authored-by` /
   `Signed-off-by` трейлеров от инструментов. Автор — человек, который попросил
   коммит. Единица коммита — один эффект (фича + тесты + доки).
@@ -32,7 +32,7 @@
 - Не плодить изолированные проекты со своими `project(...)` без необходимости —
   корневой `CMakeLists.txt` один, `src/{libs,apps,tests}` подхватывают
   подкаталоги GLOB'ом.
-- **Стек:** C++20, ANTLR4 4.13.2, glm, gtest; PggViewer/DelveViewer — Sokol +
+- **Стек:** C++20, ANTLR4 4.13.2, glm, gtest; PggViewer/DungeonGeometryGeneratorViewer — Sokol +
   Dear ImGui + spdlog; dungeon_topology_generator — boost-graph, yaml-cpp, nlohmann-json, SDL3
   (вьюер). Без Qt. Не вводить тяжёлые зависимости без согласования.
 - Спецификация языка — `docs/pgg/geometry_generation_language.md`
@@ -94,7 +94,7 @@ macOS-флоу — Xcode generator + CMake Presets, та же `_intermediate_64`
 Linux-флоу — Ninja (single-config) + CMake Presets, триплет `x64-linux`, бинарная директория `_int_linux` (**не** `_intermediate_64` — та под win/mac-кэш).
 
 - Конфигурация: `./build_linux.sh` (обёртка над `cmake --preset linux`). Первая конфигурация собирает vcpkg-зависимости.
-- Сборка из CLI: `cmake --build --preset linux-debug` (все таргеты) или точечно `--target PggViewer` / `--target DelveServe`.
+- Сборка из CLI: `cmake --build --preset linux-debug` (все таргеты) или точечно `--target PggViewer` / `--target DungeonGeometryGeneratorServe`.
 - Релизная сборка: пресет `linux-release` (`CMAKE_BUILD_TYPE=Release`, отдельная бинарная директория `_int_linux_release`, наследует `linux`).
 - Бинарники: `_int_linux/src/apps/<App>/Debug/<App>` (app-макросы кладут exe в подпапку `$<CONFIG>`).
 - Smoke-проверки и юнит-тесты: `PggViewer --smoke`, `PggServe --smoke`,
@@ -107,14 +107,14 @@ Linux-флоу — Ninja (single-config) + CMake Presets, триплет `x64-li
   GLOB'ом; бинарь `pgg_tests`. Корпус эталонов — `src/tests/pgg/corpus/`;
   голдены фингерпринтов — `src/tests/pgg/goldens/` (перезапись:
   `PggTool run <file> --update-goldens` из корня репо).
-- **delve:** быстрые сьюты (секунды) — `delve_ir_test`, `delve_project_test`,
-  `delve_layout_test`, `delve_topo_test`, `delve_d0_test`, `delve_assets_test`,
-  `delve_export_test` (~26 с, один frozen fill) — запускать всегда. Smoke:
-  `DelveViewer_smoke_layout` (~3 с), `DelveCli_smoke_*` (~25 с),
-  `DelveServe_smoke` (~12 с) и `DelveServe_rpc_py`; DI-юниты
-  `python3 -m unittest tools.delve_mcp.test_session tools.delve_mcp.test_pgg_layer`.
-  Медленные (Debug + PGG, минуты — это норма): `delve_fill_test` (~4 мин),
-  `delve_check_test` (~1–2 мин; `DelveCheck.PassFrozen` — отдельно на
+- **dungeon_geometry_generator:** быстрые сьюты (секунды) — `dungeon_geometry_generator_ir_test`, `dungeon_geometry_generator_project_test`,
+  `dungeon_geometry_generator_layout_test`, `dungeon_geometry_generator_topo_test`, `dungeon_geometry_generator_d0_test`, `dungeon_geometry_generator_assets_test`,
+  `dungeon_geometry_generator_export_test` (~26 с, один frozen fill) — запускать всегда. Smoke:
+  `DungeonGeometryGeneratorViewer_smoke_layout` (~3 с), `DungeonGeometryGeneratorCli_smoke_*` (~25 с),
+  `DungeonGeometryGeneratorServe_smoke` (~12 с) и `DungeonGeometryGeneratorServe_rpc_py`; DI-юниты
+  `python3 -m unittest tools.dungeon_geometry_generator_mcp.test_session tools.dungeon_geometry_generator_mcp.test_pgg_layer`.
+  Медленные (Debug + PGG, минуты — это норма): `dungeon_geometry_generator_fill_test` (~4 мин),
+  `dungeon_geometry_generator_check_test` (~1–2 мин; `DungeonGeometryGeneratorCheck.PassFrozen` — отдельно на
   незагруженной машине). Детерминизм (N1) и стабильный порядок ключей (N6) —
   проверять тестами; чужой `format` отклонять с подсказкой (N7).
 - **dungeon_topology_generator:** `dungeon_topology_generator_tests`, `dungeon_topology_generator_parity_tests`, `preset_loader_tests`,
@@ -162,21 +162,21 @@ Linux-флоу — Ninja (single-config) + CMake Presets, триплет `x64-li
 - Язык пишет LLM: грабли вида «пиши иначе» — дефект языка или текста ошибки,
   чинить ядро/подсказку; в cheatsheet §«Грабли» — только настоящая семантика.
 
-## Delve
+## DungeonGeometryGenerator
 
-- Раскладка: `src/libs/delve` (проект/граф/IR), `src/libs/delve_layout` (F2/F3),
-  `src/libs/delve_fill` (F6), `src/libs/delve_check` (F11),
-  `src/libs/delve_export` (F7), `src/libs/delve_d0` (D0, замороженный IR);
-  приложения `src/apps/DelveViewer` (F9), `src/apps/DelveCli` (F10, машинная
-  петля — `docs/delve/cli_v1.md`) и `src/apps/DelveServe` (RPC-демон с тёплыми
-  слотами — `docs/delve/mcp_v1.md`); MCP-сервер `delve` — `tools/delve_mcp/`
-  (Python, FastMCP → DelveServe, pgg-слой к PggServe); тесты
-  `src/tests/delve_*_test.cpp` + данные `src/tests/data`; слот-ассеты `assets/`;
-  доки `docs/delve/`; демо-проекты `projects/` (превью в DelveViewer, см.
+- Раскладка: `src/libs/dungeon_geometry_generator` (проект/граф/IR), `src/libs/dungeon_geometry_generator_layout` (F2/F3),
+  `src/libs/dungeon_geometry_generator_fill` (F6), `src/libs/dungeon_geometry_generator_check` (F11),
+  `src/libs/dungeon_geometry_generator_export` (F7), `src/libs/dungeon_geometry_generator_d0` (D0, замороженный IR);
+  приложения `src/apps/DungeonGeometryGeneratorViewer` (F9), `src/apps/DungeonGeometryGeneratorCli` (F10, машинная
+  петля — `docs/dungeon_geometry_generator/cli_v1.md`) и `src/apps/DungeonGeometryGeneratorServe` (RPC-демон с тёплыми
+  слотами — `docs/dungeon_geometry_generator/mcp_v1.md`); MCP-сервер `dungeon_geometry_generator` — `tools/dungeon_geometry_generator_mcp/`
+  (Python, FastMCP → DungeonGeometryGeneratorServe, pgg-слой к PggServe); тесты
+  `src/tests/dungeon_geometry_generator_*_test.cpp` + данные `src/tests/data`; слот-ассеты `assets/`;
+  доки `docs/dungeon_geometry_generator/`; демо-проекты `projects/` (превью в DungeonGeometryGeneratorViewer, см.
   `projects/demo/README.md`).
-- Доки delve — русские. Форматы версионируются (`delve-ir/2`,
-  `delve-layout/0`); смена схемы = bump версии + N7-хинт для старой.
-- PGG-ассеты delve используют общую библиотеку `resources/pgg/lib/` — правки
+- Доки dungeon_geometry_generator — русские. Форматы версионируются (`dungeon-geometry-generator-ir/2`,
+  `dungeon-geometry-generator-layout/0`); смена схемы = bump версии + N7-хинт для старой.
+- PGG-ассеты dungeon_geometry_generator используют общую библиотеку `resources/pgg/lib/` — правки
   общих def'ов проверять рендерами всех потребителей (см. «PGG → Арт-итерации»).
 
 ## level-synth / dungeon_topology_generator
@@ -196,9 +196,9 @@ Linux-флоу — Ninja (single-config) + CMake Presets, триплет `x64-li
   канонический путь `.pgg`; на `render`/`probe` передавать `file=`, если в этом
   ходе не было `load`. Контракт — `docs/pgg/serve_rpc.md`. Env: `PGG_REPO_ROOT`,
   `PGG_SERVE`.
-- `delve` (`python3 -m tools.delve_mcp.launch`) — проектные слоты DelveServe +
+- `dungeon_geometry_generator` (`python3 -m tools.dungeon_geometry_generator_mcp.launch`) — проектные слоты DungeonGeometryGeneratorServe +
   pgg-слой для отладки слот-ассетов (корень PggServe — тот же монорепо).
-  Контракт — `docs/delve/mcp_v1.md`. Env: `DELVE_REPO_ROOT`, `PGG_SERVE_PORT`.
+  Контракт — `docs/dungeon_geometry_generator/mcp_v1.md`. Env: `DUNGEON_GEOMETRY_GENERATOR_REPO_ROOT`, `PGG_SERVE_PORT`.
 
 ## Где что искать
 
@@ -212,5 +212,5 @@ Linux-флоу — Ninja (single-config) + CMake Presets, триплет `x64-li
 - `docs/pgg/implementation.md` — заметки по реализации.
 - `docs/pgg/serve_rpc.md` — RPC PggServe и MCP.
 - `docs/mcp_servers.md` — MCP-серверы репозитория.
-- `docs/delve/requirements.md` — нормативный документ delve.
+- `docs/dungeon_geometry_generator/requirements.md` — нормативный документ dungeon_geometry_generator.
 - `docs/level-synth/README.md` — level-synth: что это и история порта.

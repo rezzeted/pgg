@@ -1,4 +1,4 @@
-# Delve slot asset: decor lamp v1 (slots §2.6). Fixture + exactly one light anchor.
+# DungeonGeometryGenerator slot asset: decor lamp v1 (slots §2.6). Fixture + exactly one light anchor.
 # Mount follows the anchor normal @n: ceiling hang (|n.y| ~ 1) or wall torch
 # (axis-aligned wall, n horizontal). Boxes stay axis-aligned; the wall variant
 # picks its long axis from n and keeps same-normal faces off shared planes

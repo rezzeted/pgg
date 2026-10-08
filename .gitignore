@@ -23,7 +23,7 @@ compile_commands.json
 
 # MCP server venvs
 tools/pgg_mcp/.venv/
-tools/delve_mcp/.venv/
+tools/dungeon_geometry_generator_mcp/.venv/
 
 # Kimi Code local project config (machine-local MCP paths)
 .kimi-code/

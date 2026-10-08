@@ -1,5 +1,5 @@
 {
-  "format": "delve-project/1",
+  "format": "dungeon-geometry-generator-project/1",
   "seed": 3,
   "layout": {
     "corridors": {"width": 2, "length": [3, 4]},

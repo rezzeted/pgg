@@ -1,4 +1,4 @@
-# Delve slot asset: node v2 (slots §2.4) — ashlar masonry look.
+# DungeonGeometryGenerator slot asset: node v2 (slots §2.4) — ashlar masonry look.
 # Pillar core in dark mortar tone + open faces dressed with beveled blocks
 # (lib.parts.cbox) instanced on an anchor cloud: course rows of 2-wide
 # elements (split at face center) as in v1, but with per-block palette color

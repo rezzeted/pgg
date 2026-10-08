@@ -1,4 +1,4 @@
-# Delve slot asset: node v1 (slots §2.4). Pillar + finished open faces.
+# DungeonGeometryGenerator slot asset: node v1 (slots §2.4). Pillar + finished open faces.
 # Faces: course rows of 2-wide elements (split at face center), zone pieces via
 # elem_zone (whole-element rule). Closed faces are absent from `faces` by
 # construction. v1: no running bond on faces, face width = thick exactly.

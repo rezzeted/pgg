@@ -1,4 +1,4 @@
-# Delve asset library: ashlar masonry palette (the v2 look, iso project).
+# DungeonGeometryGenerator asset library: ashlar masonry palette (the v2 look, iso project).
 # Style codes stay codes.pgg's; this is their deeper, warm-shifted rendering —
 # two-stop ramps mixed by a low mottle factor, then per-block shade jitter.
 # Shared by the v2 slot assets (facing / node / door / fill) so the whole

@@ -1,4 +1,4 @@
-# Delve asset library: small props, boxes only (delve asset style).
+# DungeonGeometryGenerator asset library: small props, boxes only (dungeon_geometry_generator asset style).
 # Decor rule: everything here is @style 0 (opening-void legal). The F11
 # elements check still applies in full: keep same-normal faces of neighbour
 # parts off shared planes (exact convex overlap is measured, not bboxes).

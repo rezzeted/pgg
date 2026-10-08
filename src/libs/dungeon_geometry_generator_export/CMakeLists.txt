@@ -1,0 +1,7 @@
+add_library(dungeon_geometry_generator_export STATIC
+    export.cpp
+)
+
+target_include_directories(dungeon_geometry_generator_export PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(dungeon_geometry_generator_export PUBLIC dungeon_geometry_generator_fill)
+target_compile_features(dungeon_geometry_generator_export PUBLIC cxx_std_20)

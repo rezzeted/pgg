@@ -1,5 +1,5 @@
-# Delve asset library: int codes (slots §1) + style palettes.
-# Values are normative: delve/project.h tables MUST match (codes_parity test).
+# DungeonGeometryGenerator asset library: int codes (slots §1) + style palettes.
+# Values are normative: dungeon_geometry_generator/project.h tables MUST match (codes_parity test).
 # 0 = unset everywhere EXCEPT zone patterns (§3: butt = 0, chase = 1).
 
 def ST_STONE() -> (out: int) {

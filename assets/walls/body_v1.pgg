@@ -1,4 +1,4 @@
-# Delve slot asset: wall_body v1 (slots §2.2). Mortar-core beam between pillar
+# DungeonGeometryGenerator slot asset: wall_body v1 (slots §2.2). Mortar-core beam between pillar
 # faces with clipped door openings (lintels above). Deterministic (no rng use).
 
 import codes as c

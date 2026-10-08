@@ -1,4 +1,4 @@
-# Delve slot asset: room_fill v1 (slots §2.1). Floor slab + flat ceiling + anchors.
+# DungeonGeometryGenerator slot asset: room_fill v1 (slots §2.1). Floor slab + flat ceiling + anchors.
 # v1 limits: RECT rooms only (expect fails otherwise); figured plans need fill_v2.
 # Spawn anchor for halls only; light always.
 

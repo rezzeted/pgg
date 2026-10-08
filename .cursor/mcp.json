@@ -15,12 +15,12 @@
         "PYTHONUNBUFFERED": "1"
       }
     },
-    "delve": {
+    "dungeon_geometry_generator": {
       "type": "stdio",
       "command": "python3",
       "args": [
         "-m",
-        "tools.delve_mcp.launch"
+        "tools.dungeon_geometry_generator_mcp.launch"
       ],
       "cwd": "${workspaceFolder}",
       "env": {

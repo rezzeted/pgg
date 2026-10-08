@@ -1,4 +1,4 @@
-# Delve slot asset: door v2 (slots §2.5) — stone portal look.
+# DungeonGeometryGenerator slot asset: door v2 (slots §2.5) — stone portal look.
 # Jamb columns of beveled blocks (lib.parts.cbox) proud of the wall faces
 # (depth = thick + 0.20 clears the facing blocks at 0.082), a joggled flat
 # arch (alternating ±2.5° blocks, wider dropped keystone) whose top embeds
