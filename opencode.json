@@ -5,6 +5,11 @@
       "type": "local",
       "command": ["python3", "-m", "tools.pgg_mcp.launch"],
       "enabled": true
+    },
+    "delve": {
+      "type": "local",
+      "command": ["python3", "-m", "tools.delve_mcp.launch"],
+      "enabled": true
     }
   }
 }
