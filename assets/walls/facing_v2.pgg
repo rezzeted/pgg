@@ -1,0 +1,178 @@
+# Delve slot asset: facing v2 (slots §2.3) — ashlar masonry look.
+# Same contract and course layout as v1 (rows of whole 2x-module elements,
+# running bond, zone pieces via elem_zone whole-element rule, door openings
+# clipped afterwards), but the element is a beveled block (lib.parts.cbox)
+# instanced on an anchor cloud: per-block palette color (ashlar.pgg) baked
+# into @tint, micro scale jitter opening mortar joints to the wall core, fbm
+# mottle over the placed mesh. Rare relief (~3% recessed and darker, ~4%
+# proud bossage on a deeper block anchored in the core) breaks the plane.
+# The courses stop one row under the wall_body
+# cap band; the freed strip [rows*module, h - 0.24] carries a two-step
+# cornice (zone-styled ledge slabs, 3 mm shadow gaps between all tiers).
+# Elements protrude to local -Z as in v1 (into
+# the room, D2.3b). Cd stays on points (the level merge is one domain, E609).
+
+import codes as c
+import patterns as z
+import ashlar as a
+import lib.parts as parts
+
+def slot_version() -> (out: int) {
+    out = 1
+}
+
+param seg: geo<points>
+param n: vec3 = (0.0, 0.0, 1.0)
+param h: f32 = 3.0
+param style: int = 1
+param module: f32 = 0.25
+param cuts: geo<points>
+param zones: geo<points>
+param rng_seed: int = 7
+
+
+p0 = value(@P, on = delete(seg, where = @index != 0))
+p1 = value(@P, on = delete(seg, where = @index != 1))
+dir = p1 - p0
+L = length(dir)
+u = dir / L
+dx = dot(u, (1, 0, 0))
+dz = dot(u, (0, 0, 1))
+# v1: placement derives from seg; n (outward normal) is contract input checked
+# by F6 (D1.3), the asset does not read it.
+yaw = degrees(atan2(0.0 - dz, dx))
+base = vec3(dot(p0, (1, 0, 0)), 0.0, dot(p0, (0, 0, 1)))
+
+root = rng_from_seed(rng_seed)
+bond_rng = split_rng(root, key = "bond")
+fbm_rng = split_rng(root, key = "fbm")
+go_left = value(random_int(2, rng = bond_rng), on = mesh_line(count = 1, length = 0.0))
+
+rows = int(floor((h - 0.24) / module)) - 1
+elem_len = module * 2.0
+depth = 0.07
+cols = int(floor(L / elem_len)) + 1
+
+# Anchor cloud: one point per whole fitting element, styled by the zone rule;
+# @tint carries the final block color (palette + per-block shade + mottle at
+# the element center), @scale opens the mortar joints between neighbours.
+cloud = repeat (empty_points(), iterations = rows * cols) |acc| {
+    e = @iteration
+    r = e / cols
+    cc = e % cols
+    y0 = f32(r) * module
+    y1 = y0 + module
+    odd = r % 2 == 1
+    sh0 = odd ? elem_len * 0.5 : 0.0
+    sh = go_left == 1 ? 0.0 - sh0 : sh0
+    x0 = f32(cc) * elem_len + sh
+    x1 = x0 + elem_len
+    fits = (x0 >= 0.0 - 0.001) & (x1 <= L + 0.001)
+    code = z.elem_zone(own = style, x0 = x0, x1 = x1, y0 = y0, y1 = y1, zones = zones)
+    keep = fits & (code >= 0)
+    pt0 = transform(mesh_line(count = 1, length = 0.0),
+                    translate = vec3((x0 + x1) * 0.5, (y0 + y1) * 0.5, 0.0 - depth * 0.5))
+    pt1 = set(pt0, "style", code, domain = points)
+    erng = split_rng(root, key = e)
+    # Rare relief: ~3% of blocks recessed into the wall (darker, in shadow),
+    # ~4% proud (bossage — instanced from the deeper source block below so the
+    # back stays anchored in the core); the rest keep the micro jitter only.
+    rel = value(random(0.0, 1.0, rng = split_rng(erng, key = "relief")), on = pt0)
+    rcls = rel < 0.03 ? 1 : (rel < 0.07 ? 2 : 0)
+    shade = value(random(0.80, 1.18, rng = split_rng(erng, key = "shade")), on = pt0) * (rcls == 1 ? 0.80 : (rcls == 2 ? 1.05 : 1.0))
+    mot = value(fbm(scale = 1.6, octaves = 2, rng = split_rng(erng, key = "mot")), on = pt0)
+    pt2 = set(pt1, "tint", a.ashlar_color(style = code, shade = shade, mot = mot), domain = points)
+    pt3 = set(pt2, "scale", value(random(0.94, 1.0, rng = split_rng(erng, key = "scale")), on = pt0), domain = points)
+    pt3b = set(pt3, "relief", rcls, domain = points)
+    dzj = value(random(0.0, 0.012, rng = split_rng(erng, key = "z")), on = pt0)
+    dzz = rcls == 1 ? value(random(0.025, 0.045, rng = split_rng(erng, key = "rec")), on = pt0) : (rcls == 2 ? 0.0 - value(random(0.03, 0.05, rng = split_rng(erng, key = "pro")), on = pt0) : 0.0 - dzj)
+    pt4 = set_position(pt3b, offset = vec3(0.0, 0.0, dzz))
+    acc = merge(acc, select(keep, a = pt4, b = empty_points()))
+}
+
+block = parts.cbox(size = vec3(elem_len, module, depth), k = 0.0, k_abs = 0.012)
+# Deep variant for the rare proud blocks (@relief == 2): same front plane as
+# the regular block at the same anchor, but the back reaches ~8 cm into the
+# wall core — a proud stone reads as bossage, not a floating tile.
+block_deep = transform(parts.cbox(size = vec3(elem_len, module, 0.15), k = 0.0, k_abs = 0.012), translate = vec3(0.0, 0.0, 0.04))
+# realize() materializes only @tint (builtin contract), so @style would be
+# lost: instance per style class and paint each realized mesh instead.
+coursed = repeat (empty_mesh(), iterations = 5) |acc| {
+    k = @iteration + 1
+    sub = delete(cloud, where = (@style != k) | (@relief == 2))
+    cls = realize(instance_on_points(sub, source = block))
+    acc = merge(acc, set(cls, "style", k, domain = points))
+}
+coursed_p = repeat (empty_mesh(), iterations = 5) |acc| {
+    k = @iteration + 1
+    sub = delete(cloud, where = (@style != k) | (@relief != 2))
+    cls = realize(instance_on_points(sub, source = block_deep))
+    acc = merge(acc, set(cls, "style", k, domain = points))
+}
+all_blocks = merge(coursed, coursed_p)
+
+# Cornice (галтель): two stepped ledge rows between the courses and the body
+# cap band (the band owns [h - 0.24, h]). The courses STOP below the cornice
+# and every tier is separated by a 3 mm shadow gap — a shared vertical plane
+# (door cut, wall end) then never cuts two tiers in overlapping y-ranges
+# (F11/elements flags such same-normal pairs). Fronts at 0.095/0.12 m stand
+# proud of the block faces (0.07..0.082) and of the cap face (0.09); backs
+# embed 0.01 into the wall core. Zone-styled like the blocks.
+ncr = max(1, int(L / 0.62))
+crw = L / f32(ncr)
+cb_a = f32(rows) * module + 0.003
+ct_a = h - 0.243
+cm_a = (cb_a + ct_a) * 0.5
+cornice = repeat (empty_mesh(), iterations = ncr * 2) |acc| {
+    e = @iteration
+    i = e / 2
+    row = e % 2
+    dp = row == 0 ? 0.095 : 0.12
+    y0c = row == 0 ? cb_a : cm_a + 0.0015
+    y1c = row == 0 ? cm_a - 0.0015 : ct_a
+    x0 = crw * f32(i)
+    x1 = x0 + crw
+    code = z.elem_zone(own = style, x0 = x0, x1 = x1, y0 = y0c, y1 = y1c, zones = zones)
+    erng = split_rng(root, key = 700 + e)
+    sj = value(random(0.95, 1.0, rng = split_rng(erng, key = "sx")), on = mesh_line(count = 1, length = 0.0))
+    shade = value(random(0.75, 1.08, rng = split_rng(erng, key = "shade")), on = mesh_line(count = 1, length = 0.0))
+    mot = value(fbm(scale = 1.6, octaves = 2, rng = split_rng(erng, key = "mot")), on = mesh_line(count = 1, length = 0.0))
+    slab = parts.cbox(size = vec3(crw * sj, y1c - y0c, dp + 0.01), k = 0.0, k_abs = 0.008)
+    slp = transform(slab, translate = vec3((x0 + x1) * 0.5, (y0c + y1c) * 0.5, 0.01 - (dp + 0.01) * 0.5))
+    slt = set(slp, "tint", a.ashlar_color(style = code, shade = shade * 0.90, mot = mot), domain = points)
+    sls = set(slt, "style", code, domain = points)
+    acc = merge(acc, select(code >= 0, a = sls, b = empty_mesh()))
+}
+
+placed = transform(merge(all_blocks, cornice), rotate = vec3(0.0, yaw, 0.0), translate = base)
+
+carved = repeat (placed, iterations = count(cuts) / 2) |acc| {
+    i = @iteration
+    pa = delete(cuts, where = @index != 2 * i)
+    pb = delete(cuts, where = @index != 2 * i + 1)
+    qa = value(@P, on = pa)
+    qb = value(@P, on = pb)
+    oh = value(@h, on = pa)
+    lo = min(dot(qa - p0, u), dot(qb - p0, u))
+    hi = max(dot(qa - p0, u), dot(qb - p0, u))
+    ca = p0 + u * lo
+    cb = p0 + u * hi
+    neg = u * (0.0 - 1.0)
+    left = clip(acc, origin = ca, normal = neg)
+    right = clip(acc, origin = cb, normal = u)
+    m0 = clip(acc, origin = ca, normal = u)
+    mid = clip(m0, origin = cb, normal = neg)
+    lintel = clip(mid, origin = vec3(0.0, oh, 0.0), normal = vec3(0.0, 1.0, 0.0))
+    acc = merge(left, right, lintel)
+}
+
+# Assembly merge (F6) needs: no groups (D500), no vec2/vec4 columns, uniform
+# point-N presence across units — so corner-N from cbox goes away and fresh
+# point normals are computed (cbox points are per-face: smooth == flat here).
+mesh0 = unmark(set(carved, "Cd", @tint * (0.92 + 0.16 * fbm(scale = 2.3, octaves = 2, rng = fbm_rng)), domain = points), "edge")
+mesh1 = remove_attr(remove_attr(mesh0, "tint"), "N")
+mesh = compute_normals(mesh1, mode = smooth)
+anchors = empty_points()
+
+output mesh
+output anchors
