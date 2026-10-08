@@ -2,19 +2,19 @@
 
 #include "preset_loader.hpp"
 
-#include "edgar/edgar.hpp"
+#include "dungeon_topology_generator/dungeon_topology_generator.hpp"
 
 #include <vector>
 
 namespace ls {
 
-extern edgar::generator::grid2d::PresetCatalog g_catalog;
+extern dungeon_topology_generator::generator::grid2d::PresetCatalog g_catalog;
 extern bool g_catalog_loaded;
 extern int g_selected_preset;
 
-extern edgar::generator::grid2d::GraphBasedGeneratorConfiguration g_gen_config;
+extern dungeon_topology_generator::generator::grid2d::GraphBasedGeneratorConfiguration g_gen_config;
 
-extern std::vector<edgar::generator::grid2d::LayoutGrid2D<int>> g_layouts;
+extern std::vector<dungeon_topology_generator::generator::grid2d::LayoutGrid2D<int>> g_layouts;
 extern int g_layout_index;
 extern bool g_use_random_seed;
 extern int g_seed;
@@ -35,7 +35,7 @@ extern bool g_catalog_from_argv;
 
 void reload_catalog_from_resources_dir(const std::string& dir);
 void reload_catalog_from_map_file(const std::string& map_path);
-/// Resets resource root to <repo>/resources/edgar_gui (walk up from executable) and reloads catalog.
+/// Resets resource root to <repo>/resources/dungeon_topology_generator_gui (walk up from executable) and reloads catalog.
 void reload_catalog_from_default_resources();
 
 void generate_from_preset(int preset_idx, unsigned rng_seed);

@@ -32,7 +32,7 @@
 
 ## Итерация 1 — Архитектура ограничений и энергии
 
-**Статус:** done — фасад `ConstraintsEvaluatorGrid2D` (basic/corridor/min-distance), `optimize_corridor_constraints`, масштабирование `BasicEnergyUpdater` (`10 * averageSize`); тесты на констрейнты и инвариант суммы штрафов в `edgar_tests.cpp`.
+**Статус:** done — фасад `ConstraintsEvaluatorGrid2D` (basic/corridor/min-distance), `optimize_corridor_constraints`, масштабирование `BasicEnergyUpdater` (`10 * averageSize`); тесты на констрейнты и инвариант суммы штрафов в `dungeon_topology_generator_tests.cpp`.
 
 - Вынести констрейнты в **композицию** классов: Basic, Corridor, MinimumDistance + общий `ConstraintsEvaluator` + `BasicEnergyUpdater` с масштабом как в `GraphBasedGeneratorGrid2D` (например `10 * averageSize`), флаги вроде `OptimizeCorridorConstraints`.
 - Расширить тесты на инварианты энергии по типам штрафов.
@@ -50,7 +50,7 @@
 
 ## Итерация 2 — Mapping и RoomShapesHandler
 
-**Статус:** done — `LevelDescriptionMappingGrid2D`, `RoomShapesHandlerGrid2D` (repeat/weights/alias), дефолт `NoRepeat` как в C#; портированные тесты `EdgarMappingCsharpParity` (2) и `EdgarRoomShapesCsharpParity` (8).
+**Статус:** done — `LevelDescriptionMappingGrid2D`, `RoomShapesHandlerGrid2D` (repeat/weights/alias), дефолт `NoRepeat` как в C#; портированные тесты `DungeonTopologyGeneratorMappingCsharpParity` (2) и `DungeonTopologyGeneratorRoomShapesCsharpParity` (8).
 
 - Явный слой `LevelDescriptionMapping` (комната ↔ узел, описание, шаблоны).
 - Логика `RoomShapesHandlerGrid2D`: repeat mode, веса `WeightedShape`, alias по смыслу как `IntAlias` / `TwoWayDictionary` в C#.
@@ -75,7 +75,7 @@
 
 **Тесты после итерации:**
 
-- Регрессия существующих `TEST` в `edgar_tests.cpp` (цепочка, коридоры, SA-события, детерминизм) — **все зелёные** после изменения perturb.
+- Регрессия существующих `TEST` в `dungeon_topology_generator_tests.cpp` (цепочка, коридоры, SA-события, детерминизм) — **все зелёные** после изменения perturb.
 - Новые тесты: **детерминизм** при фиксированном RNG и одинаковом порядке инъекций в контроллер/КП/эволютор (как минимум два прогона с одним seed дают идентичный layout или идентичную последовательность событий).
 - Тесты на **допустимость позиций**: после шага perturb позиция остаётся в объединении КП с соседями (выборка на нескольких микро-уровнях из референса).
 - Опционально: расширить **точечные** численные совпадения с C# (в духе `OverlapAlongLine_TwoRectsMatchCsharp`) для этапа SA, если появится общий входной формат.
@@ -86,7 +86,7 @@
 
 ## Итерация 4 — Двери
 
-**Статус:** done — `SimpleDoorModeGrid2D` (overlap), `ManualDoorModeGrid2D` (specific positions) с C#-представлением точечных линий (`degeneratedDirection` у `OrthogonalLineGrid2D`); портированные тесты `EdgarDoorsCsharpParity` (7) из `OverlapModeHandlerTests` / `SpecificPositionsModeHandlerTests`. Отдельный legacy-реестр `DoorHandler` не переносится (не блокер).
+**Статус:** done — `SimpleDoorModeGrid2D` (overlap), `ManualDoorModeGrid2D` (specific positions) с C#-представлением точечных линий (`degeneratedDirection` у `OrthogonalLineGrid2D`); портированные тесты `DungeonTopologyGeneratorDoorsCsharpParity` (7) из `OverlapModeHandlerTests` / `SpecificPositionsModeHandlerTests`. Отдельный legacy-реестр `DoorHandler` не переносится (не блокер).
 
 - Реализовать стратегии **overlap** и **specific positions** (и при необходимости manual), по тестам `OverlapModeHandlerTests`, `SpecificPositionsModeHandlerTests`.
 - Связка с генерацией КП как у `DoorHandler` в C#.
@@ -94,7 +94,7 @@
 **Тесты после итерации:**
 
 - Портировать кейсы из **`OverlapModeHandlerTests.cs`** и **`SpecificPositionsModeHandlerTests.cs`** (`_edgar_ref/src/Edgar.Tests/Core/Doors/`) — те же входные дверные линии/полигоны и ожидаемые множества допустимых позиций или дверей.
-- Регрессия **`DoorUtilsTests`** / `MergeDoorLines` — уже частично в `edgar_parity_tests`; дополнить под новые режимы.
+- Регрессия **`DoorUtilsTests`** / `MergeDoorLines` — уже частично в `dungeon_topology_generator_parity_tests`; дополнить под новые режимы.
 - Интеграционный тест: генерация КП с **не-simple** handler'ом и проверка успешного layout на маленьком графе.
 
 *См. «3.3 Отсутствует» (двери) в [port_vs_original_gap.md](port_vs_original_gap.md).*
@@ -115,7 +115,7 @@
 - **События:** таблица соответствия «тип события C# → callback в C++» покрыта тестами (порядок и минимум один вызов на эталонном уровне).
 - Регрессия: существующие тесты стриминга (`Chain_yieldStream_*`, `RandomRestart_*`) остаются зелёными.
 
-Покрытие в `edgar_tests.cpp`: `GraphBasedGenerator_earlyStopMaxIterations_chain`, `GraphBasedGenerator_earlyStopElapsed_mockClock_chain`, `GraphBasedGenerator_cooperativeCancel_thenReset`, `GraphBasedGenerator_cancelExclusiveWithEarlyStop`, `GraphBasedGenerator_lifecycleCallbacks_chain`, `GraphBasedGenerator_strip_earlyStopElapsed_partialLayout`.
+Покрытие в `dungeon_topology_generator_tests.cpp`: `GraphBasedGenerator_earlyStopMaxIterations_chain`, `GraphBasedGenerator_earlyStopElapsed_mockClock_chain`, `GraphBasedGenerator_cooperativeCancel_thenReset`, `GraphBasedGenerator_cancelExclusiveWithEarlyStop`, `GraphBasedGenerator_lifecycleCallbacks_chain`, `GraphBasedGenerator_strip_earlyStopElapsed_partialLayout`.
 
 *См. «2. Архитектура» в [port_vs_original_gap.md](port_vs_original_gap.md).*
 
@@ -123,7 +123,7 @@
 
 ## Итерация 6 — Конвертер layout
 
-**Статус:** реализовано — `BasicLayoutConverterGrid2D` в [`basic_layout_converter_grid2d.hpp`](../src/libs/edgar/include/edgar/generator/grid2d/basic_layout_converter_grid2d.hpp), делегирование из `Grid2DLayoutState::to_layout_grid`, `make_room` для strip; экспорт через [`edgar.hpp`](../src/libs/edgar/include/edgar/edgar.hpp).
+**Статус:** реализовано — `BasicLayoutConverterGrid2D` в [`basic_layout_converter_grid2d.hpp`](../src/libs/dungeon_topology_generator/include/dungeon_topology_generator/generator/grid2d/basic_layout_converter_grid2d.hpp), делегирование из `Grid2DLayoutState::to_layout_grid`, `make_room` для strip; экспорт через [`dungeon_topology_generator.hpp`](../src/libs/dungeon_topology_generator/include/dungeon_topology_generator/dungeon_topology_generator.hpp).
 
 - Выделить `BasicLayoutConverterGrid2D`: граница между внутренним состоянием цепи/конфигураций и публичным `LayoutGrid2D`.
 
@@ -131,15 +131,15 @@
 
 - Юнит-тесты конвертера: **round-trip** или «внутренний layout → `LayoutGrid2D`» с фиксированными мок-данными; сравнение полей `LayoutRoomGrid2D` (outline, position, doors при наличии).
 - Тест на **идемпотентность** или стабильность: повторная конвертация того же внутреннего состояния даёт тот же публичный layout.
-- Интеграция: один сценарий из `edgar_tests` проходит через публичный API с выделенным конвертером без регрессии JSON/room count.
+- Интеграция: один сценарий из `dungeon_topology_generator_tests` проходит через публичный API с выделенным конвертером без регрессии JSON/room count.
 
-Покрытие в `edgar_tests.cpp`: `EdgarLayoutConverter.BasicLayoutConverter_matchesToLayoutGrid` (в т.ч. сравнение JSON), `BasicLayoutConverter_idempotent`, `BasicLayoutConverter_addDoors_matchesStandaloneCompute`, `BasicLayoutConverter_makeRoom_stripParity`.
+Покрытие в `dungeon_topology_generator_tests.cpp`: `DungeonTopologyGeneratorLayoutConverter.BasicLayoutConverter_matchesToLayoutGrid` (в т.ч. сравнение JSON), `BasicLayoutConverter_idempotent`, `BasicLayoutConverter_addDoors_matchesStandaloneCompute`, `BasicLayoutConverter_makeRoom_stripParity`.
 
 ---
 
 ## Итерация 7 — Интеграция и перфоманс
 
-**Статус:** done — матрица итерации 0 закрыта полностью (26 done / 6 skip (na)) в [`test_matrix_iteration0.md`](test_matrix_iteration0.md); интеграционные инварианты pipeline в `EdgarIntegration.DungeonGenerator_*` ([`edgar_tests.cpp`](../src/tests/edgar_tests.cpp)); производительность — [`tools/benchmark_layout_generation.py`](../tools/benchmark_layout_generation.py) с CI-гейтами `--check`, паритет по времени с C#-референсом подтверждён на bundled-картах (см. [parity_next_steps_plan.md](parity_next_steps_plan.md), секция H4).
+**Статус:** done — матрица итерации 0 закрыта полностью (26 done / 6 skip (na)) в [`test_matrix_iteration0.md`](test_matrix_iteration0.md); интеграционные инварианты pipeline в `DungeonTopologyGeneratorIntegration.DungeonGenerator_*` ([`dungeon_topology_generator_tests.cpp`](../src/tests/dungeon_topology_generator_tests.cpp)); производительность — [`tools/benchmark_layout_generation.py`](../tools/benchmark_layout_generation.py) с CI-гейтами `--check`, паритет по времени с C#-референсом подтверждён на bundled-картах (см. [parity_next_steps_plan.md](parity_next_steps_plan.md), секция H4).
 
 - Портировать ключевые `Edgar.IntegrationTests` по мере необходимости.
 - Опционально: слой performance-тестов на эталонных картах.
@@ -151,7 +151,7 @@
 - Закрытие **матрицы** из итерации 0: все строки «C# тест → C++ тест» имеют статус done или явный `SKIP` с причиной.
 - **Performance (опционально):** отдельная цель или скрипт — время генерации на 1–2 эталонных пресетах не хуже базового порога (регрессия при оптимизациях).
 
-Покрытие: `EdgarIntegration.DungeonGenerator_pathGraph_pipelineNoOverlap`, `DungeonGenerator_branchGraph_pipelineNoOverlap`, `DungeonGenerator_sameSeedDeterministicLayoutJson`.
+Покрытие: `DungeonTopologyGeneratorIntegration.DungeonGenerator_pathGraph_pipelineNoOverlap`, `DungeonGenerator_branchGraph_pipelineNoOverlap`, `DungeonGenerator_sameSeedDeterministicLayoutJson`.
 
 ---
 
@@ -166,5 +166,5 @@ Meta-optimization, evolution sandbox, Unity build, platformers generator, backtr
 ## Порядок работ и риски
 
 - Все итерации 0–7 и этапы H1–H4 завершены; документ сохранён как исторический план.
-- Крупные рефакторинги (1–3) ломали тесты — зелёный прогон `edgar_tests` / `edgar_parity_tests` поддерживался после каждой итерации и остаётся обязательным гейтом (225/225, обе конфигурации).
+- Крупные рефакторинги (1–3) ломали тесты — зелёный прогон `dungeon_topology_generator_tests` / `dungeon_topology_generator_parity_tests` поддерживался после каждой итерации и остаётся обязательным гейтом (225/225, обе конфигурации).
 - Паритет **seed → layout** (побитовое совпадение выхода при фиксированном seed) не достигнут и не является целью; критерий паритета — логическое совпадение поведения (портированные тесты + golden-сценарии + сопоставимые время/сходимость).

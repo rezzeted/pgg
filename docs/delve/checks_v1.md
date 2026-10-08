@@ -87,7 +87,7 @@ check на тёплой петле DelveServe реплеит вердикты re
 ## Сквозные тесты (D2.3b)
 
 `GenerateRectLevelEndToEnd` / `GenerateFiguredLevelEndToEnd`: полная цепочка
-проект v1 → каталог → раскладка edgar → `delve-layout/0` → IR (D2.3b) →
+проект v1 → каталог → раскладка dungeon_topology_generator → `delve-layout/0` → IR (D2.3b) →
 наполнение → `check_level`. Первый — реальные ассеты и ворота (dtype из ребра
 графа); второй — фигурный зал с вогнутым углом (`grand_hall`), комнатное
 наполнение подменено пустым тестовым ассетом (v1-ассет rect-only), лампы

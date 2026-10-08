@@ -11,6 +11,6 @@ add_library(delve_d0 STATIC
 )
 target_include_directories(delve_d0 PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_precompile_headers(delve_d0 PRIVATE pch.h)
-target_link_libraries(delve_d0 PUBLIC edgar nlohmann_json::nlohmann_json yaml-cpp::yaml-cpp)
+target_link_libraries(delve_d0 PUBLIC dungeon_topology_generator nlohmann_json::nlohmann_json yaml-cpp::yaml-cpp)
 target_compile_features(delve_d0 PUBLIC cxx_std_20)
 set_property(TARGET delve_d0 PROPERTY FOLDER libs)

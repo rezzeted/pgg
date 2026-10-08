@@ -1,4 +1,4 @@
-// Layout generation benchmark: loads a YAML map from resources/edgar_gui (or a path given via
+// Layout generation benchmark: loads a YAML map from resources/dungeon_topology_generator_gui (or a path given via
 // argv) and measures generation time over N seeds. Prints a single summary line:
 //   benchmark map=<file> iterations=<n> min_ms=<..> median_ms=<..> max_ms=<..> rooms=<..>
 // Exit code 1 when --threshold-ms <ms> is set and the median exceeds it (regression gate).
@@ -7,13 +7,13 @@
 
 #include "preset_loader.hpp"
 
-#include "edgar/generator/grid2d/graph_based_generator_configuration.hpp"
-#include "edgar/generator/grid2d/graph_based_generator_grid2d.hpp"
-#include "edgar/generator/grid2d/level_description_grid2d.hpp"
-#include "edgar/generator/grid2d/layout_orchestration.hpp"
-#include "edgar/generator/grid2d/manual_door_mode_grid2d.hpp"
-#include "edgar/generator/grid2d/simple_door_mode_grid2d.hpp"
-#include "edgar/geometry/overlap.hpp"
+#include "dungeon_topology_generator/generator/grid2d/graph_based_generator_configuration.hpp"
+#include "dungeon_topology_generator/generator/grid2d/graph_based_generator_grid2d.hpp"
+#include "dungeon_topology_generator/generator/grid2d/level_description_grid2d.hpp"
+#include "dungeon_topology_generator/generator/grid2d/layout_orchestration.hpp"
+#include "dungeon_topology_generator/generator/grid2d/manual_door_mode_grid2d.hpp"
+#include "dungeon_topology_generator/generator/grid2d/simple_door_mode_grid2d.hpp"
+#include "dungeon_topology_generator/geometry/overlap.hpp"
 
 #include <nlohmann/json.hpp>
 
@@ -30,7 +30,7 @@
 namespace {
 
 namespace fs = std::filesystem;
-namespace grid2d = edgar::generator::grid2d;
+namespace grid2d = dungeon_topology_generator::generator::grid2d;
 
 fs::path repo_root_from_this_file() {
     return fs::path(__FILE__).parent_path().parent_path().parent_path();
@@ -40,7 +40,7 @@ void usage() {
     std::fprintf(stderr,
                  "usage: benchmark_layout [--map <name.yml>] [--iterations N] [--threshold-ms MS]\n"
                  "                        [--budget-ms MS] [--stats] [--dump-scenario out.json]\n"
-                 "  --map            file inside resources/edgar_gui/Maps (default: 9vertices.yml)\n"
+                 "  --map            file inside resources/dungeon_topology_generator_gui/Maps (default: 9vertices.yml)\n"
                  "  --iterations     number of generations, seeds 1..N (default: 20)\n"
                  "  --threshold-ms   fail when median generation time exceeds MS\n"
                  "  --budget-ms      early-stop budget per generation (0 = none, default)\n"
@@ -136,7 +136,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    const fs::path resources = repo_root_from_this_file() / "resources" / "edgar_gui";
+    const fs::path resources = repo_root_from_this_file() / "resources" / "dungeon_topology_generator_gui";
     if (!fs::exists(resources)) {
         std::fprintf(stderr, "missing resources root: %s\n", resources.string().c_str());
         return 2;
@@ -177,11 +177,11 @@ int main(int argc, char** argv) {
         grid2d::LevelDescriptionGrid2D<int> level = grid2d::build_level_from_preset(*map, loaded.catalog);
         if (!repeat_override.empty()) {
             if (repeat_override == "allow") {
-                level.room_template_repeat_mode_override = edgar::generator::RoomTemplateRepeatMode::AllowRepeat;
+                level.room_template_repeat_mode_override = dungeon_topology_generator::generator::RoomTemplateRepeatMode::AllowRepeat;
             } else if (repeat_override == "no-immediate") {
-                level.room_template_repeat_mode_override = edgar::generator::RoomTemplateRepeatMode::NoImmediate;
+                level.room_template_repeat_mode_override = dungeon_topology_generator::generator::RoomTemplateRepeatMode::NoImmediate;
             } else if (repeat_override == "no-repeat") {
-                level.room_template_repeat_mode_override = edgar::generator::RoomTemplateRepeatMode::NoRepeat;
+                level.room_template_repeat_mode_override = dungeon_topology_generator::generator::RoomTemplateRepeatMode::NoRepeat;
             } else {
                 std::fprintf(stderr, "unknown repeat override: %s\n", repeat_override.c_str());
                 return 2;
@@ -216,7 +216,7 @@ int main(int argc, char** argv) {
             bool any_overlap = false;
             for (std::size_t a = 0; a < layout.rooms.size() && !any_overlap; ++a) {
                 for (std::size_t b = a + 1; b < layout.rooms.size(); ++b) {
-                    if (edgar::geometry::polygons_overlap_area(layout.rooms[a].outline, layout.rooms[a].position,
+                    if (dungeon_topology_generator::geometry::polygons_overlap_area(layout.rooms[a].outline, layout.rooms[a].position,
                                                                layout.rooms[b].outline, layout.rooms[b].position)) {
                         any_overlap = true;
                         break;

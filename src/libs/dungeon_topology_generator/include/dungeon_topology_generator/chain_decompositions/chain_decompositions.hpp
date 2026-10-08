@@ -1,0 +1,7 @@
+#pragma once
+
+#include "dungeon_topology_generator/chain_decompositions/breadth_first_chain_decomposition_old.hpp"
+#include "dungeon_topology_generator/chain_decompositions/chain.hpp"
+#include "dungeon_topology_generator/chain_decompositions/chain_decomposition_configuration.hpp"
+#include "dungeon_topology_generator/chain_decompositions/tree_component_strategy.hpp"
+#include "dungeon_topology_generator/chain_decompositions/two_stage_chain_decomposition.hpp"

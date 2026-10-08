@@ -10,10 +10,10 @@
   арт-примеры. Устройство языка и грабли реализации — `docs/pgg/`; правя код,
   обновляй `docs/pgg/implementation.md`, а не этот файл.
 - **Delve** — оркестратор подземелий поверх PGG (слот-ассеты `assets/`) и
-  edgar (раскладки). Нормативный документ — `docs/delve/requirements.md`
+  dungeon_topology_generator (раскладки). Нормативный документ — `docs/delve/requirements.md`
   (§5–§9 — конвейер F1–F11, N-хвосты — сквозные требования).
-- **level-synth / edgar** — порт Edgar-DotNet: библиотека раскладок
-  `src/libs/edgar`, SDL3-вьюер `src/apps/main`, данные `test_data/`,
+- **level-synth / dungeon_topology_generator** — порт Edgar-DotNet: библиотека раскладок
+  `src/libs/dungeon_topology_generator`, SDL3-вьюер `src/apps/main`, данные `test_data/`,
   доки `docs/level-synth/`.
 
 ## Коммуникация и язык
@@ -33,7 +33,7 @@
   корневой `CMakeLists.txt` один, `src/{libs,apps,tests}` подхватывают
   подкаталоги GLOB'ом.
 - **Стек:** C++20, ANTLR4 4.13.2, glm, gtest; PggViewer/DelveViewer — Sokol +
-  Dear ImGui + spdlog; edgar — boost-graph, yaml-cpp, nlohmann-json, SDL3
+  Dear ImGui + spdlog; dungeon_topology_generator — boost-graph, yaml-cpp, nlohmann-json, SDL3
   (вьюер). Без Qt. Не вводить тяжёлые зависимости без согласования.
 - Спецификация языка — `docs/pgg/geometry_generation_language.md`
   (единственный источник правды по семантике). Реализация —
@@ -117,7 +117,7 @@ Linux-флоу — Ninja (single-config) + CMake Presets, триплет `x64-li
   `delve_check_test` (~1–2 мин; `DelveCheck.PassFrozen` — отдельно на
   незагруженной машине). Детерминизм (N1) и стабильный порядок ключей (N6) —
   проверять тестами; чужой `format` отклонять с подсказкой (N7).
-- **edgar:** `edgar_tests`, `edgar_parity_tests`, `preset_loader_tests`,
+- **dungeon_topology_generator:** `dungeon_topology_generator_tests`, `dungeon_topology_generator_parity_tests`, `preset_loader_tests`,
   `generation_diagnostic_test`, `parity_golden_test` (данные — `test_data/`),
   `benchmark_layout` (smoke-гейт).
 - Продуктовые/арт-примеры pgg — `resources/pgg/` (`lib/` и сцены) и
@@ -179,9 +179,9 @@ Linux-флоу — Ninja (single-config) + CMake Presets, триплет `x64-li
 - PGG-ассеты delve используют общую библиотеку `resources/pgg/lib/` — правки
   общих def'ов проверять рендерами всех потребителей (см. «PGG → Арт-итерации»).
 
-## level-synth / edgar
+## level-synth / dungeon_topology_generator
 
-- `src/libs/edgar` — библиотека раскладок (порт Edgar-DotNet); Clipper2 тянется
+- `src/libs/dungeon_topology_generator` — библиотека раскладок (порт Edgar-DotNet); Clipper2 тянется
   FetchContent'ом при configure (нужна сеть). `src/libs/drui` — ImGui-helpers
   вьюера. `src/apps/main` — SDL3 + ImGui вьюер (legacy-имя таргета `main`).
 - Паритет с оригинальным C# — `docs/level-synth/`, данные `test_data/parity`

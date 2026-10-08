@@ -135,7 +135,7 @@ bool parse_contour(const nlohmann::json& j, const std::string& path, const std::
         return false;
     }
     for (size_t i = 0; i < n; ++i) {
-        // edgar's PolygonGrid2D rejects these at construction; report at F1.
+        // dungeon_topology_generator's PolygonGrid2D rejects these at construction; report at F1.
         const CellPt a = c[i], b = c[(i + 1) % n], d = c[(i + 2) % n];
         if ((a.first == b.first && b.first == d.first) ||
             (a.second == b.second && b.second == d.second)) {

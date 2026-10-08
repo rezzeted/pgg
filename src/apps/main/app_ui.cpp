@@ -95,13 +95,13 @@ void draw_left_settings_panel(const PanelLayout& zone) {
             ImGui::EndCombo();
         }
 
-        ImGui::TextDisabled("Maps: <repo>/resources/edgar_gui/Maps/  (%d files)", n_maps);
+        ImGui::TextDisabled("Maps: <repo>/resources/dungeon_topology_generator_gui/Maps/  (%d files)", n_maps);
         ImGui::TextDisabled("%s", g_resources_path);
         ImGui::Text("Rooms: %d-%d | Passages: %d", cur.room_from, cur.room_to,
                     static_cast<int>(cur.passages.size()));
         ImGui::Text("Corridors: %s", cur.corridors_enabled ? "Yes" : "No");
     } else {
-        ImGui::TextUnformatted("No maps under resources/edgar_gui/Maps/");
+        ImGui::TextUnformatted("No maps under resources/dungeon_topology_generator_gui/Maps/");
         ImGui::TextDisabled("%s", g_resources_path);
     }
     if (ImGui::Button("Reload catalog", ImVec2(-1.0f, 0.0f))) {

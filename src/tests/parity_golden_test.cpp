@@ -17,11 +17,11 @@
 
 #include <nlohmann/json.hpp>
 
-#include "edgar/generator/grid2d/graph_based_generator_grid2d.hpp"
-#include "edgar/generator/grid2d/layout_door_computation.hpp"
-#include "edgar/generator/grid2d/level_description_grid2d.hpp"
-#include "edgar/generator/grid2d/simple_door_mode_grid2d.hpp"
-#include "edgar/geometry/polygon_overlap_grid2d.hpp"
+#include "dungeon_topology_generator/generator/grid2d/graph_based_generator_grid2d.hpp"
+#include "dungeon_topology_generator/generator/grid2d/layout_door_computation.hpp"
+#include "dungeon_topology_generator/generator/grid2d/level_description_grid2d.hpp"
+#include "dungeon_topology_generator/generator/grid2d/simple_door_mode_grid2d.hpp"
+#include "dungeon_topology_generator/geometry/polygon_overlap_grid2d.hpp"
 
 #ifndef PARITY_DATA_DIR
 #define PARITY_DATA_DIR "test_data/parity"
@@ -29,16 +29,16 @@
 
 namespace {
 
-using edgar::generator::RoomTemplateRepeatMode;
-using edgar::generator::grid2d::GraphBasedGeneratorGrid2D;
-using edgar::generator::grid2d::LayoutGrid2D;
-using edgar::generator::grid2d::LevelDescriptionGrid2D;
-using edgar::generator::grid2d::RoomDescriptionGrid2D;
-using edgar::generator::grid2d::RoomTemplateGrid2D;
-using edgar::generator::grid2d::SimpleDoorModeGrid2D;
-using edgar::geometry::PolygonGrid2D;
-using edgar::geometry::TransformationGrid2D;
-using edgar::geometry::Vector2Int;
+using dungeon_topology_generator::generator::RoomTemplateRepeatMode;
+using dungeon_topology_generator::generator::grid2d::GraphBasedGeneratorGrid2D;
+using dungeon_topology_generator::generator::grid2d::LayoutGrid2D;
+using dungeon_topology_generator::generator::grid2d::LevelDescriptionGrid2D;
+using dungeon_topology_generator::generator::grid2d::RoomDescriptionGrid2D;
+using dungeon_topology_generator::generator::grid2d::RoomTemplateGrid2D;
+using dungeon_topology_generator::generator::grid2d::SimpleDoorModeGrid2D;
+using dungeon_topology_generator::geometry::PolygonGrid2D;
+using dungeon_topology_generator::geometry::TransformationGrid2D;
+using dungeon_topology_generator::geometry::Vector2Int;
 using json = nlohmann::json;
 
 struct TemplateSpec {
@@ -132,7 +132,7 @@ LayoutGrid2D<int> generate_layout(const Scenario& s, const LevelDescriptionGrid2
     generator.inject_random_generator(std::move(rng));
     auto layout = generator.generate_layout();
     std::mt19937 door_rng(static_cast<unsigned>(s.seed) + 1u);
-    edgar::generator::grid2d::compute_layout_doors(layout, level, level.get_graph(), door_rng);
+    dungeon_topology_generator::generator::grid2d::compute_layout_doors(layout, level, level.get_graph(), door_rng);
     return layout;
 }
 
@@ -224,7 +224,7 @@ void expect_layout_valid(const std::vector<RoomView>& rooms, const std::set<std:
 
     for (std::size_t i = 0; i < rooms.size(); ++i) {
         for (std::size_t j = i + 1; j < rooms.size(); ++j) {
-            EXPECT_FALSE(edgar::geometry::polygons_overlap_area(rooms[i].absolute_outline, {0, 0},
+            EXPECT_FALSE(dungeon_topology_generator::geometry::polygons_overlap_area(rooms[i].absolute_outline, {0, 0},
                                                                 rooms[j].absolute_outline, {0, 0}))
                 << engine_label << ": rooms " << rooms[i].id << " and " << rooms[j].id << " overlap";
         }
@@ -238,9 +238,9 @@ void expect_layout_valid(const std::vector<RoomView>& rooms, const std::set<std:
 
 } // namespace
 
-class EdgarGoldenParity : public testing::TestWithParam<std::string> {};
+class DungeonTopologyGeneratorGoldenParity : public testing::TestWithParam<std::string> {};
 
-TEST_P(EdgarGoldenParity, Scenario_GeneratesAndMatchesReferenceLogically) {
+TEST_P(DungeonTopologyGeneratorGoldenParity, Scenario_GeneratesAndMatchesReferenceLogically) {
     const std::filesystem::path data_dir = PARITY_DATA_DIR;
     const auto scenario = load_scenario(data_dir / "scenarios" / (GetParam() + ".json"));
 
@@ -275,5 +275,5 @@ TEST_P(EdgarGoldenParity, Scenario_GeneratesAndMatchesReferenceLogically) {
     EXPECT_EQ(cs_corridors, scenario.expected_corridors);
 }
 
-INSTANTIATE_TEST_SUITE_P(Parity, EdgarGoldenParity,
+INSTANTIATE_TEST_SUITE_P(Parity, DungeonTopologyGeneratorGoldenParity,
                          testing::Values("four_room_cycle", "three_room_corridor_line", "six_room_star"));

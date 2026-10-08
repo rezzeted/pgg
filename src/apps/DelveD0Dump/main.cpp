@@ -1,5 +1,5 @@
 // DelveD0Dump: one-shot frozen-IR dump for D0 (requirements §11).
-// Runs edgar on a tutorial preset with a fixed seed and writes frozen_ir.json,
+// Runs dungeon_topology_generator on a tutorial preset with a fixed seed and writes frozen_ir.json,
 // rooms.points.json, d0_view.pgg and reference.png. Not part of ctest: layout
 // generation is reproducible only on one platform/build (N1) — the committed
 // docs/delve/d0 artifacts are the frozen result, verified by delve_d0_test.
@@ -8,9 +8,9 @@
 #include <random>
 #include <string>
 
-#include "edgar/generator/grid2d/graph_based_generator_configuration.hpp"
-#include "edgar/generator/grid2d/graph_based_generator_grid2d.hpp"
-#include "edgar/generator/grid2d/layout_door_computation.hpp"
+#include "dungeon_topology_generator/generator/grid2d/graph_based_generator_configuration.hpp"
+#include "dungeon_topology_generator/generator/grid2d/graph_based_generator_grid2d.hpp"
+#include "dungeon_topology_generator/generator/grid2d/layout_door_computation.hpp"
 #include "ir_dump.h"
 #include "preset_loader.hpp"
 
@@ -18,7 +18,7 @@ namespace {
 
 void usage() {
     std::fprintf(stderr,
-                 "usage: DelveD0Dump --resources <edgar_gui dir> --map <name.yml> --out <dir> "
+                 "usage: DelveD0Dump --resources <dungeon_topology_generator_gui dir> --map <name.yml> --out <dir> "
                  "[--seed N] [--cell M]\n");
 }
 
@@ -63,7 +63,7 @@ int main(int argc, char** argv) {
         return 2;
     }
 
-    namespace grid2d = edgar::generator::grid2d;
+    namespace grid2d = dungeon_topology_generator::generator::grid2d;
     auto loaded = grid2d::load_preset_catalog_with_status(resources);
     if (!loaded.error.empty()) {
         std::fprintf(stderr, "catalog: %s\n", loaded.error.c_str());

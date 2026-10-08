@@ -1,9 +1,9 @@
-PROJECT_NAME           = "Edgar C++"
+PROJECT_NAME           = "dungeon_topology_generator"
 OUTPUT_DIRECTORY       = ../_build/docs/doxygen
 GENERATE_HTML          = YES
 GENERATE_LATEX         = NO
 RECURSIVE              = YES
-INPUT                  = ../src/libs/edgar/include/edgar
+INPUT                  = ../src/libs/dungeon_topology_generator/include/dungeon_topology_generator
 FILE_PATTERNS          = *.hpp
 EXTRACT_ALL            = YES
 QUIET                  = YES

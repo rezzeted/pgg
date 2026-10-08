@@ -4,14 +4,14 @@
 
 | ID | Критерий | Проверка (C++ тест) |
 |----|----------|---------------------|
-| **D1** | При фиксированном seed генератор даёт **воспроизводимый** результат на эталонных сценариях | `EdgarGolden.DeterministicGeneration_SameSeedSameOutput`, `DeterministicGeneration_DifferentSeedDifferentOutput`, `Xorshift64star_DeterministicSequence` в `edgar_tests.cpp` |
-| **D2** | Graph-based генерация **без overlap** комнат на эталонных графах (цикл, звезда, коридор) | `EdgarGenerator.FourRoomCycle`, `FourRoomCycle_stripBackend`, `Chain_threeRoomsWithCorridor_lineGraph`, `SixRoomStarGraph_noOverlap`, `CorridorWithDoors_noOverlapAndValidLayout` в `edgar_tests.cpp` |
-| **D3** | События оркестрации SA **срабатывают** при заданных настройках (restart, stage two failure, out of iterations, stream) | `EdgarSA.RandomRestart_triggersOnHighFailures`, `StageTwoFailure_incrementsInStream`, `OutOfIterations_emittedWhenNoLayoutFound`, `EdgarGenerator.StreamMode_OnEachLayoutGenerated_countsEvents`, `Chain_yieldStream_matchesSingleAndCountsEvents` в `edgar_tests.cpp` |
-| **D4** | Энергия: **нулевой** суммарный штраф при корректных непересекающихся позициях; **инвариант** суммы incident vs total | `EdgarEnergy.ConstraintsEvaluator_noOverlapZeroPenalty`, `Incident_to_room_sumMatchesTwiceTotal` в `edgar_tests.cpp` |
-| **D5** | **Configuration spaces:** непустота КП / совместимые позиции в базовых кейсах | `EdgarConfigSpaces.ConfigurationSpacesGenerator_nonEmptyForMatchingSquares`, `CompatibleNonOverlapping_twoRects` в `edgar_tests.cpp`; блок `EdgarConfigSpace::*` в `edgar_parity_tests.cpp` |
-| **D6** | **Точечный численный контакт** с C# (одна из геометрических процедур) | `EdgarGeometry.OverlapAlongLine_TwoRectsMatchCsharp` в `edgar_tests.cpp` |
-| **D7** | Публичный `LayoutGrid2D` собирается через **конвертер** из `Grid2DLayoutState` (идемпотентность, опционально двери) | `EdgarLayoutConverter.BasicLayoutConverter_*` в `edgar_tests.cpp` |
-| **D8** | **Матрица** C#→C++ ([`test_matrix_iteration0.md`](test_matrix_iteration0.md)) закрыта статусами; интеграционный pipeline без overlap / детерминизм JSON | колонка `status` в матрице; `EdgarIntegration.DungeonGenerator_*` в `edgar_tests.cpp` |
+| **D1** | При фиксированном seed генератор даёт **воспроизводимый** результат на эталонных сценариях | `DungeonTopologyGeneratorGolden.DeterministicGeneration_SameSeedSameOutput`, `DeterministicGeneration_DifferentSeedDifferentOutput`, `Xorshift64star_DeterministicSequence` в `dungeon_topology_generator_tests.cpp` |
+| **D2** | Graph-based генерация **без overlap** комнат на эталонных графах (цикл, звезда, коридор) | `DungeonTopologyGeneratorGenerator.FourRoomCycle`, `FourRoomCycle_stripBackend`, `Chain_threeRoomsWithCorridor_lineGraph`, `SixRoomStarGraph_noOverlap`, `CorridorWithDoors_noOverlapAndValidLayout` в `dungeon_topology_generator_tests.cpp` |
+| **D3** | События оркестрации SA **срабатывают** при заданных настройках (restart, stage two failure, out of iterations, stream) | `DungeonTopologyGeneratorSA.RandomRestart_triggersOnHighFailures`, `StageTwoFailure_incrementsInStream`, `OutOfIterations_emittedWhenNoLayoutFound`, `DungeonTopologyGeneratorGenerator.StreamMode_OnEachLayoutGenerated_countsEvents`, `Chain_yieldStream_matchesSingleAndCountsEvents` в `dungeon_topology_generator_tests.cpp` |
+| **D4** | Энергия: **нулевой** суммарный штраф при корректных непересекающихся позициях; **инвариант** суммы incident vs total | `DungeonTopologyGeneratorEnergy.ConstraintsEvaluator_noOverlapZeroPenalty`, `Incident_to_room_sumMatchesTwiceTotal` в `dungeon_topology_generator_tests.cpp` |
+| **D5** | **Configuration spaces:** непустота КП / совместимые позиции в базовых кейсах | `DungeonTopologyGeneratorConfigSpaces.ConfigurationSpacesGenerator_nonEmptyForMatchingSquares`, `CompatibleNonOverlapping_twoRects` в `dungeon_topology_generator_tests.cpp`; блок `DungeonTopologyGeneratorConfigSpace::*` в `dungeon_topology_generator_parity_tests.cpp` |
+| **D6** | **Точечный численный контакт** с C# (одна из геометрических процедур) | `DungeonTopologyGeneratorGeometry.OverlapAlongLine_TwoRectsMatchCsharp` в `dungeon_topology_generator_tests.cpp` |
+| **D7** | Публичный `LayoutGrid2D` собирается через **конвертер** из `Grid2DLayoutState` (идемпотентность, опционально двери) | `DungeonTopologyGeneratorLayoutConverter.BasicLayoutConverter_*` в `dungeon_topology_generator_tests.cpp` |
+| **D8** | **Матрица** C#→C++ ([`test_matrix_iteration0.md`](test_matrix_iteration0.md)) закрыта статусами; интеграционный pipeline без overlap / детерминизм JSON | колонка `status` в матрице; `DungeonTopologyGeneratorIntegration.DungeonGenerator_*` в `dungeon_topology_generator_tests.cpp` |
 
 ## Эталонные сценарии для D2/D3 (имена `TEST`)
 
@@ -35,7 +35,7 @@
 | `OnPerturbed` | `set_on_perturbed` после принятого perturb (Metropolis accept) |
 | `SetCancellationToken` / ранняя остановка | `request_cancel` / `reset_cancellation` и `early_stop_*` в конфиге (взаимное исключение см. §2 gap) |
 
-Тесты: `GraphBasedGenerator_*` в `edgar_tests.cpp` (см. roadmap итерации 5).
+Тесты: `GraphBasedGenerator_*` в `dungeon_topology_generator_tests.cpp` (см. roadmap итерации 5).
 
 ## Итерация 6 — конвертер layout
 
@@ -43,13 +43,13 @@
 |----|-----|
 | `BasicLayoutConverterGrid2D.Convert(ILayout, addDoors)` | `BasicLayoutConverterGrid2D::convert` / `convert(..., add_doors, rng)`; без полного паритета по alias/случайным трансформациям из mapping |
 
-Тесты: `EdgarLayoutConverter::*` в `edgar_tests.cpp`.
+Тесты: `DungeonTopologyGeneratorLayoutConverter::*` в `dungeon_topology_generator_tests.cpp`.
 
 ## Итерация 7 — интеграция и матрица
 
 | C# | C++ |
 |----|-----|
-| `Edgar.IntegrationTests` / `DungeonGeneratorTests` (инварианты pipeline) | `EdgarIntegration.DungeonGenerator_*`; полного класса `DungeonGenerator` в порте нет |
+| `Edgar.IntegrationTests` / `DungeonGeneratorTests` (инварианты pipeline) | `DungeonTopologyGeneratorIntegration.DungeonGenerator_*`; полного класса `DungeonGenerator` в порте нет |
 
 Ручной замер времени (не CI-gate): `tools/benchmark_layout_generation.ps1`.
 

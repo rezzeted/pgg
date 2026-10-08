@@ -2,7 +2,7 @@
 
 // Delve project v1: layout tier (docs/delve/project_v1.md). D2, F1.
 // Graph (rooms/passages), explicit templates, parametric ranges, and the
-// cross-tier checks (R-G3, 5.4, catalog budget). No edgar types here; the F2
+// cross-tier checks (R-G3, 5.4, catalog budget). No dungeon_topology_generator types here; the F2
 // catalog in delve_layout consumes these declarations.
 
 #include <map>
@@ -115,7 +115,7 @@ int catalog_size(const LayoutParams& l);  // parametric + explicit
 // Roles of the graph lacking any template (parametric or explicit).
 std::vector<std::string> roles_without_template(const LayoutParams& l);
 
-// Signed area x2 of a cell contour (shoelace). edgar's PolygonGrid2D accepts
+// Signed area x2 of a cell contour (shoelace). dungeon_topology_generator's PolygonGrid2D accepts
 // area2 < 0 ("clockwise" by its own test); the F2 catalog reverses the rest.
 long long contour_area2(const std::vector<CellPt>& c);
 
@@ -130,7 +130,7 @@ int manual_door_min_corner(const TemplateDecl& t);
 inline constexpr const char* kLayoutFormat = "delve-layout/0";
 
 // Parsed F3 output (F4 input): live layouts serialize to this (delve_layout),
-// tests and frozen flows read it back without edgar.
+// tests and frozen flows read it back without dungeon_topology_generator.
 struct LayoutRoomData {
     struct Door {
         std::string to;

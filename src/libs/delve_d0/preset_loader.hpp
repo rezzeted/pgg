@@ -3,23 +3,23 @@
 // Do not extend: keep the diff against upstream empty.
 #pragma once
 
-#include "edgar/edgar.hpp"
+#include "dungeon_topology_generator/dungeon_topology_generator.hpp"
 
 #include <filesystem>
 #include <string>
 #include <vector>
 
-namespace edgar::generator::grid2d {
+namespace dungeon_topology_generator::generator::grid2d {
 
 struct PresetRoomSet {
     std::string name;
     struct RoomEntry {
         std::string name;
-        std::vector<edgar::geometry::Vector2Int> shape;
+        std::vector<dungeon_topology_generator::geometry::Vector2Int> shape;
         std::string door_mode;
         int door_length = 1;
         int corner_distance = 1;
-        std::vector<std::pair<edgar::geometry::Vector2Int, edgar::geometry::Vector2Int>> specific_doors;
+        std::vector<std::pair<dungeon_topology_generator::geometry::Vector2Int, dungeon_topology_generator::geometry::Vector2Int>> specific_doors;
     };
     std::vector<RoomEntry> rooms;
     int default_door_length = 1;
@@ -81,4 +81,4 @@ LevelDescriptionGrid2D<int> build_level_from_preset(
 
 LevelDescriptionGrid2D<int> build_level_from_preset(const PresetMap& map, const PresetCatalog& catalog);
 
-} // namespace edgar::generator::grid2d
+} // namespace dungeon_topology_generator::generator::grid2d

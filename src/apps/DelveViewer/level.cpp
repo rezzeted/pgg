@@ -97,7 +97,7 @@ bool Level::buildIrFromGenerate(std::string& err) {
     const double t0 = nowMs();
     if (!gen.generate(project, catalog, opts, result, err)) return false;
     layoutMs = nowMs() - t0;
-    // The generator speaks edgar types; delve-layout/0 is the canonical
+    // The generator speaks dungeon_topology_generator types; delve-layout/0 is the canonical
     // handoff into the IR builder (serialize, then parse back).
     std::string text;
     if (!delve::layout::write_layout_json(result, project, projectPath, text, err)) return false;
