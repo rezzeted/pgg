@@ -1,4 +1,4 @@
-# Delve slot asset: wall_body v2 (slots §2.2). Mortar-core beam between pillar
+# DungeonGeometryGenerator slot asset: wall_body v2 (slots §2.2). Mortar-core beam between pillar
 # faces with clipped door openings (lintels above), crowned by a cap band of
 # big beveled stones (lib.parts.cbox, ashlar palette): per-stone length/height/
 # depth jitter opens dark mortar joints down to the beam top. The beam is

@@ -1,4 +1,4 @@
-# Delve slot asset: decor lamp v2 (slots §2.6) — forged-iron lantern look.
+# DungeonGeometryGenerator slot asset: decor lamp v2 (slots §2.6) — forged-iron lantern look.
 # Wall mount: own lantern assembly from lib.parts/rod/ring/pyramid_cap (same
 # design as lib.fixtures.lantern, but every part plane is either >=1 mm from
 # any other part's plane or buried in a neighbour volume — the lib version

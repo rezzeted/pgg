@@ -1,6 +1,6 @@
 # Демо-подземелье
 
-Пример проекта Delve (формат `delve-project/1`) для превью в DelveViewer.
+Пример проекта DungeonGeometryGenerator (формат `dungeon-geometry-generator-project/1`) для превью в DungeonGeometryGeneratorViewer.
 Папка самодостаточна (R-P0): слот-ассеты подтягиваются из библиотеки
 `assets/` репозитория по обычному порядку корней (R-A5) — локальных ассетов
 в проекте нет.
@@ -8,10 +8,10 @@
 ## Открыть
 
 ```
-DelveViewer projects/demo/project.json
+DungeonGeometryGeneratorViewer projects/demo/project.json
 ```
 
-или без параметров: запустить `DelveViewer` и выбрать этот файл через
+или без параметров: запустить `DungeonGeometryGeneratorViewer` и выбрать этот файл через
 Browse / перетащить в окно.
 
 ## Что внутри

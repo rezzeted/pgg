@@ -1,4 +1,4 @@
-# Delve slot asset: door v1 (slots §2.5). Frame + leaf + threshold in the clear
+# DungeonGeometryGenerator slot asset: door v1 (slots §2.5). Frame + leaf + threshold in the clear
 # opening. Fixed neutral palette (no style param by contract). open = closed
 # wooden leaf; gate = leaf + iron bars. Deterministic (no rng use).
 

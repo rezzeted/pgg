@@ -1,4 +1,4 @@
-# Delve slot asset: facing v1 (slots §2.3). Course rows of whole elements
+# DungeonGeometryGenerator slot asset: facing v1 (slots §2.3). Course rows of whole elements
 # (running bond, element 2x module), zone pieces via elem_zone (whole-element
 # rule: mixed footprints are skipped, the mortar core shows through), door
 # openings clipped afterwards (opening stones ARE cut, §5.3). Per-element

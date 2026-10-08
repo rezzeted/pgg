@@ -1,7 +1,7 @@
 #pragma once
 
 // Loading and saving of geo<points> payloads for host param binding
-// (Delve requirements §9.2): artists iterate on real IR dumps without Delve
+// (DungeonGeometryGenerator requirements §9.2): artists iterate on real IR dumps without DungeonGeometryGenerator
 // by binding `--param pts=@rooms.points.json` in PggTool, PggServe and
 // PggViewer. The format is neutral JSON, versioned, text-diffable:
 //

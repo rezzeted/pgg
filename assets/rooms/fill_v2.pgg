@@ -1,4 +1,4 @@
-# Delve slot asset: room_fill v2 (slots §2.1). Cobblestone floor (Roads-style
+# DungeonGeometryGenerator slot asset: room_fill v2 (slots §2.1). Cobblestone floor (Roads-style
 # setts on a running-bond grid: per-stone tint from the ashlar palette, micro
 # tilt/scale jitter opening dark mortar joints to the bed below) with
 # rng-picked accent patterns (medallion / border / cross) — clipped to the
@@ -190,7 +190,7 @@ barrels = repeat (empty_mesh(), iterations = nb) |acc| {
 barrel_part = select(is_store, a = barrels, b = empty_mesh())
 
 # Occupied-volume blockers (C4): one anchor per barrel at its footprint
-# center, @range = cylinder radius with a small margin. delve fill strips
+# center, @range = cylinder radius with a small margin. dungeon_geometry_generator fill strips
 # kind=4 anchors into the occupied registry; decor rules keep clear of them.
 blk = repeat (empty_points(), iterations = nb) |acc| {
     k = @iteration

@@ -1,4 +1,4 @@
-# Delve slot asset: facing v2 (slots §2.3) — ashlar masonry look.
+# DungeonGeometryGenerator slot asset: facing v2 (slots §2.3) — ashlar masonry look.
 # Same contract and course layout as v1 (rows of whole 2x-module elements,
 # running bond, zone pieces via elem_zone whole-element rule, door openings
 # clipped afterwards), but the element is a beveled block (lib.parts.cbox)

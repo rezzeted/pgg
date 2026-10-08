@@ -1,6 +1,6 @@
 # Изометрическое подземелье (2.5D)
 
-Проект Delve (формат `delve-project/1`) под изометрическую игру: 9 комнат,
+Проект DungeonGeometryGenerator (формат `dungeon-geometry-generator-project/1`) под изометрическую игру: 9 комнат,
 4 коридора, **без потолков** (`ceil: none` — камера смотрит сверху внутрь),
 настенные факелы вместо потолочных ламп (`lamp_place: wall`).
 
@@ -10,7 +10,7 @@
 ## Открыть
 
 ```
-DelveViewer projects/iso/project.json
+DungeonGeometryGeneratorViewer projects/iso/project.json
 ```
 
 ## Граф (9 комнат, 8 связей)
@@ -45,7 +45,7 @@ entry ─c1─ hall ─c2─ [crypt] ─c4─ stairs
 ## Машинная петля
 
 ```
-DelveCli validate projects/iso/project.json   # F1
-DelveCli check    projects/iso/project.json   # F6+F11 (~15 с)
-DelveCli export   projects/iso/project.json -o out/iso   # F7: OBJ + якоря + IR
+DungeonGeometryGeneratorCli validate projects/iso/project.json   # F1
+DungeonGeometryGeneratorCli check    projects/iso/project.json   # F6+F11 (~15 с)
+DungeonGeometryGeneratorCli export   projects/iso/project.json -o out/iso   # F7: OBJ + якоря + IR
 ```

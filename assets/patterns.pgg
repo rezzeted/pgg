@@ -1,4 +1,4 @@
-# Delve asset library: transition-zone patterns (slots §3).
+# DungeonGeometryGenerator asset library: transition-zone patterns (slots §3).
 # One def for all units of a zone: same params + same rng => same partition.
 
 import codes as c

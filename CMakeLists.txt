@@ -35,7 +35,7 @@ find_package(spdlog CONFIG REQUIRED)
 enable_testing()
 
 add_subdirectory(src/libs)
-# Delve-era consumers include pgg kernel headers as <pgg/src/...>; in the pgg
+# DungeonGeometryGenerator-era consumers include pgg kernel headers as <pgg/src/...>; in the pgg
 # repo this path comes from the src/libs directory scope, which does not reach
 # src/apps and src/tests.
 target_include_directories(pgg PUBLIC "${CMAKE_SOURCE_DIR}/src/libs")

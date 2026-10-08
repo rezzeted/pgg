@@ -194,7 +194,7 @@ TEST(ParamText, FileRefAndEscape) {
 }
 
 TEST(ParamText, GeoPointsRuntimeBinding) {
-    // Delve requirements §9.2: a host binds geometry into a geo<points> param
+    // DungeonGeometryGenerator requirements §9.2: a host binds geometry into a geo<points> param
     // through RunParams — the declaration typechecks and the run sees the value.
     const std::string src = "param pts: geo<points>\nn = count(pts)\noutput n\n";
     pgg::RunParams rp;

@@ -6,9 +6,9 @@
       "command": ["python3", "-m", "tools.pgg_mcp.launch"],
       "enabled": true
     },
-    "delve": {
+    "dungeon_geometry_generator": {
       "type": "local",
-      "command": ["python3", "-m", "tools.delve_mcp.launch"],
+      "command": ["python3", "-m", "tools.dungeon_geometry_generator_mcp.launch"],
       "enabled": true
     }
   }
