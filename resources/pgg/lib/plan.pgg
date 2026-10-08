@@ -1,5 +1,8 @@
 # Скруглённый план и гнутые детали: контур как профиль вертикального sweep.
-# В плоскости профиля X → мировой X, Y → мировой Z; скругление садится в (+X, +Z).
+# sweep вертикального пути (dir = +Y) кладёт профиль параллельным переносом с
+# референсом +X: X профиля → мировой +Z, Y профиля → мировой +X. Поэтому
+# координаты контура ниже записаны как (мировой Z, мировой X, 0): после sweep
+# скругление садится в (+X, +Z), а w ложится на мировой X, d — на мировой Z.
 # plan_prism — сплошное тело, не обод (бордюр собирай дугой + брусьями).
 import lib.parts
 
@@ -13,10 +16,11 @@ def plan_ring(w: f32, d: f32, r: f32, n_arc: int) -> (out: geo<points>) {
     a = radians(90.0 * t)
     cx = w * 0.5 - r
     cy = d * 0.5 - r
-    arc = vec3(cx + r * cos(a), cy + r * sin(a), 0)
-    k3 = vec3(0.0 - w * 0.5, d * 0.5, 0)
-    k2 = vec3(0.0 - w * 0.5, 0.0 - d * 0.5, 0)
-    k1 = vec3(w * 0.5, 0.0 - d * 0.5, 0)
+    # Профиль пишется транспонированно (см. шапку): X профиля = мировой Z.
+    arc = vec3(cy + r * sin(a), cx + r * cos(a), 0)
+    k3 = vec3(d * 0.5, 0.0 - w * 0.5, 0)
+    k2 = vec3(0.0 - d * 0.5, 0.0 - w * 0.5, 0)
+    k1 = vec3(0.0 - d * 0.5, w * 0.5, 0)
     p = @index < n_arc ? arc : (@index == n_arc ? k3 : (@index == n_arc + 1 ? k2 : k1))
     out = set_position(mesh_line(count = n, length = 0.0), pos = p)
 }
@@ -42,7 +46,8 @@ def arc_ring(cx: f32, cz: f32, r_in: f32, r_out: f32, a0: f32, a1: f32, n: int) 
     t = f32(j) / f32(n - 1)
     a = fwd ? radians(a0 + (a1 - a0) * t) : radians(a1 + (a0 - a1) * t)
     rr = fwd ? r_out : r_in
-    out = set_position(mesh_line(count = 2 * n, length = 0.0), pos = vec3(cx + rr * cos(a), cz + rr * sin(a), 0))
+    # Профиль транспонирован (см. шапку): X профиля = мировой Z.
+    out = set_position(mesh_line(count = 2 * n, length = 0.0), pos = vec3(cz + rr * sin(a), cx + rr * cos(a), 0))
 }
 
 def arc_shell(cx: f32, cz: f32, r_in: f32, r_out: f32, a0: f32, a1: f32, y0: f32, y1: f32, grp: string, n: int = 13) -> (out: geo<mesh>) {
