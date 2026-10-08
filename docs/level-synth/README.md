@@ -110,7 +110,7 @@ cmake --build --preset release-macos
 
 ### Ресурсы Edgar.GUI (копия из референса)
 
-Каталог [`resources/dungeon_topology_generator_gui/`](resources/dungeon_topology_generator_gui) — это **не** самостоятельные ассеты проекта, а **копия** дерева **`src/Resources`** из upstream [Edgar-DotNet](https://github.com/OndrejNepozitek/Edgar-DotNet) (WinForms-проект `Edgar.GUI`: `MapDescriptions`, `Maps`, `Images`, `Rooms`, `RandomGraphs` и т.д.). У себя их можно заново скопировать из локального клона референса, например:
+Каталог [`resources/dungeon_topology_generator_gui/`](resources/dungeon_topology_generator_gui) — это **не** самостоятельные ассеты проекта, а **усечённая копия** дерева **`src/Resources`** из upstream [Edgar-DotNet](https://github.com/OndrejNepozitek/Edgar-DotNet) (WinForms-проект `Edgar.GUI`). Оставлено только то, что реально читает вьюер: **`Maps/`**, **`Rooms/`**, **`Images/`**. Неиспользуемые `RandomGraphs/` (прегенерированные графы) и JSON-`MapDescriptions/` удалены — при необходимости их можно заново скопировать из локального клона референса, например:
 
 ```batch
 robocopy %CD%\_edgar_ref\src\Resources %CD%\resources\dungeon_topology_generator_gui /E

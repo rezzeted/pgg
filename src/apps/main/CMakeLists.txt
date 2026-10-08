@@ -37,7 +37,7 @@ if(EXISTS "${LEVELSYNTH_FONT_RESOURCES}")
         COMMENT "Copy resources/fonts next to main (Font Awesome optional)")
 endif()
 
-# Bundle Edgar.GUI-style assets (mirrors Edgar-DotNet `src/Resources`: MapDescriptions, Maps, etc.)
+# Bundle Edgar.GUI-style assets (trimmed copy of Edgar-DotNet `src/Resources`: Maps, Rooms, Images)
 set(LEVELSYNTH_DUNGEON_TOPOLOGY_GENERATOR_GUI_RESOURCES "${CMAKE_SOURCE_DIR}/resources/dungeon_topology_generator_gui")
 if(EXISTS "${LEVELSYNTH_DUNGEON_TOPOLOGY_GENERATOR_GUI_RESOURCES}")
     add_custom_command(
@@ -45,5 +45,5 @@ if(EXISTS "${LEVELSYNTH_DUNGEON_TOPOLOGY_GENERATOR_GUI_RESOURCES}")
         POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${LEVELSYNTH_DUNGEON_TOPOLOGY_GENERATOR_GUI_RESOURCES}"
                 "$<TARGET_FILE_DIR:main>/resources/dungeon_topology_generator_gui"
-        COMMENT "Copy resources/dungeon_topology_generator_gui next to main (MapDescriptions, Images, etc.)")
+        COMMENT "Copy resources/dungeon_topology_generator_gui next to main (Maps, Rooms, Images)")
 endif()
