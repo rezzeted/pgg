@@ -41,7 +41,7 @@
 6. Сканирование `Maps/` без рекурсии — `Maps/Thesis/` и подобные недоступны из UI.
 7. Нет диалога «сохранить файл» вне Windows (экспорт пишет фиксированный `layout_export.json`).
 8. Нет превью-миниатюр в списке карт и отдельного диалога открытия файла (частично зафиксировано как осознанный skip).
-9. Ресурсы `RandomGraphs/`, `MapDescriptions/` (не-YAML) из `resources/dungeon_topology_generator_gui` не используются.
+9. Ресурсы `RandomGraphs/`, `MapDescriptions/` (не-YAML) не используются и удалены из репозитория (при необходимости — копия из upstream `src/Resources`).
 
 **Осознанно вне скоупа (не трогаем без отдельного запроса):** Unity, meta-optimization, evolution sandbox, platformers, entropy/graph analysis, `DungeonGenerator` 1:1, `SimpleBitVector32`.
 
@@ -100,7 +100,7 @@
 
 - Рекурсивный обход `Maps/` (подпапки вроде `Thesis/`) с группировкой в комбо.
 - Портативный диалог открытия/сохранения (например tinyfiledialogs через vcpkg) для Export JSON на macOS/Linux.
-- По запросу: миниатюры карт, использование `RandomGraphs/`.
+- По запросу: миниатюры карт, использование `RandomGraphs/` (каталог удалён из репозитория — брать из upstream `src/Resources`).
 
 ### Этап G. Производительность (~1 день)
 
