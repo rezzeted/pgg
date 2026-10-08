@@ -13,7 +13,7 @@
   dungeon_topology_generator (раскладки). Нормативный документ — `docs/dungeon_geometry_generator/requirements.md`
   (§5–§9 — конвейер F1–F11, N-хвосты — сквозные требования).
 - **level-synth / dungeon_topology_generator** — порт Edgar-DotNet: библиотека раскладок
-  `src/libs/dungeon_topology_generator`, SDL3-вьюер `src/apps/main`, данные `test_data/`,
+  `src/libs/dungeon_topology_generator`, SDL3-вьюер `src/apps/DungeonTopologyGeneratorViewer`, данные `test_data/`,
   доки `docs/level-synth/`.
 
 ## Коммуникация и язык
@@ -183,7 +183,7 @@ Linux-флоу — Ninja (single-config) + CMake Presets, триплет `x64-li
 
 - `src/libs/dungeon_topology_generator` — библиотека раскладок (порт Edgar-DotNet); Clipper2 тянется
   FetchContent'ом при configure (нужна сеть). `src/libs/drui` — ImGui-helpers
-  вьюера. `src/apps/main` — SDL3 + ImGui вьюер (legacy-имя таргета `main`).
+  вьюера. `src/apps/DungeonTopologyGeneratorViewer` — SDL3 + ImGui вьюер.
 - Паритет с оригинальным C# — `docs/level-synth/`, данные `test_data/parity`
   (регенерируемые `actual/*.cpp.json` в .gitignore), раннер `tools/parity_runner_cs`.
 

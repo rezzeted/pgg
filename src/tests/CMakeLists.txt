@@ -126,13 +126,13 @@ target_link_libraries(dungeon_topology_generator_parity_tests PRIVATE dungeon_to
 gtest_discover_tests(dungeon_topology_generator_parity_tests)
 
 find_package(yaml-cpp CONFIG REQUIRED)
-add_executable(preset_loader_tests preset_loader_tests.cpp ../apps/main/preset_loader.cpp)
-target_include_directories(preset_loader_tests PRIVATE "${CMAKE_SOURCE_DIR}/src/apps/main")
+add_executable(preset_loader_tests preset_loader_tests.cpp ../apps/DungeonTopologyGeneratorViewer/preset_loader.cpp)
+target_include_directories(preset_loader_tests PRIVATE "${CMAKE_SOURCE_DIR}/src/apps/DungeonTopologyGeneratorViewer")
 target_link_libraries(preset_loader_tests PRIVATE dungeon_topology_generator yaml-cpp::yaml-cpp GTest::gtest_main)
 gtest_discover_tests(preset_loader_tests)
 
-add_executable(generation_diagnostic_test generation_diagnostic_test.cpp ../apps/main/preset_loader.cpp)
-target_include_directories(generation_diagnostic_test PRIVATE "${CMAKE_SOURCE_DIR}/src/apps/main")
+add_executable(generation_diagnostic_test generation_diagnostic_test.cpp ../apps/DungeonTopologyGeneratorViewer/preset_loader.cpp)
+target_include_directories(generation_diagnostic_test PRIVATE "${CMAKE_SOURCE_DIR}/src/apps/DungeonTopologyGeneratorViewer")
 target_link_libraries(generation_diagnostic_test PRIVATE dungeon_topology_generator yaml-cpp::yaml-cpp spdlog::spdlog GTest::gtest_main)
 gtest_discover_tests(generation_diagnostic_test)
 
@@ -143,8 +143,8 @@ target_compile_definitions(parity_golden_test PRIVATE PARITY_DATA_DIR="${CMAKE_S
 gtest_discover_tests(parity_golden_test)
 
 # Layout generation benchmark (cross-platform replacement for tools/benchmark_layout_generation.ps1)
-add_executable(benchmark_layout benchmark_layout.cpp ../apps/main/preset_loader.cpp)
-target_include_directories(benchmark_layout PRIVATE "${CMAKE_SOURCE_DIR}/src/apps/main")
+add_executable(benchmark_layout benchmark_layout.cpp ../apps/DungeonTopologyGeneratorViewer/preset_loader.cpp)
+target_include_directories(benchmark_layout PRIVATE "${CMAKE_SOURCE_DIR}/src/apps/DungeonTopologyGeneratorViewer")
 target_link_libraries(benchmark_layout PRIVATE dungeon_topology_generator yaml-cpp::yaml-cpp nlohmann_json::nlohmann_json)
 # Smoke gate with a generous threshold; finer thresholds via tools/benchmark_layout_generation.py
 # NOTE: dense maps (9/17/41vertices, corridors) do not converge in reasonable time yet —

@@ -1,6 +1,6 @@
 # YAML пресеты Edgar.GUI в LevelSynth (`preset_loader`)
 
-Формат совпадает с ресурсами upstream [Edgar-DotNet](https://github.com/OndrejNepozitek/Edgar-DotNet) (`src/Resources`). Реализация: [`src/apps/main/preset_loader.cpp`](../src/apps/main/preset_loader.cpp).
+Формат совпадает с ресурсами upstream [Edgar-DotNet](https://github.com/OndrejNepozitek/Edgar-DotNet) (`src/Resources`). Реализация: [`src/apps/DungeonTopologyGeneratorViewer/preset_loader.cpp`](../src/apps/DungeonTopologyGeneratorViewer/preset_loader.cpp).
 
 ## Структура каталога
 
@@ -23,7 +23,7 @@
 
 ## Ошибки загрузки
 
-Используйте [`load_preset_catalog_with_status`](../src/apps/main/preset_loader.hpp): при сбое поле `error` содержит текст (отсутствующий путь, нет `Maps/`, ошибка YAML).
+Используйте [`load_preset_catalog_with_status`](../src/apps/DungeonTopologyGeneratorViewer/preset_loader.hpp): при сбое поле `error` содержит текст (отсутствующий путь, нет `Maps/`, ошибка YAML).
 
 ## Тестовые данные
 

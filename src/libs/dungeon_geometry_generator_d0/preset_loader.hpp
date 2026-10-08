@@ -1,4 +1,4 @@
-// D0 SCAFFOLD — vendored verbatim from level-synth (src/apps/main/preset_loader.hpp).
+// D0 SCAFFOLD — vendored verbatim from level-synth (src/apps/DungeonTopologyGeneratorViewer/preset_loader.hpp).
 // One-shot preset loading for the frozen-IR dump; replaced by the F2 catalog at D2.
 // Do not extend: keep the diff against upstream empty.
 #pragma once

@@ -1,6 +1,6 @@
 # Паритет приложения LevelSynth с Edgar.GUI
 
-Краткое сравнение сценариев **оригинала** (WinForms/WPF Edgar.GUI в Edgar-DotNet) и **порта** (SDL3 + ImGui, `main.exe`).
+Краткое сравнение сценариев **оригинала** (WinForms/WPF Edgar.GUI в Edgar-DotNet) и **порта** (SDL3 + ImGui, `DungeonTopologyGeneratorViewer.exe`).
 
 ## Что делает оригинал
 
@@ -10,7 +10,7 @@
 
 ## Что делает порт (текущее состояние)
 
-- **Корень ресурсов:** по умолчанию ищется `resources/dungeon_topology_generator_gui` с подпапками `Maps/` и `Rooms/` (обход каталогов вверх от `main.exe`, чтобы работать из `_build/bin/...` в клоне репозитория).
+- **Корень ресурсов:** по умолчанию ищется `resources/dungeon_topology_generator_gui` с подпапками `Maps/` и `Rooms/` (обход каталогов вверх от `DungeonTopologyGeneratorViewer.exe`, чтобы работать из `_build/bin/...` в клоне репозитория).
 - **Список карт:** только файлы **`Maps/*.yml`** и **`Maps/*.yaml` на верхнем уровне** (без рекурсии в подпапки). Выбор в **выпадающем списке**, кнопка **Reload catalog**, в интерфейсе отображается текущий путь к ресурсам.
 - **Один файл из CLI:** аргумент с путём к `*.yml` / `*.yaml` — загрузка этой карты и вывод базовой папки из пути.
 - **Drag-and-drop:** на окно можно сбросить папку с `Maps/` и `Rooms/` (корень `dungeon_topology_generator_gui`) или путь к файлу карты.
@@ -25,7 +25,7 @@
 
 ## Командная строка
 
-- `main.exe <path\to\map.yml>` — загрузить одну карту; база выводится из пути (`…/Maps/name.yml` → родитель `dungeon_topology_generator_gui` или эквивалент, см. реализацию в `preset_loader.cpp`).
+- `DungeonTopologyGeneratorViewer.exe <path\to\map.yml>` — загрузить одну карту; база выводится из пути (`…/Maps/name.yml` → родитель `dungeon_topology_generator_gui` или эквивалент, см. реализацию в `preset_loader.cpp`).
 - Флага `--resources` в текущей версии нет: корень задаётся автопоиском, drop или загрузкой через путь к `.yml`.
 
 ## Ручной чек-лист (регрессия UX)
