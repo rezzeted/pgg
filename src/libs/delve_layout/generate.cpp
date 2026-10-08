@@ -236,7 +236,7 @@ bool LayoutGenerator::generate(const Project& project, const Catalog& catalog,
     if (opts.time_budget_ms) err += ", time budget " + std::to_string(*opts.time_budget_ms) + "ms";
     if (opts.iteration_budget) err += ", iteration budget " + std::to_string(*opts.iteration_budget);
     err += "]: " + last_diag +
-           " (raise the budgets/attempts or loosen the graph; see docs/generate_v1.md)";
+           " (raise the budgets/attempts or loosen the graph; see docs/delve/generate_v1.md)";
     return false;
 }
 

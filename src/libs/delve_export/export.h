@@ -3,7 +3,7 @@
 // Delve export (D4, F7): the filled level as reviewable artifacts — the shared
 // mesh as OBJ (@Cd goes out as vertex colors, @N as vn), anchors as a
 // machine-readable pgg-points/1 file, per-unit attribution as delve-units/1
-// and the IR next to them (delve-ir/3). Formats: docs/cli_v1.md.
+// and the IR next to them (delve-ir/3). Formats: docs/delve/cli_v1.md.
 
 #include <string>
 #include <vector>

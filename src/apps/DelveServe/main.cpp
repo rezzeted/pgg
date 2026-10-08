@@ -1,4 +1,4 @@
-// DelveServe: CPU RPC daemon of the delve pipeline (docs/mcp_v1.md) — project
+// DelveServe: CPU RPC daemon of the delve pipeline (docs/delve/mcp_v1.md) — project
 // slots with the warm F8 unit cache; ops ping/status/load/validate/layout/ir/
 // fill/check/export/units/provenance/asset_check.
 //   DelveServe [--port N] [--host 127.0.0.1] [--assets <dir>]

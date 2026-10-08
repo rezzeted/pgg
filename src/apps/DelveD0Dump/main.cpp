@@ -2,7 +2,7 @@
 // Runs edgar on a tutorial preset with a fixed seed and writes frozen_ir.json,
 // rooms.points.json, d0_view.pgg and reference.png. Not part of ctest: layout
 // generation is reproducible only on one platform/build (N1) — the committed
-// docs/d0 artifacts are the frozen result, verified by delve_d0_test.
+// docs/delve/d0 artifacts are the frozen result, verified by delve_d0_test.
 #include <cstdio>
 #include <cstdlib>
 #include <random>

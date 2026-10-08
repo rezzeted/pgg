@@ -1,6 +1,6 @@
 #pragma once
 
-// Delve project: fill tier v0 (docs/project_v0.md) + full v1 (docs/project_v1.md).
+// Delve project: fill tier v0 (docs/delve/project_v0.md) + full v1 (docs/delve/project_v1.md).
 // load_project dispatches on "format" (delve-project/0 or /1).
 
 #include <map>

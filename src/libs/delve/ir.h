@@ -1,6 +1,6 @@
 #pragma once
 
-// Delve IR v3 (F4, docs/ir_v2.md): walls, nodes, doors, room developments and
+// Delve IR v3 (F4, docs/delve/ir_v2.md): walls, nodes, doors, room developments and
 // transitions. Two input paths into one core (D2.3b):
 //   - build_ir_v2: frozen IR (delve-ir/0) + a fill project; v1 restrictions
 //     (rects, 1-cell doors, dtype open, uniform project wall_t) hold.

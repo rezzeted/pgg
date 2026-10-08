@@ -1109,8 +1109,11 @@ std::string find_pgg_lib_root(const std::string& delveAssets) {
     fs::path cur = fs::weakly_canonical(delveAssets, ec);
     if (ec || cur.empty()) return {};
     for (int depth = 0; depth < 8; ++depth) {
-        const fs::path cand = cur / "thirdparty" / "pgg" / "resources" / "pgg";
-        if (fs::is_directory(cand / "lib", ec)) return cand.string();
+        const fs::path mono = cur / "resources" / "pgg";
+        if (fs::is_directory(mono / "lib", ec)) return mono.string();
+        // Legacy standalone-delve layout: pgg vendored as a submodule.
+        const fs::path legacy = cur / "thirdparty" / "pgg" / "resources" / "pgg";
+        if (fs::is_directory(legacy / "lib", ec)) return legacy.string();
         const fs::path parent = cur.parent_path();
         if (parent == cur) break;
         cur = parent;
@@ -1188,7 +1191,7 @@ bool fill_level(const IrV2& ir, const Project& project, const FillOpts& opts, Fi
     std::map<std::string, const IrDoor*> doors;
     for (const auto& d : ir.doors) doors[d.id] = &d;
     // 5.6: v1 projects fill from the split fill seed; the v0 path keeps using
-    // the project seed directly (docs/project_v1.md).
+    // the project seed directly (docs/delve/project_v1.md).
     const int fseed =
         project.format == kProjectFormatV1 ? fill_seed_v1(project.seed) : project.seed;
     std::vector<Unit> units;

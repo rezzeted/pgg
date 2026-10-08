@@ -81,8 +81,8 @@
   expandDecorFloor v2 / expandDecorWall), `assets/codes.pgg` (AK_BLOCKER=4),
   `assets/rooms/fill_v2.pgg` (blocker-якоря), тесты
   (`OccupiedRegistryClearsDecor`, `DecorAlignCenter/NearDoor`,
-  `DecorWallPlace`, обновления parity/RA4), `docs/project_v0.md`,
-  `docs/fill_v1.md`, `docs/slots_v1.md`, `docs/assets_v1.md`.
+  `DecorWallPlace`, обновления parity/RA4), `docs/delve/project_v0.md`,
+  `docs/delve/fill_v1.md`, `docs/delve/slots_v1.md`, `docs/delve/assets_v1.md`.
 - Гейты: быстрые сьюты + smoke зелёные; `OccupiedRegistryClearsDecor` —
   fill_v2 на frozen-уровне, drains не ближе порога к бочкам.
 - Живой замер iso: fill 32.7 с (без регресса к 32.4 с до C4),
@@ -112,8 +112,8 @@
   params, R-A2 geo-экстра), `fill.cpp` (трёхфазная заливка),
   `assets/rooms/fill_v2.pgg` (+фикстуры cuts), `assets/decor/drain_v2.pgg`,
   `projects/iso/project.json` (drain: `cut_r 0.28`), тесты
-  (`DecorFloorCuts`, `runDrain(pit)`, обновления RA4), `docs/project_v0.md`,
-  `docs/fill_v1.md`, `docs/slots_v1.md`, `docs/assets_v1.md`.
+  (`DecorFloorCuts`, `runDrain(pit)`, обновления RA4), `docs/delve/project_v0.md`,
+  `docs/delve/fill_v1.md`, `docs/delve/slots_v1.md`, `docs/delve/assets_v1.md`.
 - Гейты: быстрые сьюты + smoke + check (без PassFrozen) зелёные;
   `DecorFloorCuts` — колодец реальный (пол в центре пуст, дно и фартук
   есть, блокеры не дублируются).
@@ -143,7 +143,7 @@
   builtin_docs, DocumentSession/ServeRuntime, тесты suggest/typecheck/
   validate/module, implementation.md, serve_rpc.md); delve — bump +
   `tools/delve_mcp/pgg_layer.py` (`_absolutize_out`), тест
-  `test_render_out_absolutized_against_delve_root`, `docs/mcp_v1.md`.
+  `test_render_out_absolutized_against_delve_root`, `docs/delve/mcp_v1.md`.
 - Гейты: pgg_tests без новых падений (7 золотых mismatch'ей — дрейф платформы,
   воспроизводятся на чистом HEAD); `PggServe --smoke` PASS; живой RPC —
   биндинги пережили auto-reload, `suggestions` работает; delve быстрые сьюты

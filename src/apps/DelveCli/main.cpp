@@ -1,6 +1,6 @@
 // DelveCli (D4, F10): the machine loop — every pipeline step as a CLI command
 // with PGG-style diagnostics (code, place, expectation/fact, hint), grouped by
-// the F10 classes (registry: docs/cli_v1.md): D1xx project load, D2xx
+// the F10 classes (registry: docs/delve/cli_v1.md): D1xx project load, D2xx
 // invariant (5.4/5.2), D3xx layout, D4xx slot, D5xx PGG run, D6xx check.
 // Exit codes (repo convention): 0 ok, 1 diagnostics with errors, 2 usage/io.
 // Libraries report flat strings; this layer wraps them into delve::Diag.

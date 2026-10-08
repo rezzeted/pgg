@@ -1,5 +1,10 @@
 # LevelSynth — ImGui + SDL3 + OpenGL3
 
+> **Исторический документ standalone-репозитория level-synth** (до слияния в
+> монорепозиторий pgg). Пути сборки ниже описывают старый репозиторий; в
+> монорепо актуальны корневые `README.md` и `AGENTS.md`, библиотека edgar —
+> `src/libs/edgar`, приложение — `src/apps/main`, данные — `test_data/`.
+
 Приложение **LevelSynth** на C++20 с Dear ImGui, SDL3 и OpenGL 3 (CMake-проект в репозитории: `ImguiPlayground`). Библиотека **edgar** — порт [Edgar-DotNet](https://github.com/OndrejNepozitek/Edgar-DotNet) для процедурной раскладки комнат. Сборка через **CMake**; зависимости задаются **манифестом vcpkg** ([`vcpkg.json`](vcpkg.json)), сам **vcpkg** — **git submodule** в [`toolchain/vcpkg`](toolchain/vcpkg).
 
 ---
@@ -95,7 +100,7 @@ cmake --build --preset release-macos
 
 ### Приложение LevelSynth (main) и YAML
 
-Паритет сценариев с Edgar.GUI (ресурсы, экспорт): [`docs/app_gui_parity.md`](docs/app_gui_parity.md). Схема ключей YAML пресетов: [`docs/app_yaml_preset.md`](docs/app_yaml_preset.md).
+Паритет сценариев с Edgar.GUI (ресурсы, экспорт): [`docs/level-synth/app_gui_parity.md`](docs/level-synth/app_gui_parity.md). Схема ключей YAML пресетов: [`docs/level-synth/app_yaml_preset.md`](docs/level-synth/app_yaml_preset.md).
 
 - **Корень ресурсов по умолчанию:** при старте ищется каталог `resources/edgar_gui`, содержащий подпапки **`Maps/`** и **`Rooms/`**: обход вверх от каталога `main.exe` (удобно при запуске из `_build/bin/...` в клоне репозитория). Рядом с exe CMake **копирует** `resources/edgar_gui` из репозитория.
 - **Каталог карт:** в выпадающем списке показываются только **`.yml`/`.yaml` непосредственно в `Maps/`** (без рекурсии в подпапки). Подпись в UI указывает на `<repo>/resources/edgar_gui/Maps/`.
@@ -148,7 +153,7 @@ robocopy %CD%\_edgar_ref\src\Resources %CD%\resources\edgar_gui /E
 ## Стиль и документация
 
 - Код на **C++20**.
-- **Порт edgar:** генерация и ограничения (энергия, конфигурационные пространства, двери) приводятся к соответствию с Edgar-DotNet; подробности — [`docs/port_vs_original_gap.md`](docs/port_vs_original_gap.md), roadmap — [`docs/port_parity_roadmap.md`](docs/port_parity_roadmap.md). Итерация 0 (агент): [`docs/iteration_0_agent_brief.md`](docs/iteration_0_agent_brief.md). Критерии parity: [`docs/parity_dod.md`](docs/parity_dod.md), матрица тестов: [`docs/test_matrix_iteration0.md`](docs/test_matrix_iteration0.md).
+- **Порт edgar:** генерация и ограничения (энергия, конфигурационные пространства, двери) приводятся к соответствию с Edgar-DotNet; подробности — [`docs/level-synth/port_vs_original_gap.md`](docs/level-synth/port_vs_original_gap.md), roadmap — [`docs/level-synth/port_parity_roadmap.md`](docs/level-synth/port_parity_roadmap.md). Итерация 0 (агент): [`docs/level-synth/iteration_0_agent_brief.md`](docs/level-synth/iteration_0_agent_brief.md). Критерии parity: [`docs/level-synth/parity_dod.md`](docs/level-synth/parity_dod.md), матрица тестов: [`docs/level-synth/test_matrix_iteration0.md`](docs/level-synth/test_matrix_iteration0.md).
 
 ---
 

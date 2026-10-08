@@ -1,6 +1,6 @@
 #pragma once
 
-// Delve F2 catalog (docs/catalog_v1.md): project v1 declarations -> edgar
+// Delve F2 catalog (docs/delve/catalog_v1.md): project v1 declarations -> edgar
 // templates + per-room descriptions. Deterministic order: parametric
 // corridors, parametric rects, explicit templates (declaration order).
 

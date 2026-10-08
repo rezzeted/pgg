@@ -119,7 +119,7 @@ class PggLayer:
 
         Unlike ``_absolutize_asset`` the target usually does not exist yet, so
         every relative path is absolutized (a bare ``out=shots/a.png`` landing
-        under thirdparty/pgg is never what a delve user wants). Absolute paths
+        outside the monorepo root is never what a delve user wants). Absolute paths
         pass through; None keeps the server-side default (tmp/pgg_rpc_shots of
         the pgg repo).
         """

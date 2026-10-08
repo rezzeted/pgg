@@ -55,7 +55,7 @@ JSON (nlohmann уже в зависимостях); стабильный пор�
   вправе пропускать такой элемент (например, `room_fill` без потолка);
   палитра `style_color(0)` — маджента (fail-loud).
 - `lamp_place` (`ceil`|`wall`, дефолт `ceil`) — режим размещения ламп F6
-  (docs/fill_v1.md §Лампы).
+  (docs/delve/fill_v1.md §Лампы).
 - `decor` — правила декора F6 (v2): список `{tag, place, roles, chance, count,
   min_dist, align, radius, cut_r}`; `tag` — имя из таблицы тегов (`drain`; `lamp`
   правилами не ставится), `place` — `floor`|`wall` (дефолт `floor`), `roles` —
@@ -65,9 +65,9 @@ JSON (nlohmann уже в зависимостях); стабильный пор�
   `near_door` (только floor; на wall-правиле — ошибка; дефолт `any`), `radius` —
   футпринт предмета для реестра занятых объёмов (> 0, дефолт 0.5), `cut_r` —
   радиус выреза в полу под предметом (≥ 0, дефолт 0 = без выреза; только
-  `place: floor`, на wall-правиле — ошибка; см. docs/fill_v1.md §Вырезы в полу). Дефолты v2 = поведение v1.
+  `place: floor`, на wall-правиле — ошибка; см. docs/delve/fill_v1.md §Вырезы в полу). Дефолты v2 = поведение v1.
   Слот `decor:<tag>` обязателен в `slots` при наличии правила
-  (docs/fill_v1.md §Декор).
+  (docs/delve/fill_v1.md §Декор).
 - `transitions` — дефолты узора/ширины/положения для всех переходов (5.7);
   переопределения на стык — на D2.
 - `slots` — вид слота → ассет (R-A1). Ключ вида: `room_fill`, `wall_body`, `facing`,

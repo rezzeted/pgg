@@ -11,7 +11,7 @@ response keeps the RPC envelope (``{"ok": true, "data": ...}`` /
 ``{"ok": false, "error"}``). Slot identity is the canonical project path.
 
 The ``pgg_*`` tools are a lazy second layer onto PggServe (127.0.0.1:9878,
-env ``PGG_SERVE_PORT``; repo ``thirdparty/pgg``) for slot-asset debugging —
+env ``PGG_SERVE_PORT``; тот же монорепо) for slot-asset debugging —
 probe/render of a single .pgg without a full level fill. PggServe starts only
 on the first ``pgg_*`` call; its ``lib_roots`` default is derived from the
 delve context (see ``pgg_layer.py``).
@@ -59,7 +59,7 @@ _INSTRUCTIONS = """Delve MCP — агентская петля «проект �
 
 Отладка слот-ассета «под микроскопом» (pgg-слой, демон PggServe — поднимается
 лениво на первом pgg_* вызове; его нет → ``need_build`` с командами сборки
-pgg, ``cwd`` = thirdparty/pgg). Когда ``delve_asset_check`` красный или нужны
+pgg, ``cwd`` = корень монорепо). Когда ``delve_asset_check`` красный или нужны
 числа/картинка одного .pgg без полного fill уровня:
 
 1. ``pgg_load(path)`` — path ассета относительно корня delve
@@ -288,7 +288,7 @@ def pgg_status() -> dict:
     PggServe поднимается лениво — delve-инструменты его не трогают. При живом
     RPC — data: {serve:"running", binary?, rpc:{host,port}, slots, gpu,
     uptime_s, ...}. Бинаря нет — ok=false, error.kind=need_build (error.build —
-    шаги сборки pgg, cwd = thirdparty/pgg). Порт 9878 (env PGG_SERVE_PORT).
+    шаги сборки pgg, cwd = корень монорепо). Порт 9878 (env PGG_SERVE_PORT).
     Пример: pgg_status().
     """
     return _pgg_layer.status()

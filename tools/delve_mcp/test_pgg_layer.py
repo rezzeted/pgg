@@ -73,10 +73,10 @@ class PggRecipeTests(unittest.TestCase):
 
 
 class PggRepoRootTests(unittest.TestCase):
-    def test_default_is_thirdparty_pgg(self) -> None:
+    def test_default_is_monorepo_root(self) -> None:
         self.assertEqual(
-            pgg_repo_root({"DELVE_REPO_ROOT": "/x/delve"}),
-            str(Path("/x/delve/thirdparty/pgg")),
+            pgg_repo_root({"DELVE_REPO_ROOT": "/x/mono"}),
+            str(Path("/x/mono")),
         )
 
     def test_env_override_expands_tilde(self) -> None:
@@ -133,19 +133,19 @@ class PggFindBinaryTests(unittest.TestCase):
 
 class PggNeedBuildTests(unittest.TestCase):
     def test_envelope_shape(self) -> None:
-        err = pgg_need_build_error("/x/delve/thirdparty/pgg", platform="linux", environ={})
+        err = pgg_need_build_error("/x/mono", platform="linux", environ={})
         self.assertFalse(err["ok"])
         e = err["error"]
         self.assertEqual(e["kind"], "need_build")
         self.assertEqual(e["target"], "PggServe")
         self.assertEqual(e["platform"], "linux")
-        self.assertEqual(e["cwd"], "/x/delve/thirdparty/pgg")
+        self.assertEqual(e["cwd"], "/x/mono")
         self.assertEqual(e["serve"], "missing")
         self.assertEqual(e["build"][0], {"argv": ["./build_linux.sh"],
-                                         "cwd": "/x/delve/thirdparty/pgg"})
+                                         "cwd": "/x/mono"})
         self.assertEqual(e["build"][1]["argv"],
                          ["cmake", "--build", "--preset", "linux-debug", "--target", "PggServe"])
-        self.assertEqual(e["build"][1]["cwd"], "/x/delve/thirdparty/pgg")
+        self.assertEqual(e["build"][1]["cwd"], "/x/mono")
         self.assertIn("PggServe", e["message"])
 
     def test_mentions_stale_pgg_serve_env(self) -> None:

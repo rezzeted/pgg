@@ -1,6 +1,6 @@
 #pragma once
 
-/// Edgar C++ port — graph-based procedural 2D grid layouts (see docs/port_vs_original_gap.md).
+/// Edgar C++ port — graph-based procedural 2D grid layouts (see docs/level-synth/port_vs_original_gap.md).
 
 #include "edgar/geometry/polygon_grid2d.hpp"
 #include "edgar/geometry/vector2_int.hpp"

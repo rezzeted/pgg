@@ -3,7 +3,7 @@
 // Delve diagnostics (F10): machine-readable errors for the machine loop.
 // Libraries still report flat `std::string& err`; the CLI/serve layer wraps
 // each step's err into a Diag carrying the step's class code. Codes are
-// grouped by the F10 classes (registry: docs/cli_v1.md): D1xx project load,
+// grouped by the F10 classes (registry: docs/delve/cli_v1.md): D1xx project load,
 // D2xx invariant (5.4/5.2), D3xx layout, D4xx slot (R-A3), D5xx PGG run,
 // D6xx check (F11). R-A3/PGG codes (delve/slot, E100...) pass through inside
 // messages.
@@ -17,7 +17,7 @@
 namespace delve {
 
 struct Diag {
-    std::string code;     // "D101"; class codes per docs/cli_v1.md
+    std::string code;     // "D101"; class codes per docs/delve/cli_v1.md
     std::string message;  // place + expectation/fact, as the libraries phrase it
     std::string hint;     // fix suggestion, when known
     bool warning = false;

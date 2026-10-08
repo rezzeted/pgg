@@ -7,7 +7,7 @@ _Нормативный документ машинной петли повер�
 RPC ↔ `DelveServe` (`src/apps/DelveServe`, C++) ↔ библиотеки конвейера
 (F1–F11).
 
-Зачем, если есть DelveCli (docs/cli_v1.md): CLI проходит петлю «проект →
+Зачем, если есть DelveCli (docs/delve/cli_v1.md): CLI проходит петлю «проект →
 экспорт» одним вызовом на шаг, и каждый вызов холодный — проект, каталог и
 fill стартуют с нуля. DelveServe держит проекты в памяти: слот с тёплым
 F8-кэшем юнитов, перечтение проекта по mtime, инкрементальный fill — правка
@@ -29,7 +29,7 @@ exe → вверх от проекта) или явным `--assets`; без н�
 error-конвертом D100, а `asset_check` — ok:true с D100-диагностикой и hint'ом
 про `--assets`.
 
-Архитектура (по образцу PggServe, контракт — `thirdparty/pgg/docs/pgg/serve_rpc.md`):
+Архитектура (по образцу PggServe, контракт — docs/pgg/serve_rpc.md):
 
 - `ServeRpcServer` — транспорт: конверт, клиенты, deferred-ответы
   (`reply`/`replyError` из воркеров), «текущий файл» каждого TCP-клиента.
@@ -69,7 +69,7 @@ message), `not_found` (комната/ключ provenance), `no_layout`, `no_fil
 `io_error` (запись артефактов), `busy`, `internal`.
 
 Падение шага пайплайна — error-конверт с `kind` = D-коду шага (реестр классов
-— docs/cli_v1.md): D200 (инвариант 5.2/5.4), D300/D301 (каталог/раскладка),
+— docs/delve/cli_v1.md): D200 (инвариант 5.2/5.4), D300/D301 (каталог/раскладка),
 D400 (слот R-A3), D500 (прогон PGG); `message` — err библиотеки дословно, со
 сквозными кодами R-A3/PGG внутри.
 
@@ -167,14 +167,14 @@ replay: заново `load` всех известных проектов (отв
 ## pgg-слой (отладка ассетов)
 
 В том же MCP — прокси к PggServe (порт 9878, env `PGG_SERVE_PORT`; инстансия
-`PggSession` с рецептами бинаря из `thirdparty/pgg`, корень pgg-репо —
-env `PGG_REPO_ROOT` или `<delve>/thirdparty/pgg`; бинарь — env `PGG_SERVE`
+`PggSession` с рецептами бинаря монорепо, корень pgg-репо —
+env `PGG_REPO_ROOT` или корень монорепо; бинарь — env `PGG_SERVE`
 или кандидаты пресетов pgg). Подъём ленивый — pgg-процесс не стартует до
 первого вызова `pgg_*`; на Linux PggServe стартует с `--headless` (GLX
 pbuffer, окна нет — gpuReady синхронно), без DISPLAY — поверх через
 `xvfb-run -a` (нет xvfb → `unreachable` с hint'ом). `need_build`
-— с командами сборки pgg от корня `thirdparty/pgg` (см. `thirdparty/pgg/AGENTS.md`).
-Контракт ops — `thirdparty/pgg/docs/pgg/serve_rpc.md`.
+— с командами сборки pgg от корня монорепо (см. AGENTS.md).
+Контракт ops — docs/pgg/serve_rpc.md.
 
 Инструменты: `pgg_status` · `pgg_load(path, lib_roots?)` ·
 `pgg_params(params, file?)` · `pgg_render(node, file?, out?, size?, ortho?,
