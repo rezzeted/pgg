@@ -1,0 +1,10 @@
+PROJECT_NAME           = "Edgar C++"
+OUTPUT_DIRECTORY       = ../_build/docs/doxygen
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+RECURSIVE              = YES
+INPUT                  = ../src/libs/edgar/include/edgar
+FILE_PATTERNS          = *.hpp
+EXTRACT_ALL            = YES
+QUIET                  = YES
+WARN_IF_UNDOCUMENTED   = NO

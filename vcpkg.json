@@ -4,9 +4,13 @@
     "boost-graph",
     "fmt",
     "glm",
-    "imgui",
+    {
+      "name": "imgui",
+      "features": ["docking-experimental", "sdl3-binding", "opengl3-binding"]
+    },
     "joltphysics",
     "nlohmann-json",
+    "sdl3",
     "sokol",
     "spdlog",
     "stb",

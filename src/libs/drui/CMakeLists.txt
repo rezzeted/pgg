@@ -1,0 +1,17 @@
+find_package(imgui CONFIG REQUIRED)
+
+add_library(drui fonts.cpp)
+target_include_directories(drui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_features(drui PUBLIC cxx_std_20)
+target_link_libraries(drui PUBLIC imgui::imgui)
+
+if(WIN32)
+    target_link_libraries(drui PUBLIC opengl32)
+elseif(APPLE)
+    target_compile_definitions(drui PUBLIC GL_SILENCE_DEPRECATION)
+    find_library(OPENGL_LIBRARY OpenGL)
+    target_link_libraries(drui PUBLIC ${OPENGL_LIBRARY})
+else()
+    find_package(OpenGL REQUIRED)
+    target_link_libraries(drui PUBLIC OpenGL::GL)
+endif()

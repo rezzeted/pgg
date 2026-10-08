@@ -1,0 +1,21 @@
+# Third-party: SDL3, ImGui (via vcpkg manifest)
+
+cmake_minimum_required(VERSION 3.20)
+
+find_package(SDL3 CONFIG REQUIRED)
+find_package(imgui CONFIG REQUIRED)
+
+# Interface target keeps `main` linking unchanged (imgui + OpenGL)
+add_library(imgui_impl INTERFACE)
+target_link_libraries(imgui_impl INTERFACE imgui::imgui)
+if(WIN32)
+    target_link_libraries(imgui_impl INTERFACE opengl32)
+elseif(APPLE)
+    # Use the system OpenGL framework (not the XQuartz libGL that FindOpenGL may pick)
+    target_compile_definitions(imgui_impl INTERFACE GL_SILENCE_DEPRECATION)
+    find_library(OPENGL_FRAMEWORK OpenGL REQUIRED)
+    target_link_libraries(imgui_impl INTERFACE ${OPENGL_FRAMEWORK})
+else()
+    find_package(OpenGL REQUIRED)
+    target_link_libraries(imgui_impl INTERFACE OpenGL::GL)
+endif()

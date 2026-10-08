@@ -37,3 +37,16 @@ toolchain/jre/
 
 # Локальные референсы iso-проекта (картинки для агента, не ассеты)
 projects/iso/refs_tmp/
+
+# level-synth standalone build dirs and artifacts
+_build/
+_build-release/
+_build_vcpkg/
+_edgar_ref/
+vcpkg_installed/
+imgui.ini
+# Golden parity generated outputs (C++ side regenerates on each run)
+test_data/parity/actual/*.cpp.json
+# dotnet build artifacts
+tools/parity_runner_cs/bin/
+tools/parity_runner_cs/obj/
