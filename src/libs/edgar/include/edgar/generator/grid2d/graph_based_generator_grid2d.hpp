@@ -17,7 +17,7 @@ namespace edgar::generator::grid2d {
 
 /// Graph-based layout generator (2D grid). Default backend follows the C# pipeline at a high level
 /// (chain decomposition + simulated annealing). `GraphBasedGeneratorBackend::strip_packing` keeps the
-/// earlier deterministic strip packer (see docs/port_vs_original_gap.md).
+/// earlier deterministic strip packer (see docs/level-synth/port_vs_original_gap.md).
 template <typename TRoom>
 class GraphBasedGeneratorGrid2D {
 public:

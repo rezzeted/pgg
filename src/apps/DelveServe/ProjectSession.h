@@ -1,6 +1,6 @@
 #pragma once
 
-// One DelveServe slot (docs/mcp_v1.md): a loaded delve project keyed by its
+// One DelveServe slot (docs/delve/mcp_v1.md): a loaded delve project keyed by its
 // canonical path, the layout/IR/fill pipeline state and the warm F8 unit
 // cache that survives the slot's refills. Work on a slot is serialized by mu
 // (recursive, so the op helpers can nest the ensure-steps).

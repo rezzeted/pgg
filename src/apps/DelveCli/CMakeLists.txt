@@ -21,7 +21,7 @@ add_test(NAME DelveCli_smoke_layout
 set_tests_properties(DelveCli_smoke_layout PROPERTIES PASS_REGULAR_EXPRESSION "smoke_layout.json")
 add_test(NAME DelveCli_smoke_export
          COMMAND DelveCli export "${CMAKE_SOURCE_DIR}/src/tests/data/d1_project.json"
-                 --ir "${CMAKE_SOURCE_DIR}/docs/d0/frozen_ir.json"
+                 --ir "${CMAKE_SOURCE_DIR}/docs/delve/d0/frozen_ir.json"
                  -o "${CMAKE_CURRENT_BINARY_DIR}/smoke_out")
 set_tests_properties(DelveCli_smoke_export PROPERTIES PASS_REGULAR_EXPRESSION "d1_project.obj")
 add_test(NAME DelveCli_smoke_check

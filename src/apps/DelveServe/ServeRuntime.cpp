@@ -19,7 +19,7 @@ namespace {
 
 namespace fs = std::filesystem;
 
-// Fixed wording of the clientFile fallback note (docs/mcp_v1.md).
+// Fixed wording of the clientFile fallback note (docs/delve/mcp_v1.md).
 constexpr const char* kClientFileNote = "used the client current file";
 
 double nowMs() {

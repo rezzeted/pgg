@@ -6,8 +6,8 @@ debugging) and forwards JSON ops. If the binary is missing it returns a
 structured ``need_build`` error with configure/build argv for the current
 platform — the MCP never runs cmake itself.
 
-Adapted copy of thirdparty/pgg/tools/pgg_mcp/session.py (same lifecycle
-pattern; the submodule is not modified). ``DelveSession`` is the CPU-only
+Adapted copy of tools/pgg_mcp/session.py (same lifecycle
+pattern). ``DelveSession`` is the CPU-only
 delve daemon (no display juggling, port from env ``DELVE_SERVE_PORT``, default
 9879); ``PggSession`` is the same machinery flavored for PggServe (GPU — the
 xvfb handling is back, port 9878 / ``PGG_SERVE_PORT``, pgg repo root, binary
@@ -164,7 +164,7 @@ def pgg_serve_recipe(platform: str) -> ServeRecipe:
             configure=("generate_vs.bat",),
             build=("cmake", "--build", "--preset", "debug", "--target", "PggServe"),
             hint=(
-                "Run configure and build from the pgg repo root (thirdparty/pgg): "
+                "Run configure and build from the monorepo root: "
                 "generate_vs.bat configures the vs2022 preset; the release build "
                 "preset is 'release'. Retry the MCP tool afterwards; it starts "
                 "PggServe itself. Override the binary with env PGG_SERVE."
@@ -183,7 +183,7 @@ def pgg_serve_recipe(platform: str) -> ServeRecipe:
             configure=("./build_mac.sh",),
             build=("cmake", "--build", "--preset", "macos-debug", "--target", "PggServe"),
             hint=(
-                "Run configure and build from the pgg repo root (thirdparty/pgg): "
+                "Run configure and build from the monorepo root: "
                 "build_mac.sh configures the Xcode preset (Debug); macos-release "
                 "is faster for heavy renders. Retry the MCP tool afterwards; it "
                 "starts PggServe itself. Override the binary with env PGG_SERVE."
@@ -200,7 +200,7 @@ def pgg_serve_recipe(platform: str) -> ServeRecipe:
         configure=("./build_linux.sh",),
         build=("cmake", "--build", "--preset", "linux-debug", "--target", "PggServe"),
         hint=(
-            "Run configure and build from the pgg repo root (thirdparty/pgg): "
+            "Run configure and build from the monorepo root: "
             "build_linux.sh configures the Debug preset (linux). First configure "
             "fetches vcpkg; linux-release is faster. Headless: PggServe needs a "
             "display (xvfb-run). Retry the MCP tool afterwards; it starts "
@@ -361,12 +361,12 @@ def default_repo_root(environ: Optional[Mapping[str, str]] = None) -> str:
 
 
 def pgg_repo_root(environ: Optional[Mapping[str, str]] = None) -> str:
-    """PggServe repo root: ``PGG_REPO_ROOT`` (``~`` expanded), else thirdparty/pgg."""
+    """PggServe repo root: ``PGG_REPO_ROOT`` (``~`` expanded), else the monorepo root."""
     env = environ if environ is not None else os.environ
     override = env.get("PGG_REPO_ROOT")
     if override:
         return str(Path(override).expanduser().resolve())
-    return str(Path(default_repo_root(env)) / "thirdparty" / "pgg")
+    return str(Path(default_repo_root(env)))
 
 
 def _env_port(env_name: str, default: int, environ: Optional[Mapping[str, str]]) -> int:

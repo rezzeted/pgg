@@ -1,6 +1,6 @@
 #pragma once
 
-// Delve F3 generation (docs/generate_v1.md): project + catalog -> edgar
+// Delve F3 generation (docs/delve/generate_v1.md): project + catalog -> edgar
 // layouts with seed, budgets, cancel and attempts; layout/0 serialization.
 
 #include <atomic>

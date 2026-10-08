@@ -1,6 +1,6 @@
 #pragma once
 
-// TCP RPC server for DelveServe (docs/mcp_v1.md). Line-delimited JSON:
+// TCP RPC server for DelveServe (docs/delve/mcp_v1.md). Line-delimited JSON:
 //   {"op":"<name>","args":{...}}
 // answered by
 //   {"ok":true,"data":{...}}  |  {"ok":false,"error":{"kind":"...","message":"..."}}
@@ -8,8 +8,8 @@
 // via reply/replyError). poll() never runs pipeline work itself.
 // Thread-safe: poll() is typically the main thread; workers call reply().
 //
-// Adapted copy of thirdparty/pgg/src/apps/PggServe/ServeRpcServer.h (same
-// wire protocol and semantics; the submodule is not modified). Differences:
+// Adapted copy of src/apps/PggServe/ServeRpcServer.h (same
+// wire protocol and semantics). Differences:
 // the header comment, no pch include, kDefaultPort 9879 (PggServe keeps 9878).
 
 #include <cstdint>

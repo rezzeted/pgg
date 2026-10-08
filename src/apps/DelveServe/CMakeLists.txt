@@ -1,7 +1,7 @@
-# DelveServe: CPU RPC daemon of the delve pipeline (docs/mcp_v1.md) — project
-# slots with the warm F8 unit cache. ServeRpcServer is an adapted copy of
-# thirdparty/pgg/src/apps/PggServe (line-delimited JSON over TCP); the
-# submodule is not linked from here, only the delve pipeline libs.
+# DelveServe: CPU RPC daemon of the delve pipeline (docs/delve/mcp_v1.md) —
+# project slots with the warm F8 unit cache. ServeRpcServer is an adapted copy
+# of src/apps/PggServe (line-delimited JSON over TCP); only the delve pipeline
+# libs are linked from here.
 # nlohmann_json is found at src/libs/delve scope only; re-find it here so the
 # imported target is visible (spdlog is already found at the repo root).
 find_package(nlohmann_json CONFIG REQUIRED)

@@ -12,7 +12,7 @@
 
 **Действия агента:**
 
-1. Создать **`docs/parity_dod.md`** с таблицей строк (пример колонок):
+1. Создать **`docs/level-synth/parity_dod.md`** с таблицей строк (пример колонок):
    - `ID` (D1, D2, …)
    - `Критерий` (кратко: воспроизводимость по seed; нет overlap на эталонных графах; события SA; энергия zero / incident≈2×total; опционально — одна метрика как в C# для КП/позиций)
    - `Проверка` — имя `TEST(...)` в [`src/tests/edgar_tests.cpp`](../src/tests/edgar_tests.cpp) или [`edgar_parity_tests.cpp`](../src/tests/edgar_parity_tests.cpp), либо «TBD» с пометкой, какой тест добавить позже (без обязательства в ит. 0, если достаточно ссылки на ближайший существующий)
@@ -32,7 +32,7 @@
    - `_edgar_ref\src\Edgar.GeneralAlgorithmsTests\`
    - `_edgar_ref\src\Edgar.Tests\`
    - `_edgar_ref\src\Edgar.IntegrationTests\`
-2. Создать **`docs/test_matrix_iteration0.md`**: на каждый файл (или на крупный файл — несколько строк по подобластям) колонки:
+2. Создать **`docs/level-synth/test_matrix_iteration0.md`**: на каждый файл (или на крупный файл — несколько строк по подобластям) колонки:
    - `upstream_file`
    - `coverage`: `full` | `partial` | `none` | `na`
    - `cpp_TEST` — имена тестов или «—»
@@ -63,7 +63,7 @@
 
 **Действия агента:**
 
-1. Убедиться, что **таблица** — это `docs/test_matrix_iteration0.md` (задача 2), а **чек-лист DoD** — `docs/parity_dod.md` (задача 1).
+1. Убедиться, что **таблица** — это `docs/level-synth/test_matrix_iteration0.md` (задача 2), а **чек-лист DoD** — `docs/level-synth/parity_dod.md` (задача 1).
 2. Создать **`src/tests/README.md`**: как собрать и запустить тесты (`ctest -C Debug`), прямые ссылки на оба файла выше; одна строка «итерация 0 закрыта, когда матрица + DoD заполнены и ctest зелёный».
 3. Скрипт smoke golden — **опционально**; если нет — в README явно «скрипт golden — не в ит. 0».
 
@@ -84,8 +84,8 @@
 
 ## Критерий сдачи итерации 0
 
-- [x] `docs/parity_dod.md` создан.
-- [x] `docs/test_matrix_iteration0.md` покрывает все `*Tests.cs` в трёх проектах upstream.
+- [x] `docs/level-synth/parity_dod.md` создан.
+- [x] `docs/level-synth/test_matrix_iteration0.md` покрывает все `*Tests.cs` в трёх проектах upstream.
 - [x] `src/tests/README.md` связывает документацию с тестами.
 - [x] `test_data/parity/README.md` (минимум заготовка под golden).
 - [x] `ctest` зелёный.

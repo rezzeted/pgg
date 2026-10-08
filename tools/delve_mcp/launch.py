@@ -5,8 +5,8 @@ Cursor (and OpenCode) start this module as the single MCP server ``delve``:
     python3 -m tools.delve_mcp.launch
 
 Interpreter discovery, venv, and ``pip install`` live here so every OS shares
-one bootstrap. Adapted copy of thirdparty/pgg/tools/pgg_mcp/launch.py (same
-bootstrap pattern; the submodule is not modified).
+one bootstrap. Adapted copy of tools/pgg_mcp/launch.py (same
+bootstrap pattern).
 """
 
 from __future__ import annotations

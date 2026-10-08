@@ -1,5 +1,5 @@
-// Adapted copy of thirdparty/pgg/src/apps/PggServe/ServeRpcServer.cpp for
-// DelveServe (docs/mcp_v1.md); the submodule is not modified. Platform socket
+// Adapted copy of src/apps/PggServe/ServeRpcServer.cpp for
+// DelveServe (docs/delve/mcp_v1.md). Platform socket
 // code (winsock/posix) is kept as is; the only edit is the dropped pch include.
 
 #include "ServeRpcServer.h"

@@ -1,6 +1,6 @@
 #pragma once
 
-// Delve project v1: layout tier (docs/project_v1.md). D2, F1.
+// Delve project v1: layout tier (docs/delve/project_v1.md). D2, F1.
 // Graph (rooms/passages), explicit templates, parametric ranges, and the
 // cross-tier checks (R-G3, 5.4, catalog budget). No edgar types here; the F2
 // catalog in delve_layout consumes these declarations.

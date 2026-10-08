@@ -147,7 +147,7 @@ E-диагностик, меш непуст, точное число якоре�
 Этот раздел проверяется машинно: `delve::lint_asset` (коды `delve/lint`)
 прогоняет ассет с синтетическими входами слота и режет группы/vec2/vec4/
 отсутствие `@style`/`@Cd`/`@kind` до полного fill — через MCP
-`delve_asset_check` (пакет A2, docs/roadmap_v1.md).
+`delve_asset_check` (пакет A2, docs/delve/roadmap_v1.md).
 
 ## Фикстуры (R-A4, слоты §5)
 

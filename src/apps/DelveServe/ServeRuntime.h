@@ -1,6 +1,6 @@
 #pragma once
 
-// DelveServe runtime (docs/mcp_v1.md): project slots (LRU, max 4), a small
+// DelveServe runtime (docs/delve/mcp_v1.md): project slots (LRU, max 4), a small
 // CPU worker pool and the RPC handlers of the pipeline. ping/status answer
 // inline on the poll thread; every slot op is deferred — the poll thread only
 // queues the job, the worker runs it under the slot mutex and answers via

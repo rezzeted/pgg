@@ -7,7 +7,7 @@ object terminated by '\\n'. Replies can be slow: ``fill``/``check``/``export``
 run on the CPU worker pool and a cold fill of a big project takes tens of
 seconds — hence the generous default timeout.
 
-Adapted copy of thirdparty/pgg/tools/pgg_mcp/rpc_client.py (same wire
+Adapted copy of tools/pgg_mcp/rpc_client.py (same wire
 protocol; default port 9879 instead of 9878).
 
 Usage:
