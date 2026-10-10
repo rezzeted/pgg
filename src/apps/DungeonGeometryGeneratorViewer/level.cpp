@@ -126,9 +126,9 @@ bool Level::load(const std::string& proj, const std::string& assets, std::string
     next.unitCache = std::move(unitCache);  // F8: the cache outlives reloads
     next.projectPath = proj;
     next.dungeon_geometry_generatorAssets = assets;
-    const bool ok =
-        dungeon_geometry_generator::load_project(proj, next.project, err) && next.buildIrFromGenerate(err) &&
-        next.runFill(err);
+    // Parse + catalog only: the layout/fill pipeline runs on Generate.
+    const bool ok = dungeon_geometry_generator::load_project(proj, next.project, err) &&
+                    dungeon_geometry_generator::layout::build_catalog(next.project, next.catalog, err);
     if (!ok) {
         unitCache = std::move(next.unitCache);  // keep the cache on failure too
         return false;
@@ -138,9 +138,19 @@ bool Level::load(const std::string& proj, const std::string& assets, std::string
     return true;
 }
 
+bool Level::generate(std::string& err) {
+    if (!loaded) {
+        err = "no project loaded";
+        return false;
+    }
+    if (!buildIrFromGenerate(err) || !runFill(err)) return false;
+    generated = true;
+    return true;
+}
+
 bool Level::refill(std::string& err) {
     if (!loaded) {
-        err = "no level loaded";
+        err = "no project loaded";
         return false;
     }
     if (!dungeon_geometry_generator::load_project(projectPath, project, err)) return false;
@@ -149,6 +159,7 @@ bool Level::refill(std::string& err) {
     dungeon_geometry_generator::layout::Catalog nextCatalog;
     if (!dungeon_geometry_generator::layout::build_catalog(project, nextCatalog, err)) return false;
     catalog = std::move(nextCatalog);
+    if (!generated) return generate(err);  // no stored layout to reuse: the first fill is a generate
     // Same layout, fresh resolution: rebuild the IR from the stored layout,
     // then refill through the shared cache.
     return dungeon_geometry_generator::build_ir_from_layout(layoutData, project, projectPath, ir, err) && runFill(err);
@@ -156,9 +167,9 @@ bool Level::refill(std::string& err) {
 
 bool Level::relayout(std::string& err) {
     if (!loaded) {
-        err = "no level loaded";
+        err = "no project loaded";
         return false;
     }
     if (!dungeon_geometry_generator::load_project(projectPath, project, err)) return false;
-    return buildIrFromGenerate(err) && runFill(err);
+    return generate(err);  // buildIrFromGenerate rebuilds the catalog too
 }

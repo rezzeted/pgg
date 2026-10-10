@@ -20,8 +20,10 @@
 //   DungeonGeometryGeneratorViewer [project.json] [--smoke]
 // No arguments: the start screen; a project is opened from it (New/Open or a
 // recent entry), from Files > Open, or by dragging the project .json onto the
-// window. The layout is always generated from the project's layout tier
-// (attempts=4); frozen IR files are a DungeonGeometryGeneratorCli input, not the viewer's.
+// window. Opening is parse-only (the app does not block); the layout tier is
+// generated on demand (the Generate button at the side panel bottom or
+// Project > Re-layout, attempts=4), then the IR is built and the level
+// filled. Frozen IR files are a DungeonGeometryGeneratorCli input, not the viewer's.
 // --smoke runs the same data path without a window (ctest), prints one stats
 // line and exits 0. Exit codes: 0 ok, 1 data error, 2 usage error.
 // v1 limits: picking only in the top view, anchors only in the overlay.
@@ -82,6 +84,8 @@
 namespace {
 
 constexpr float kPanelWidth = 380.0f;
+constexpr float kLogHeight = 160.0f;        // Log dock height under the View area
+constexpr float kGenerateStripHeight = 64.0f;  // Generate button strip at the side panel bottom
 // Points group baked onto a copy of the level mesh for the 3D unit highlight
 // (the merged mesh carries no groups of its own).
 constexpr const char* kUnitGroup = "unit";
@@ -159,12 +163,13 @@ std::string g_selectedUnit;     // row selected in the units panel
 std::string g_highlightedUnit;  // unit with the 3D highlight group ("" = none)
 std::string g_soloUnit;         // unit shown solo in the 3D pane ("" = level view)
 
-std::vector<std::pair<std::string, bool>> g_log;  // (line, isError)
+std::vector<std::pair<std::string, bool>> g_log;  // (line, isError), the Log dock below View
+size_t g_logDrawn = 0;  // line count the Log dock rendered last frame (auto-scroll)
 bool g_projectDirty = false;  // in-memory project edits not yet saved (Ctrl+S / Files > Save)
 
 void logLine(const std::string& line, bool isError = false) {
     g_log.push_back({line, isError});
-    if (g_log.size() > 12) g_log.erase(g_log.begin());
+    if (g_log.size() > 200) g_log.erase(g_log.begin());
     if (isError) {
         spdlog::error("DungeonGeometryGeneratorViewer: {}", line);
     } else {
@@ -292,9 +297,14 @@ void openLevel(const std::string& projRaw) {
     resetViewState();
     closeAllTemplateTabs();
     g_projectDirty = false;
-    rebuildTopoModel(true);  // fresh layout: fresh camera (auto-fit)
-    rebuildPreviews(true);
-    logLine(fillSummary("load"));
+    // Parse-only open: no layout/fill yet — clear whatever previews the
+    // previous project left and wait for the explicit Generate.
+    rebuildTopoModel(true);
+    g_preview3d.clear();
+    g_previewTop.clear();
+    g_preview3d.setSummary({});
+    g_previewTop.setSummary({});
+    logLine("loaded " + proj + " (not generated — press Generate)");
     // Recents survive the session: store the canonical absolute path (a
     // relative one would break when the next run has another cwd).
     std::error_code ec;
@@ -343,6 +353,19 @@ void doRelayout() {
     rebuildTopoModel(true);  // new layout: fresh camera (auto-fit)
     rebuildPreviews(true);  // new layout: refit
     logLine(fillSummary("re-layout"));
+}
+
+// First generation of a just-opened project (open is parse-only).
+void doGenerate() {
+    std::string err;
+    if (!g_level.generate(err)) {
+        logLine("generate failed: " + err, true);
+        return;
+    }
+    resetViewState();
+    rebuildTopoModel(true);  // fresh layout: fresh camera (auto-fit)
+    rebuildPreviews(true);
+    logLine(fillSummary("generate"));
 }
 
 // Save the in-memory project (template cards edit it in place), then apply
@@ -442,6 +465,15 @@ float drawMainMenu() {
                 requestAction(PendingAction::Close);
             ImGui::Separator();
             if (ImGui::MenuItem("Exit")) requestAction(PendingAction::Exit);
+            ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu("Project", g_level.loaded)) {
+            if (ImGui::MenuItem("Refill (reload project)")) doRefill();
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Re-read project.json, rebuild the IR from the same layout, refill");
+            if (ImGui::MenuItem("Re-layout")) doRelayout();
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Generate a fresh layout (same seed, attempts=4), rebuild the IR, refill");
             ImGui::EndMenu();
         }
         if (g_level.loaded) {
@@ -787,25 +819,7 @@ void drawSidePanel(float y, float h) {
                  ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar |
                      ImGuiWindowFlags_NoCollapse);
 
-    ImGui::SetNextItemOpen(true, ImGuiCond_Once);
-    if (ImGui::CollapsingHeader("Stats")) {
-        ImGui::TextWrapped("project: %s", g_level.projectPath.c_str());
-        const dungeon_geometry_generator::FillStats& s = g_level.fill.stats;
-        ImGui::Text("rooms %zu  walls %zu  nodes %zu", s.rooms, s.bodies, s.nodes);
-        ImGui::Text("facings %zu  doors %zu  lamps %zu", s.facings, s.doors, s.lamps);
-        ImGui::Text("fill %.0f ms (%zu units: %zu reused, %zu reran)", g_level.fillMs,
-                    g_level.fill.units.size(), s.reused.size(), s.reran.size());
-        ImGui::Text("layout %.0f ms", g_level.layoutMs);
-        ImGui::TextDisabled("unit cache: %zu outputs", g_level.unitCache.size());
-
-        if (ImGui::Button("Refill (reload project)")) doRefill();
-        ImGui::SameLine();
-        if (ImGui::Button("Re-layout")) doRelayout();
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Generate a fresh layout (same seed, attempts=4), rebuild the IR, refill");
-        if (g_projectDirty) ImGui::TextDisabled("modified — Files > Save (Ctrl+S)");
-    }
-
+    ImGui::BeginChild("##side_tabs_area", ImVec2(0.0f, -kGenerateStripHeight));
     if (ImGui::BeginTabBar("##side_tabs")) {
         if (ImGui::BeginTabItem("Project")) {
             const ProjectTreeActions ta = drawProjectTree(g_level);
@@ -857,21 +871,60 @@ void drawSidePanel(float y, float h) {
         }
         ImGui::EndTabBar();
     }
+    ImGui::EndChild();
 
-    if (ImGui::CollapsingHeader("Log", ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::BeginChild("##log", ImVec2(0.0f, 110.0f), true);
-        for (const auto& [text, isError] : g_log) {
-            if (isError) {
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.95f, 0.4f, 0.35f, 1.0f));
-                ImGui::TextWrapped("%s", text.c_str());
-                ImGui::PopStyleColor();
-            } else {
-                ImGui::TextWrapped("%s", text.c_str());
-            }
+    // Generation is explicit (opening a project only parses it): the button
+    // strip sits at the panel bottom, always reachable.
+    ImGui::Separator();
+    const ImVec2 btnSize(200.0f, 36.0f);
+    const float availH = ImGui::GetContentRegionAvail().y;
+    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + std::max((availH - btnSize.y) * 0.5f, 0.0f));
+    ImGui::SetCursorPosX(std::max((ImGui::GetWindowWidth() - btnSize.x) * 0.5f,
+                                  ImGui::GetStyle().WindowPadding.x));
+    if (ImGui::Button(g_level.generated ? "Re-layout" : "Generate", btnSize)) {
+        if (g_level.generated) {
+            doRelayout();
+        } else {
+            doGenerate();
         }
-        if (g_log.empty()) ImGui::TextDisabled("(empty)");
-        ImGui::EndChild();
     }
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip(g_level.generated
+                              ? "Generate a fresh layout (same seed, attempts=4), rebuild the IR, refill"
+                              : "Generate the layout, build the IR, fill the level");
+    ImGui::End();
+}
+
+// Log dock under the View area: the full-height side panel stays on the
+// left, this window takes the bottom strip of the right region.
+void drawLogPanel(float x, float y, float w, float h) {
+    ImGui::SetNextWindowPos(ImVec2(x, y), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(w, h), ImGuiCond_Always);
+    ImGui::Begin("##log_dock", nullptr,
+                 ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar |
+                     ImGuiWindowFlags_NoCollapse);
+    ImGui::TextDisabled("Log");
+    ImGui::SameLine(ImGui::GetWindowWidth() - 44.0f);
+    if (ImGui::SmallButton("clear")) g_log.clear();
+    ImGui::Separator();
+    ImGui::BeginChild("##log_lines", ImVec2(0.0f, 0.0f), false,
+                      ImGuiWindowFlags_HorizontalScrollbar);
+    // Stick to the newest line while the user hasn't scrolled up.
+    const bool stickToBottom = ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 4.0f;
+    const bool grew = g_log.size() != g_logDrawn;
+    g_logDrawn = g_log.size();
+    for (const auto& [text, isError] : g_log) {
+        if (isError) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.95f, 0.4f, 0.35f, 1.0f));
+            ImGui::TextWrapped("%s", text.c_str());
+            ImGui::PopStyleColor();
+        } else {
+            ImGui::TextWrapped("%s", text.c_str());
+        }
+    }
+    if (g_log.empty()) ImGui::TextDisabled("(empty)");
+    if (stickToBottom && grew) ImGui::SetScrollHereY(1.0f);
+    ImGui::EndChild();
     ImGui::End();
 }
 
@@ -884,18 +937,18 @@ void drawPanes(float x, float y, float w, float h) {
     ImGui::Begin("##view", nullptr,
                  ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar |
                      ImGuiWindowFlags_NoCollapse);
+    const char* hint = "not generated — press Generate (the side panel button)";
     int closeTab = -1;
     if (ImGui::BeginTabBar("##views")) {
         if (ImGui::BeginTabItem("3D")) {
             g_activeView = 0;
-            drawPreviewPane(g_preview3d, g_rect3d, "no level loaded");
+            drawPreviewPane(g_preview3d, g_rect3d, hint);
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("Top")) {
             g_activeView = 1;
-            const PreviewPaneResult topRes =
-                drawPreviewPane(g_previewTop, g_rectTop, "no level loaded", &g_layers);
-            if (g_level.loaded) {
+            const PreviewPaneResult topRes = drawPreviewPane(g_previewTop, g_rectTop, hint, &g_layers);
+            if (g_level.generated) {
                 if (topRes.clicked)
                     g_selection = pickAtSelection(g_level, g_previewTop, g_rectTop, topRes.clickPos);
                 drawIrOverlay(ImGui::GetWindowDrawList(), g_previewTop, g_rectTop, g_level, g_layers,
@@ -905,7 +958,7 @@ void drawPanes(float x, float y, float w, float h) {
         }
         if (ImGui::BeginTabItem("Topo")) {
             g_activeView = 2;
-            if (g_level.loaded) {
+            if (g_level.generated) {
                 // Two side-by-side panes over the same TopoModel: the 2D plan
                 // and the passage graph (independent cameras, half the tab
                 // width each).
@@ -939,7 +992,7 @@ void drawPanes(float x, float y, float w, float h) {
                     }
                 }
             } else {
-                ImGui::TextDisabled("no level loaded");
+                ImGui::TextDisabled("%s", hint);
             }
             ImGui::EndTabItem();
         }
@@ -1023,7 +1076,9 @@ void frame() {
         const float contentH = static_cast<float>(h) - menuH;
         if (g_level.loaded) {
             drawSidePanel(menuH, contentH);
-            drawPanes(kPanelWidth, menuH, static_cast<float>(w) - kPanelWidth, contentH);
+            drawPanes(kPanelWidth, menuH, static_cast<float>(w) - kPanelWidth, contentH - kLogHeight);
+            drawLogPanel(kPanelWidth, menuH + contentH - kLogHeight,
+                         static_cast<float>(w) - kPanelWidth, kLogHeight);
         } else {
             drawStartScreen(menuH, static_cast<float>(w), contentH);
         }
@@ -1115,7 +1170,8 @@ int runSmoke() {
     spdlog::set_level(spdlog::level::err);
     Level level;
     std::string err;
-    if (!level.load(g_projectArg, resolve_dungeon_geometry_generator_assets(g_argv0, g_projectArg), err)) {
+    if (!level.load(g_projectArg, resolve_dungeon_geometry_generator_assets(g_argv0, g_projectArg), err) ||
+        !level.generate(err)) {
         std::fprintf(stderr, "DungeonGeometryGeneratorViewer --smoke: %s\n", err.c_str());
         return 1;
     }
