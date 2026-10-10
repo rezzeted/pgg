@@ -55,10 +55,16 @@ bool get_str(const nlohmann::json& j, const std::string& key, std::string& out, 
 }  // namespace
 
 // v1 cross-tier checks (R-G3, 5.4). Layout and fill are parsed.
-static bool check_project_v1(const Project& p, const std::string& path, std::string& err) {
+bool validate_project_v1(const Project& p, const std::string& path, std::string& err) {
     const LayoutParams& l = *p.layout;
     const FillParams& f = p.fill;
     const double cell = f.cell;
+
+    // The parser's structural invariant an in-memory editor can still break.
+    if (l.rooms.empty()) {
+        err = path + ": layout.rooms: expected a non-empty array";
+        return false;
+    }
 
     std::string bad;
     if (!check_connected(l, bad)) {
@@ -586,7 +592,7 @@ bool load_project(const std::string& path, Project& out, std::string& err) {
         LayoutParams lp;
         if (!parse_layout(doc["layout"], path, lp, err)) return false;
         p.layout = std::move(lp);
-        if (!check_project_v1(p, path, err)) return false;
+        if (!validate_project_v1(p, path, err)) return false;
     }
     out = std::move(p);
     return true;

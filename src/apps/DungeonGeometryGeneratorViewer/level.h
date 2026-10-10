@@ -2,7 +2,7 @@
 
 // DungeonGeometryGeneratorViewer data layer (F9): owns the project -> layout -> IR -> fill
 // pipeline state so the UI reads plain structs. The UnitCache (F8) outlives
-// individual fills; refill/relayout reuse it and expose the reuse stats.
+// individual fills; refill/generate reuse it and expose the reuse stats.
 
 #include <string>
 
@@ -29,16 +29,15 @@ struct Level {
 
     // Parse-only open: read the project file and build the F2 catalog. The
     // layout/fill pipeline does NOT run — opening a project stays fast,
-    // generation is explicit (generate / relayout).
+    // generation is explicit (generate).
     bool load(const std::string& project, const std::string& assets, std::string& err);
     // The slow stage: generate a layout (attempts=4), build the IR, then
-    // fill with the live cache.
+    // fill with the live cache. Uses the in-memory project (unsaved editor
+    // edits included).
     bool generate(std::string& err);
     // Re-read the project file, rebuild the IR from the stored layout and
     // refill through the same cache. Never generated yet: becomes generate.
     bool refill(std::string& err);
-    // Re-read the project file, regenerate the layout, rebuild the IR, refill.
-    bool relayout(std::string& err);
 
   private:
     bool buildIrFromGenerate(std::string& err);

@@ -552,3 +552,73 @@ TEST(ProjectV1, WriteRoundTripDecor) {
     ASSERT_TRUE(dungeon_geometry_generator::write_project_json(q, text2, err)) << err;
     EXPECT_EQ(text1, text2);
 }
+
+// --- Layout editor metadata (layout.editor.node_pos) -------------------------
+
+TEST(ProjectV1, EditorNodePosRoundTrip) {
+    // Positions of existing rooms survive a load -> save -> load round trip;
+    // ids without a room parse but are dropped by the writer.
+    const std::string text = surgery(
+        fixture(), "\"templates\": [",
+        "\"editor\": {\"node_pos\": {\"entry\": [0, 0], \"hall\": [12.5, 3], \"ghost\": [7, 7]}},\n"
+        "    \"templates\": [");
+    dungeon_geometry_generator::Project p;
+    std::string err;
+    ASSERT_TRUE(loadText(text, p, err)) << err;
+    ASSERT_TRUE(p.layout.has_value());
+    ASSERT_EQ(p.layout->editor_node_pos.size(), 3u);
+    EXPECT_DOUBLE_EQ(p.layout->editor_node_pos.at("hall").first, 12.5);
+    EXPECT_DOUBLE_EQ(p.layout->editor_node_pos.at("hall").second, 3.0);
+
+    std::string text1;
+    ASSERT_TRUE(dungeon_geometry_generator::write_project_json(p, text1, err)) << err;
+    EXPECT_NE(text1.find("\"node_pos\""), std::string::npos) << text1;
+    EXPECT_EQ(text1.find("\"ghost\""), std::string::npos) << text1;  // no such room: dropped
+
+    dungeon_geometry_generator::Project q;
+    ASSERT_TRUE(loadText(text1, q, err)) << err << "\n" << text1;
+    ASSERT_EQ(q.layout->editor_node_pos.size(), 2u);
+    EXPECT_DOUBLE_EQ(q.layout->editor_node_pos.at("entry").first, 0.0);
+    EXPECT_DOUBLE_EQ(q.layout->editor_node_pos.at("hall").first, 12.5);
+    std::string text2;
+    ASSERT_TRUE(dungeon_geometry_generator::write_project_json(q, text2, err)) << err;
+    EXPECT_EQ(text1, text2);  // stable normalization
+}
+
+TEST(ProjectV1, EditorNodePosReject) {
+    const std::string base = fixture();
+    const std::pair<const char*, const char*> probes[] = {
+        {"[]", "editor"},                            // not an object
+        {"{\"bogus\": {}}", "unknown key"},          // only node_pos is defined
+        {"{\"node_pos\": []}", "node_pos"},          // not an object
+        {"{\"node_pos\": {\"entry\": [0]}}", "[x, y]"},
+        {"{\"node_pos\": {\"entry\": [0, 0, 0]}}", "[x, y]"},
+        {"{\"node_pos\": {\"entry\": [\"a\", 0]}}", "[x, y]"},
+    };
+    for (const auto& [body, needle] : probes) {
+        dungeon_geometry_generator::Project p;
+        std::string err;
+        EXPECT_FALSE(loadText(surgery(base, "\"templates\": [",
+                                      std::string("\"editor\": ") + body + ",\n    \"templates\": ["),
+                              p, err))
+            << body;
+        EXPECT_NE(err.find(needle), std::string::npos) << body << " -> " << err;
+    }
+}
+
+TEST(ProjectV1, ValidateInMemory) {
+    // The editor pre-save/pre-generate check: the same cross-tier rules as
+    // load_project over an already-parsed project.
+    dungeon_geometry_generator::Project p = loadFixture();
+    std::string err;
+    EXPECT_TRUE(dungeon_geometry_generator::validate_project_v1(p, "mem", err)) << err;
+    // Dropping the c1-hall passage leaves hall unreachable.
+    p.layout->passages.pop_back();
+    EXPECT_FALSE(dungeon_geometry_generator::validate_project_v1(p, "mem", err));
+    EXPECT_NE(err.find("hall"), std::string::npos) << err;
+    // Empty graph (the editor can delete every room) is rejected like the parser does.
+    p.layout->rooms.clear();
+    EXPECT_FALSE(dungeon_geometry_generator::validate_project_v1(p, "mem", err));
+    EXPECT_NE(err.find("rooms"), std::string::npos) << err;
+}
+

@@ -119,7 +119,7 @@ int g_activeView = 0;  // 0 = 3D (default tab), 1 = Top, 2 = Topo, >=3 = templat
 struct OpenTemplateTab {
     ProjectTreeSelection sel;
     TemplateViewState st;
-    TopoGraphState graphSt;  // Kind::Layout: node-graph camera/hover
+    LayoutGraphState layoutSt;  // Kind::Layout: node-graph editor state
 };
 std::vector<OpenTemplateTab> g_tmplTabs;
 std::vector<ProjectTreeSelection> g_pendingTabs;
@@ -144,9 +144,10 @@ void closeAllTemplateTabs() {
 }
 
 // Topo tab state: the model is a pure projection of the project graph and
-// the generated layout (rebuilt on load/refill/relayout), the pane state is
-// the camera + layer toggles. g_layoutGraph is the same projection for the
-// Layout tab, with fallback node positions until the first generate.
+// the generated layout (rebuilt on load/refill/generate and on Layout editor
+// graph edits), the pane state is the camera + layer toggles. g_layoutGraph
+// is the same projection for the Layout tab, with pinned/fallback node
+// positions instead of the generated centroids.
 dungeon_geometry_generator::TopoModel g_topoModel;
 dungeon_geometry_generator::TopoModel g_layoutGraph;
 TopoPlanState g_topoPlan;
@@ -349,9 +350,18 @@ void doRefill() {
     logLine(fillSummary("refill"));
 }
 
+// Fresh layout from the CURRENT in-memory project (unsaved editor edits
+// included — reloading from disk here would silently drop them). Validated
+// first: the graph editor allows invalid intermediate states.
 void doRelayout() {
     std::string err;
-    if (!g_level.relayout(err)) {
+    if (g_level.project.layout &&
+        !dungeon_geometry_generator::validate_project_v1(g_level.project, g_level.projectPath,
+                                                         err)) {
+        logLine("re-layout failed: " + err, true);
+        return;
+    }
+    if (!g_level.generate(err)) {
         logLine("re-layout failed: " + err, true);
         return;
     }
@@ -361,9 +371,18 @@ void doRelayout() {
     logLine(fillSummary("re-layout"));
 }
 
-// First generation of a just-opened project (open is parse-only).
+// First generation of a just-opened project (open is parse-only). Uses the
+// in-memory project — the Layout graph editor's unsaved edits included — so
+// the cross-tier checks run first (the editor allows invalid intermediate
+// states, e.g. a fresh room without passages).
 void doGenerate() {
     std::string err;
+    if (g_level.project.layout &&
+        !dungeon_geometry_generator::validate_project_v1(g_level.project, g_level.projectPath,
+                                                         err)) {
+        logLine("generate failed: " + err, true);
+        return;
+    }
     if (!g_level.generate(err)) {
         logLine("generate failed: " + err, true);
         return;
@@ -374,11 +393,19 @@ void doGenerate() {
     logLine(fillSummary("generate"));
 }
 
-// Save the in-memory project (template cards edit it in place), then apply
-// via the usual re-layout path — the reload re-validates what was written
-// and rebuilds the catalog the cards read.
+// Save the in-memory project (template cards and the Layout graph editor edit
+// it in place), then apply via the usual re-layout path — the reload
+// re-validates what was written and rebuilds the catalog the cards read. The
+// in-memory cross-tier validation runs first: a project that broke the graph
+// rules (an unreachable room, a corridor degree) is never written to disk.
 void doSaveApply() {
     std::string err;
+    if (g_level.project.layout &&
+        !dungeon_geometry_generator::validate_project_v1(g_level.project, g_level.projectPath,
+                                                         err)) {
+        logLine("not saved: " + err, true);
+        return;
+    }
     if (!dungeon_geometry_generator::save_project(g_level.projectPath, g_level.project, err)) {
         logLine("save failed: " + err, true);
         return;
@@ -1012,12 +1039,19 @@ void drawPanes(float x, float y, float w, float h) {
             if (ImGui::BeginTabItem(label.c_str(), &open, flags)) {
                 g_activeView = 3 + static_cast<int>(i);
                 if (tab.sel.kind == ProjectTreeSelection::Kind::Layout) {
-                    const TopoGraphResult gr =
-                        drawLayoutGraphView(g_level, g_layoutGraph, g_selection, tab.graphSt);
-                    if (gr.focus) {
+                    const LayoutGraphActions la =
+                        drawLayoutGraphView(g_level, g_layoutGraph, g_selection, tab.layoutSt);
+                    if (la.markDirty) {
+                        g_projectDirty = true;
+                        buildLayoutGraphModel(g_level, g_layoutGraph);
+                        // Rooms/passages added or removed: the Topo tab reads
+                        // the same graph, rebuild its projection too.
+                        if (la.graphChanged) rebuildTopoModel(false);
+                    }
+                    if (la.focus) {
                         for (const auto& n : g_layoutGraph.nodes) {
                             if (n.id == g_selection.id) {
-                                fitTopoGraphCam(tab.graphSt, n.minx, n.miny, n.maxx, n.maxy);
+                                fitTopoGraphCam(tab.layoutSt.graph, n.minx, n.miny, n.maxx, n.maxy);
                                 break;
                             }
                         }
