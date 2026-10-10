@@ -8,7 +8,6 @@
 #include <map>
 #include <queue>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -232,25 +231,17 @@ void buildLayoutGraphModel(const Level& level, dg::TopoModel& out) {
     out = dg::TopoModel{};
     if (!level.loaded || !level.project.layout) return;
     const dg::LayoutParams& g = *level.project.layout;
-    out = dg::build_topo(g, level.generated ? level.layoutData : dg::LayoutData{});
 
-    // The editor canvas edits the graph: layout-only ghosts (a stale layout
-    // room whose graph room was deleted) are not shown.
-    {
-        std::unordered_set<std::string> ids;
-        for (const dg::GraphRoom& r : g.rooms) ids.insert(r.id);
-        out.nodes.erase(std::remove_if(out.nodes.begin(), out.nodes.end(),
-                                       [&](const dg::TopoNode& n) { return !ids.count(n.id); }),
-                        out.nodes.end());
-    }
+    // The editor canvas is the user's stable schematic of the graph: node
+    // positions come from the pinned editor_node_pos or the deterministic
+    // BFS fallback — never from the generated layout (the read-only Topo tab
+    // owns the "how the rooms actually landed" projection).
+    out = dg::build_topo(g, dg::LayoutData{});
 
     std::map<std::string, std::pair<double, double>> fallback;
     fallbackPositions(g, fallback);
-    std::unordered_map<std::string, size_t> idx;
-    for (size_t i = 0; i < out.nodes.size(); ++i) idx.emplace(out.nodes[i].id, i);
     for (dg::TopoNode& n : out.nodes) {
         const auto pin = g.editor_node_pos.find(n.id);
-        if (pin == g.editor_node_pos.end() && n.hasLayout) continue;  // real centroid + bbox
         double cx = 0.0, cz = 0.0;
         if (pin != g.editor_node_pos.end()) {
             cx = pin->second.first;
@@ -267,10 +258,12 @@ void buildLayoutGraphModel(const Level& level, dg::TopoModel& out) {
         n.maxx = static_cast<int>(std::ceil(cx + 2.0));
         n.miny = static_cast<int>(std::floor(cz - 1.5));
         n.maxy = static_cast<int>(std::ceil(cz + 1.5));
-        n.hasLayout = true;  // synthetic position: draw the node, keep the contour as-is
+        n.hasLayout = true;  // synthetic position: draw the node
     }
     // Door labels sit at the edge midpoints; recompute over the final
     // positions (build_topo skipped edges with an unplaced endpoint).
+    std::unordered_map<std::string, size_t> idx;
+    for (size_t i = 0; i < out.nodes.size(); ++i) idx.emplace(out.nodes[i].id, i);
     for (dg::TopoEdge& e : out.edges) {
         const auto ia = idx.find(e.a);
         const auto ib = idx.find(e.b);
@@ -279,6 +272,27 @@ void buildLayoutGraphModel(const Level& level, dg::TopoModel& out) {
         e.lz = (out.nodes[ia->second].cz + out.nodes[ib->second].cz) * 0.5;
         e.labelOk = true;
     }
+}
+
+size_t sanitizeEditorPins(dg::LayoutParams& g, std::string& dropped) {
+    dropped.clear();
+    size_t n = 0;
+    for (auto it = g.editor_node_pos.begin(); it != g.editor_node_pos.end();) {
+        const auto& [id, pos] = *it;
+        // Broken = a room id that does not exist or a non-finite / absurd
+        // coordinate (hand-edit damage; JSON itself cannot carry NaN).
+        const bool ok = hasRoom(g, id) && std::isfinite(pos.first) && std::isfinite(pos.second) &&
+                        std::fabs(pos.first) <= 1e6 && std::fabs(pos.second) <= 1e6;
+        if (ok) {
+            ++it;
+            continue;
+        }
+        if (!dropped.empty()) dropped += ", ";
+        dropped += id;
+        it = g.editor_node_pos.erase(it);
+        ++n;
+    }
+    return n;
 }
 
 LayoutGraphActions drawLayoutGraphView(Level& level, const dg::TopoModel& model, Selection& selection,
@@ -367,14 +381,8 @@ LayoutGraphActions drawLayoutGraphView(Level& level, const dg::TopoModel& model,
     ImGui::SameLine();
     ImGui::TextDisabled("%zu rooms, %zu passages", model.nodes.size(), model.edges.size());
 
-    if (!level.generated) {
-        ImGui::TextDisabled(
-            "auto-arranged — drag nodes to pin positions (saved with the project); Generate "
-            "builds the real layout");
-    } else if (!graph->editor_node_pos.empty()) {
-        ImGui::TextDisabled("pinned nodes keep their positions here; the Topo tab shows the "
-                            "generated layout");
-    }
+    ImGui::TextDisabled("drag nodes to arrange the schema (positions are saved with the "
+                        "project); the generated layout lives in the Topo tab");
 
     // --- canvas --------------------------------------------------------------
 

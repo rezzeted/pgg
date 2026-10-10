@@ -26,6 +26,10 @@
 // filled. Frozen IR files are a DungeonGeometryGeneratorCli input, not the viewer's.
 // --smoke runs the same data path without a window (ctest), prints one stats
 // line and exits 0. Exit codes: 0 ok, 1 data error, 2 usage error.
+// Diagnostics (run_log.h): every run logs to <repo>/logs/DungeonGeometryGeneratorViewer/
+// and a generate/refill first snapshots the in-memory project there (the
+// repro case when the pipeline dies mid-run); POSIX crashes append a
+// backtrace to the run log.
 // v1 limits: picking only in the top view, anchors only in the overlay.
 
 #include "pch.h"
@@ -54,6 +58,7 @@
 #include "panel.h"
 #include "project_tree.h"
 #include "recent.h"
+#include "run_log.h"
 #include "template_view.h"
 #include "topo_view.h"
 
@@ -172,6 +177,7 @@ std::string g_soloUnit;         // unit shown solo in the 3D pane ("" = level vi
 std::vector<std::pair<std::string, bool>> g_log;  // (line, isError), the Log dock below View
 size_t g_logDrawn = 0;  // line count the Log dock rendered last frame (auto-scroll)
 bool g_projectDirty = false;  // in-memory project edits not yet saved (Ctrl+S / Files > Save)
+int g_pipelineRun = 0;  // generate/refill counter of this session (snapshot file suffixes)
 
 void logLine(const std::string& line, bool isError = false) {
     g_log.push_back({line, isError});
@@ -291,6 +297,18 @@ std::string resolveInputPath(const std::string& path) {
     return path;  // load_project will report it missing
 }
 
+// Hand-edit damage in the project file (a pinned node position whose room is
+// gone or whose coordinates are non-finite/absurd) is dropped with a Log
+// line; the affected nodes fall back to the readable auto arrangement.
+void sanitizeEditorPinsLogged() {
+    if (!g_level.project.layout) return;
+    std::string dropped;
+    if (sanitizeEditorPins(*g_level.project.layout, dropped) > 0)
+        logLine("layout.editor.node_pos: dropped broken positions of " + dropped +
+                    " — those rooms were auto-arranged",
+                true);
+}
+
 void openLevel(const std::string& projRaw) {
     const std::string proj = resolveInputPath(projRaw);
     std::string err;
@@ -303,6 +321,7 @@ void openLevel(const std::string& projRaw) {
     resetViewState();
     closeAllTemplateTabs();
     g_projectDirty = false;
+    sanitizeEditorPinsLogged();
     // Parse-only open: no layout/fill yet — clear whatever previews the
     // previous project left and wait for the explicit Generate.
     rebuildTopoModel(true);
@@ -340,10 +359,14 @@ void closeLevel() {
 
 void doRefill() {
     std::string err;
+    g_pipelineRun += 1;
+    logLine("refill: reloading " + g_level.projectPath + " ...");
+    runlogSnapshotProject(g_level.project, g_pipelineRun);  // the in-memory state refill discards
     if (!g_level.refill(err)) {
         logLine("refill failed: " + err, true);
         return;
     }
+    sanitizeEditorPinsLogged();  // refill re-reads the file: pins could change on disk
     resetViewState();
     rebuildTopoModel(false);  // same layout: keep the camera
     rebuildPreviews(false);  // same layout: keep the camera
@@ -355,6 +378,10 @@ void doRefill() {
 // first: the graph editor allows invalid intermediate states.
 void doRelayout() {
     std::string err;
+    g_pipelineRun += 1;
+    logLine("re-layout: starting (" + g_level.projectPath +
+            (g_projectDirty ? ", unsaved edits" : "") + ") ...");
+    runlogSnapshotProject(g_level.project, g_pipelineRun);
     if (g_level.project.layout &&
         !dungeon_geometry_generator::validate_project_v1(g_level.project, g_level.projectPath,
                                                          err)) {
@@ -377,6 +404,10 @@ void doRelayout() {
 // states, e.g. a fresh room without passages).
 void doGenerate() {
     std::string err;
+    g_pipelineRun += 1;
+    logLine("generate: starting (" + g_level.projectPath +
+            (g_projectDirty ? ", unsaved edits" : "") + ") ...");
+    runlogSnapshotProject(g_level.project, g_pipelineRun);
     if (g_level.project.layout &&
         !dungeon_geometry_generator::validate_project_v1(g_level.project, g_level.projectPath,
                                                          err)) {
@@ -1242,6 +1273,18 @@ int runSmoke() {
 
 int main(int argc, char* argv[]) {
     g_argv0 = argc > 0 ? argv[0] : "";
+    runlogInit(g_argv0);  // per-run file log + crash handler before anything can die
+    {
+        std::string cmdline;
+        for (int i = 0; i < argc; ++i) {
+            if (i) cmdline += ' ';
+            cmdline += argv[i];
+        }
+        std::error_code ec;
+        const std::string cwd = std::filesystem::current_path(ec).string();
+        spdlog::info("DungeonGeometryGeneratorViewer: run start: {} (cwd {})", cmdline,
+                     ec ? "?" : cwd);
+    }
     bool smoke = false;
     for (int i = 1; i < argc; ++i) {
         const std::string arg(argv[i]);
