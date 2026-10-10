@@ -109,6 +109,14 @@ struct Project {
 // naming key/expectation/fact. Role names are validated against the fixed v0 set.
 bool load_project(const std::string& path, Project& out, std::string& err);
 
+// Serialize a v1 project (fixed key order, N6; role entries write only their
+// explicit set_fields keys so the F12 provenance survives a round trip).
+// False + err on a /0 project (no layout tier — legacy is read-only).
+bool write_project_json(const Project& project, std::string& out, std::string& err);
+
+// write_project_json to disk, atomically (tmp file + rename).
+bool save_project(const std::string& path, const Project& project, std::string& err);
+
 // Role of an IR-0 room (v0 mapping; real roles come from the graph at D2).
 std::string room_role(bool corridor);
 

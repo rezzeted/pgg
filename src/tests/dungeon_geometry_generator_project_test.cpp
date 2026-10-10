@@ -459,3 +459,96 @@ TEST(ProjectV1, DecorRulesReject) {
         EXPECT_NE(err.find(needle), std::string::npos) << rule << " -> " << err;
     }
 }
+
+TEST(ProjectV1, WriteRoundTrip) {
+    const dungeon_geometry_generator::Project p = loadFixture();
+    std::string text1, err;
+    ASSERT_TRUE(dungeon_geometry_generator::write_project_json(p, text1, err)) << err;
+
+    dungeon_geometry_generator::Project q;
+    ASSERT_TRUE(loadText(text1, q, err)) << err << "\n" << text1;
+    ASSERT_TRUE(q.layout.has_value());
+    EXPECT_EQ(q.seed, p.seed);
+    EXPECT_EQ(q.layout->rooms.size(), p.layout->rooms.size());
+    EXPECT_EQ(q.layout->passages.size(), p.layout->passages.size());
+    EXPECT_EQ(q.layout->templates.size(), p.layout->templates.size());
+    // Overrides and the F12 explicit-field sets survive untouched.
+    EXPECT_EQ(q.layout->templates[0].fill.style, p.layout->templates[0].fill.style);
+    EXPECT_EQ(q.layout->rooms[1].fill.h, p.layout->rooms[1].fill.h);
+    EXPECT_EQ(q.fill.roles.at("*").set_fields, p.fill.roles.at("*").set_fields);
+    EXPECT_EQ(q.fill.roles.at("corridor").set_fields, p.fill.roles.at("corridor").set_fields);
+    EXPECT_EQ(q.fill.roles.at("corridor").wall_t, p.fill.roles.at("corridor").wall_t);
+    EXPECT_EQ(q.fill.side_rules.size(), p.fill.side_rules.size());
+    // Stable normalization: a second write is byte-identical.
+    std::string text2;
+    ASSERT_TRUE(dungeon_geometry_generator::write_project_json(q, text2, err)) << err;
+    EXPECT_EQ(text1, text2);
+}
+
+TEST(ProjectV1, WriteRoundTripTransformsAndManualDoors) {
+    const char* text = R"json({
+  "format": "dungeon-geometry-generator-project/1",
+  "seed": 7,
+  "layout": {
+    "rooms_rect": {"w": [3, 3], "h": [3, 3]},
+    "rooms": [{"id": "hall", "role": "hall"}],
+    "templates": [
+      {"name": "t_manual", "roles": ["hall"],
+       "contour": [[0, 0], [6, 0], [6, 4], [0, 4]],
+       "doors": {"manual": [[[1, 0], [2, 0]]]},
+       "transforms": []},
+      {"name": "t_rot", "roles": ["hall"],
+       "contour": [[0, 0], [6, 0], [6, 4], [0, 4]],
+       "transforms": ["identity", "mirror_x"]}
+    ]
+  },
+  "fill": {"cell": 2.0, "wall_t": 0.5, "frame": 0.1},
+  "slots": {}
+})json";
+    dungeon_geometry_generator::Project p;
+    std::string err;
+    ASSERT_TRUE(loadText(text, p, err)) << err;
+    std::string text1;
+    ASSERT_TRUE(dungeon_geometry_generator::write_project_json(p, text1, err)) << err;
+
+    dungeon_geometry_generator::Project q;
+    ASSERT_TRUE(loadText(text1, q, err)) << err << "\n" << text1;
+    ASSERT_TRUE(q.layout.has_value());
+    ASSERT_EQ(q.layout->templates.size(), 2u);
+    EXPECT_TRUE(q.layout->templates[0].doors.manual);
+    ASSERT_EQ(q.layout->templates[0].doors.segments.size(), 1u);
+    EXPECT_EQ(q.layout->templates[0].doors.segments[0].first,
+              (dungeon_geometry_generator::CellPt{1, 0}));
+    EXPECT_TRUE(q.layout->templates[0].transforms_set);
+    EXPECT_TRUE(q.layout->templates[0].transforms.empty());  // identity only
+    EXPECT_EQ(q.layout->templates[1].transforms,
+              (std::vector<std::string>{"identity", "mirror_x"}));
+    std::string text2;
+    ASSERT_TRUE(dungeon_geometry_generator::write_project_json(q, text2, err)) << err;
+    EXPECT_EQ(text1, text2);
+}
+
+TEST(ProjectV1, WriteRoundTripDecor) {
+    const std::string withDecor =
+        surgery(fixture(), "\"side_rules\": [",
+                "\"decor\": ["
+                "{\"tag\": \"drain\", \"roles\": [\"crypt\"], \"chance\": 0.5, \"count\": 2, "
+                "\"min_dist\": 0.4, \"align\": \"center\", \"radius\": 0.35, \"cut_r\": 0.2},"
+                "{\"tag\": \"drain\", \"place\": \"wall\"}"
+                "],\n    \"side_rules\": [");
+    dungeon_geometry_generator::Project p;
+    std::string err;
+    ASSERT_TRUE(loadText(withDecor, p, err)) << err;
+    std::string text1;
+    ASSERT_TRUE(dungeon_geometry_generator::write_project_json(p, text1, err)) << err;
+
+    dungeon_geometry_generator::Project q;
+    ASSERT_TRUE(loadText(text1, q, err)) << err << "\n" << text1;
+    ASSERT_EQ(q.fill.decor.size(), 2u);
+    EXPECT_EQ(q.fill.decor[0].align, "center");
+    EXPECT_DOUBLE_EQ(q.fill.decor[0].cut_r, 0.2);
+    EXPECT_EQ(q.fill.decor[1].place, "wall");
+    std::string text2;
+    ASSERT_TRUE(dungeon_geometry_generator::write_project_json(q, text2, err)) << err;
+    EXPECT_EQ(text1, text2);
+}

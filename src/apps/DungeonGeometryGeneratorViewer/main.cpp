@@ -3,9 +3,23 @@
 // a provenance info panel, unit highlight/solo, refill/re-layout over the
 // F8 unit cache, and a read-only Topo view of the level-synth topology
 // (2D layout plan; the passage graph pane follows in the same tab).
+// The side panel's Project tab shows the project tree (rooms, passages, room
+// templates with their parametric generators, fill, slots); clicking a
+// template or a generator opens its card in a View tab next to 3D/Top/Topo
+// (contour canvas, doors, transforms, fill overrides, usage). Explicit
+// templates and the generators edit level.project in place (dirty flag);
+// Ctrl+S / Files > Save writes project.json (save_project) and applies via
+// re-layout.
+//   App frame: a main menu bar (Files: New / Open / Save / Close / Exit), the
+// start screen while no project is loaded (big New/Open buttons, the
+// cross-session recent list — recent.h — and the last load error) and the
+// project UI (side panel + View tabs) once loaded. The OS window title shows
+// "DGG Viewer - <project name>" (parent dir of a project.json, else the file
+// stem) with a "*" while there are unsaved edits; New/Open/Close/Exit with
+// unsaved edits go through an "unsaved changes" confirmation.
 //   DungeonGeometryGeneratorViewer [project.json] [--smoke]
-// No arguments: the window opens empty; a project is opened from the side
-// panel (path field + recent list) or by dragging the project .json onto the
+// No arguments: the start screen; a project is opened from it (New/Open or a
+// recent entry), from Files > Open, or by dragging the project .json onto the
 // window. The layout is always generated from the project's layout tier
 // (attempts=4); frozen IR files are a DungeonGeometryGeneratorCli input, not the viewer's.
 // --smoke runs the same data path without a window (ctest), prints one stats
@@ -35,6 +49,9 @@
 #include "filedialog.h"
 #include "level.h"
 #include "panel.h"
+#include "project_tree.h"
+#include "recent.h"
+#include "template_view.h"
 #include "topo_view.h"
 
 #define SOKOL_IMPL
@@ -78,18 +95,47 @@ std::string g_loadError;
 
 Level g_level;
 
-// Generate panel state (empty state and "another project" share it).
-char g_projectBuf[1024] = {};
-FileDialog g_projectDlg;  // session dir memory
-std::vector<std::string> g_recent;  // projects, newest first
-std::string g_lastOpenDir;  // parent of the last opened project (relative-path fallback)
-std::string g_projectsDir;  // first-open dir of the project Browse dialog (<root>/projects)
+FileDialog g_projectDlg;              // Files > Open (session dir memory)
+FileDialog g_newDlg;                  // Files > New location picker (saveMode)
+std::vector<std::string> g_recent;    // projects, newest first (persisted via recent.h)
+std::string g_lastOpenDir;            // parent of the last opened project (relative-path fallback)
+std::string g_projectsDir;            // first-open dir of the Open dialog (<root>/projects)
+std::string g_windowTitle;            // last title pushed to the OS window
 
 GeometryPreview g_preview3d;
 GeometryPreview g_previewTop;
 PreviewPaneRect g_rect3d, g_rectTop;
 OverlayLayers g_layers;
-int g_activeView = 0;  // 0 = 3D (default tab), 1 = Top, 2 = Topo
+int g_activeView = 0;  // 0 = 3D (default tab), 1 = Top, 2 = Topo, >=3 = template tab index + 3
+
+// Open template/generator tabs of the View window (read-only cards of the
+// project tree). Opens are queued while panels draw and applied at the top of
+// drawPanes so the tab bar never mutates under its own iteration.
+struct OpenTemplateTab {
+    ProjectTreeSelection sel;
+    TemplateViewState st;
+};
+std::vector<OpenTemplateTab> g_tmplTabs;
+std::vector<ProjectTreeSelection> g_pendingTabs;
+int g_raiseTab = -1;  // g_tmplTabs index to select once in drawPanes (-1 = none)
+
+void openTemplateTab(const ProjectTreeSelection& sel) { g_pendingTabs.push_back(sel); }
+
+void applyPendingTabs() {
+    for (const ProjectTreeSelection& sel : g_pendingTabs) {
+        size_t i = 0;
+        while (i < g_tmplTabs.size() && !(g_tmplTabs[i].sel == sel)) ++i;
+        if (i == g_tmplTabs.size()) g_tmplTabs.push_back({sel, TemplateViewState{}});
+        g_raiseTab = static_cast<int>(i);
+    }
+    g_pendingTabs.clear();
+}
+
+void closeAllTemplateTabs() {
+    g_tmplTabs.clear();
+    g_pendingTabs.clear();
+    g_raiseTab = -1;
+}
 
 // Topo tab state: the model is a pure projection of the project graph and
 // the generated layout (rebuilt on load/refill/relayout), the pane state is
@@ -114,6 +160,7 @@ std::string g_highlightedUnit;  // unit with the 3D highlight group ("" = none)
 std::string g_soloUnit;         // unit shown solo in the 3D pane ("" = level view)
 
 std::vector<std::pair<std::string, bool>> g_log;  // (line, isError)
+bool g_projectDirty = false;  // in-memory project edits not yet saved (Ctrl+S / Files > Save)
 
 void logLine(const std::string& line, bool isError = false) {
     g_log.push_back({line, isError});
@@ -210,11 +257,13 @@ void resetViewState() {
     g_soloUnit.clear();
 }
 
-// Session MRU of successfully opened projects, newest first.
+// MRU of successfully opened projects, newest first, persisted across
+// sessions (recent.h).
 void rememberRecent(const std::string& proj) {
     g_recent.erase(std::remove(g_recent.begin(), g_recent.end(), proj), g_recent.end());
     g_recent.insert(g_recent.begin(), proj);
     if (g_recent.size() > 8) g_recent.resize(8);
+    saveRecentProjects(g_recent);
 }
 
 // Relative input paths resolve against the cwd first, then against the last
@@ -231,15 +280,6 @@ std::string resolveInputPath(const std::string& path) {
     return path;  // load_project will report it missing
 }
 
-std::string trimCopy(std::string s) {
-    const auto space = [](char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; };
-    const size_t b = s.find_first_not_of(" \t\n\r");
-    if (b == std::string::npos) return {};
-    size_t e = s.size();
-    while (e > b && space(s[e - 1])) --e;
-    return s.substr(b, e - b);
-}
-
 void openLevel(const std::string& projRaw) {
     const std::string proj = resolveInputPath(projRaw);
     std::string err;
@@ -250,34 +290,35 @@ void openLevel(const std::string& projRaw) {
     }
     g_loadError.clear();
     resetViewState();
+    closeAllTemplateTabs();
+    g_projectDirty = false;
     rebuildTopoModel(true);  // fresh layout: fresh camera (auto-fit)
     rebuildPreviews(true);
     logLine(fillSummary("load"));
-    rememberRecent(proj);
-    std::snprintf(g_projectBuf, sizeof(g_projectBuf), "%s", proj.c_str());
-    g_lastOpenDir = std::filesystem::path(proj).parent_path().string();
+    // Recents survive the session: store the canonical absolute path (a
+    // relative one would break when the next run has another cwd).
+    std::error_code ec;
+    const std::string abs = std::filesystem::weakly_canonical(proj, ec);
+    rememberRecent(ec ? proj : abs);
+    g_lastOpenDir = std::filesystem::path(ec ? proj : abs).parent_path().string();
 }
 
-// Back to the empty state: the level (and its unit cache) goes away, the
-// previews are cleared, the generate panel stays as it was.
+// Back to the start screen: the level (and its unit cache) goes away, the
+// previews are cleared, the recent list and dialog dirs stay as they were.
 void closeLevel() {
     g_level = Level{};
     g_topoModel = dungeon_geometry_generator::TopoModel{};
     g_topoPlan = TopoPlanState{};
     g_topoGraph = TopoGraphState{};
     resetViewState();
+    closeAllTemplateTabs();
+    g_projectDirty = false;
     g_preview3d.clear();
     g_previewTop.clear();
     g_preview3d.setSummary({});
     g_previewTop.setSummary({});
     g_loadError.clear();
     logLine("level closed");
-}
-
-void generateFromPanel() {
-    const std::string proj = trimCopy(g_projectBuf);
-    if (proj.empty()) return;
-    openLevel(proj);
 }
 
 void doRefill() {
@@ -302,6 +343,364 @@ void doRelayout() {
     rebuildTopoModel(true);  // new layout: fresh camera (auto-fit)
     rebuildPreviews(true);  // new layout: refit
     logLine(fillSummary("re-layout"));
+}
+
+// Save the in-memory project (template cards edit it in place), then apply
+// via the usual re-layout path — the reload re-validates what was written
+// and rebuilds the catalog the cards read.
+void doSaveApply() {
+    std::string err;
+    if (!dungeon_geometry_generator::save_project(g_level.projectPath, g_level.project, err)) {
+        logLine("save failed: " + err, true);
+        return;
+    }
+    g_projectDirty = false;
+    logLine("saved " + g_level.projectPath);
+    doRelayout();
+}
+
+// --- window title ------------------------------------------------------------
+
+// Display name of a project file: the parent dir of a project.json ("demo"),
+// else the file stem.
+std::string projectDisplayName(const std::string& path) {
+    namespace fs = std::filesystem;
+    const fs::path p(path);
+    if (p.filename() == "project.json" && p.has_parent_path()) {
+        const std::string dir = p.parent_path().filename().string();
+        if (!dir.empty()) return dir;
+    }
+    return p.stem().string();
+}
+
+// "DGG Viewer" on the start screen, "DGG Viewer - <name>[*]" with a project.
+// Pushed to the OS window only on change.
+void updateWindowTitle() {
+    std::string title = "DGG Viewer";
+    if (g_level.loaded)
+        title += " - " + projectDisplayName(g_level.projectPath) + (g_projectDirty ? "*" : "");
+    if (title != g_windowTitle) {
+        g_windowTitle = title;
+        sapp_set_window_title(title.c_str());
+    }
+}
+
+// --- file actions (menu / start screen / shortcuts) ---------------------------
+
+bool g_newOpen = false;  // request flag: the New project dialog opens on the next draw
+char g_newPath[1024] = {};
+std::string g_newError;
+
+void openNewProjectDialog() {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const fs::path dir = !g_projectsDir.empty() ? fs::path(g_projectsDir) : fs::current_path(ec);
+    const std::string def = (dir / "untitled" / "project.json").string();
+    std::snprintf(g_newPath, sizeof(g_newPath), "%s", def.c_str());
+    g_newError.clear();
+    g_newOpen = true;
+}
+
+// Actions that lose the in-memory edits of a dirty project; those go through
+// the unsaved-changes confirmation (g_pendingAction).
+enum class PendingAction { None, New, Open, Close, Exit };
+PendingAction g_pendingAction = PendingAction::None;
+
+void runAction(PendingAction action) {
+    switch (action) {
+        case PendingAction::New: openNewProjectDialog(); break;
+        case PendingAction::Open:
+            fileDialogOpen(g_projectDlg, g_level.loaded ? g_level.projectPath : "", g_projectsDir);
+            break;
+        case PendingAction::Close: closeLevel(); break;
+        case PendingAction::Exit: sapp_quit(); break;
+        default: break;
+    }
+}
+
+void requestAction(PendingAction action) {
+    if (g_level.loaded && g_projectDirty) {
+        g_pendingAction = action;  // confirmed by the unsaved-changes modal
+    } else {
+        runAction(action);
+    }
+}
+
+// --- menu bar -------------------------------------------------------------------
+
+float drawMainMenu() {
+    float h = 0.0f;
+    if (ImGui::BeginMainMenuBar()) {
+        h = ImGui::GetWindowHeight();
+        if (ImGui::BeginMenu("Files")) {
+            if (ImGui::MenuItem("New...", "Ctrl+N")) requestAction(PendingAction::New);
+            if (ImGui::MenuItem("Open...", "Ctrl+O")) requestAction(PendingAction::Open);
+            if (ImGui::MenuItem("Save", "Ctrl+S", false, g_level.loaded && g_projectDirty))
+                doSaveApply();
+            ImGui::Separator();
+            if (ImGui::MenuItem("Close", nullptr, false, g_level.loaded))
+                requestAction(PendingAction::Close);
+            ImGui::Separator();
+            if (ImGui::MenuItem("Exit")) requestAction(PendingAction::Exit);
+            ImGui::EndMenu();
+        }
+        if (g_level.loaded) {
+            const std::string right =
+                projectDisplayName(g_level.projectPath) + (g_projectDirty ? "*" : "");
+            ImGui::SetCursorPosX(ImGui::GetWindowWidth() - ImGui::CalcTextSize(right.c_str()).x -
+                                 ImGui::GetStyle().ItemSpacing.x);
+            ImGui::TextDisabled("%s", right.c_str());
+        }
+        ImGui::EndMainMenuBar();
+    }
+    return h;
+}
+
+// --- start screen ---------------------------------------------------------------
+
+// No project loaded: the app title, big New/Open buttons, the last load
+// error and the cross-session recent list. Drag & drop works in this state
+// too (handleDrop calls openLevel directly).
+void drawStartScreen(float y, float w, float h) {
+    ImGui::SetNextWindowPos(ImVec2(0.0f, y), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(w, h), ImGuiCond_Always);
+    ImGui::Begin("##start", nullptr,
+                 ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar |
+                     ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoBringToFrontOnFocus);
+    const float winW = ImGui::GetWindowWidth();
+    // One centered column holds everything: the title, the buttons and the
+    // recent list; texts align to the column's left edge.
+    const float colW = std::min(winW - 80.0f, 560.0f);
+    const float colX = std::max((winW - colW) * 0.5f, ImGui::GetStyle().WindowPadding.x);
+    const auto centerColX = [colX, colW](float itemW) {  // centered within the column
+        ImGui::SetCursorPosX(colX + std::max((colW - itemW) * 0.5f, 0.0f));
+    };
+
+    ImGui::SetCursorPosY(h * 0.22f);
+    const char* title = "DGG Viewer";
+    ImGui::SetWindowFontScale(2.0f);
+    ImGui::SetCursorPosX(colX);
+    ImGui::TextUnformatted(title);
+    ImGui::SetWindowFontScale(1.0f);
+    ImGui::SetCursorPosX(colX);
+    ImGui::TextDisabled("Dungeon Geometry Generator Viewer");
+
+    ImGui::Spacing();
+    ImGui::Spacing();
+    // The buttons together span the column width.
+    const float btnGap = 24.0f;
+    const ImVec2 btnSize((colW - btnGap) * 0.5f, 64.0f);
+    ImGui::SetCursorPosX(colX);
+    if (ImGui::Button("New", btnSize)) requestAction(PendingAction::New);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Create a starter project.json (Ctrl+N)");
+    ImGui::SameLine(0.0f, btnGap);
+    if (ImGui::Button("Open", btnSize)) requestAction(PendingAction::Open);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Open an existing project.json (Ctrl+O)");
+    const char* dropHint = "or drop a project .json onto the window";
+    centerColX(ImGui::CalcTextSize(dropHint).x);
+    ImGui::TextDisabled("%s", dropHint);
+
+    if (!g_loadError.empty()) {
+        ImGui::Spacing();
+        ImGui::SetCursorPosX(colX);
+        ImGui::PushTextWrapPos(colX + colW);
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.95f, 0.4f, 0.35f, 1.0f));
+        ImGui::TextUnformatted(g_loadError.c_str());
+        ImGui::PopStyleColor();
+        ImGui::PopTextWrapPos();
+    }
+
+    ImGui::Spacing();
+    ImGui::Spacing();
+    // Column-local SeparatorText: ImGui's own SeparatorText rules the whole
+    // window width regardless of the cursor, so draw the rule by hand,
+    // clipped to the column (line, bg over it, then the label on top).
+    const char* recentLabel = "Recent Projects";
+    ImGui::SetCursorPosX(colX);
+    {
+        const ImVec2 labelSize = ImGui::CalcTextSize(recentLabel);
+        const ImVec2 textPos = ImGui::GetCursorScreenPos();
+        const float lineY = textPos.y + labelSize.y * 0.5f;
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        dl->AddLine(ImVec2(textPos.x, lineY), ImVec2(textPos.x + colW, lineY),
+                    ImGui::GetColorU32(ImGuiCol_Separator));
+        dl->AddRectFilled(textPos, ImVec2(textPos.x + labelSize.x, textPos.y + labelSize.y),
+                          ImGui::GetColorU32(ImGuiCol_WindowBg));
+        ImGui::TextUnformatted(recentLabel);
+    }
+    if (g_recent.empty()) {
+        ImGui::SetCursorPosX(colX);
+        ImGui::TextDisabled("(empty — opened projects appear here)");
+    }
+    int removeAt = -1;
+    for (size_t i = 0; i < g_recent.size(); ++i) {
+        ImGui::PushID(static_cast<int>(i));
+        ImGui::SetCursorPosX(colX);
+        if (ImGui::Selectable(g_recent[i].c_str(), false, 0, ImVec2(colW - 28.0f, 0.0f)))
+            openLevel(g_recent[i]);
+        ImGui::SameLine();
+        if (ImGui::SmallButton("x")) removeAt = static_cast<int>(i);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Remove from the list");
+        ImGui::PopID();
+    }
+    if (removeAt >= 0) {
+        g_recent.erase(g_recent.begin() + removeAt);
+        saveRecentProjects(g_recent);
+    }
+    ImGui::End();
+}
+
+// --- modals -------------------------------------------------------------------
+
+// Starter content of Files > New: a minimal valid v1 project (entry —
+// corridor — hall, parametric rooms, the default slots) written to the
+// chosen path and then opened via the usual openLevel path.
+const char* kNewProjectJson = R"JSON({
+  "format": "dungeon-geometry-generator-project/1",
+  "seed": 1,
+  "layout": {
+    "corridors": {"width": 2, "length": [3, 4]},
+    "rooms_rect": {"w": [4, 5], "h": [4, 5]},
+    "door_length": 1,
+    "door_corner_distance": 1,
+    "min_room_distance": 1,
+    "catalog_budget": 64,
+    "rooms": [
+      {"id": "entry", "role": "entry"},
+      {"id": "hall", "role": "hall"},
+      {"id": "c1", "role": "corridor"}
+    ],
+    "passages": [
+      {"a": "entry", "b": "c1", "door": "open"},
+      {"a": "c1", "b": "hall", "door": "open"}
+    ]
+  },
+  "fill": {
+    "cell": 2.0,
+    "wall_t": 0.6,
+    "min_passage": 1.2,
+    "min_opening": 0.8,
+    "room_h": 3.0,
+    "door_h": 2.2,
+    "frame": 0.15,
+    "lamp_step": 4.0,
+    "row_module": 0.25,
+    "roles": {
+      "*": {"h": 3.0, "style": "stone", "floor": "stone", "ceil": "plain"},
+      "corridor": {"h": 2.6, "style": "brick", "floor": "brick", "ceil": "plain"}
+    },
+    "transitions": {"pattern": "butt", "width": 1.0, "place": "corner"},
+    "side_rules": [
+      {"match": {"adjacent_role": "corridor"}, "style": "brick"},
+      {"match": {"side": "outer"}, "style": "stone"}
+    ]
+  },
+  "slots": {
+    "room_fill": "rooms/fill_v1.pgg",
+    "wall_body": "walls/body_v1.pgg",
+    "facing": "walls/facing_v1.pgg",
+    "node": "walls/node_v1.pgg",
+    "door": "doors/opening_v1.pgg",
+    "decor:lamp": "decor/lamp_v1.pgg"
+  },
+  "asset_roots": ["assets"]
+}
+)JSON";
+
+void createNewProject() {
+    namespace fs = std::filesystem;
+    const std::string path(g_newPath);
+    if (path.empty() || path.find_first_not_of(" \t") == std::string::npos) {
+        g_newError = "empty path";
+        return;
+    }
+    std::error_code ec;
+    const fs::path parent = fs::path(path).parent_path();
+    if (!parent.empty() && !fs::create_directories(parent, ec) && ec) {
+        g_newError = "cannot create " + parent.string() + ": " + ec.message();
+        return;
+    }
+    {
+        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        if (!out) {
+            g_newError = "cannot write " + path;
+            return;
+        }
+        out << kNewProjectJson;
+    }
+    openLevel(path);
+    if (g_level.loaded) {
+        ImGui::CloseCurrentPopup();
+    } else {
+        g_newError = g_loadError;  // written but rejected — keep the modal open
+    }
+}
+
+void drawNewProjectModal() {
+    if (g_newOpen) {
+        ImGui::OpenPopup("New project");
+        g_newOpen = false;
+    }
+    if (!ImGui::BeginPopupModal("New project", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
+    ImGui::Text("project file:");
+    ImGui::SetNextItemWidth(460.0f);
+    ImGui::InputText("##newpath", g_newPath, sizeof(g_newPath));
+    ImGui::SameLine();
+    if (ImGui::Button("Browse...##new")) fileDialogOpen(g_newDlg, g_newPath, g_projectsDir);
+    std::error_code ec;
+    if (std::filesystem::exists(std::filesystem::path(g_newPath), ec))
+        ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.3f, 1.0f), "exists — will be overwritten");
+    if (!g_newError.empty())
+        ImGui::TextColored(ImVec4(0.95f, 0.4f, 0.35f, 1.0f), "%s", g_newError.c_str());
+    ImGui::Spacing();
+    if (ImGui::Button("Create", ImVec2(90.0f, 0.0f))) createNewProject();
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel", ImVec2(90.0f, 0.0f)) || ImGui::IsKeyPressed(ImGuiKey_Escape))
+        ImGui::CloseCurrentPopup();
+    ImGui::EndPopup();
+}
+
+void drawUnsavedModal() {
+    if (g_pendingAction == PendingAction::None) return;
+    if (!ImGui::IsPopupOpen("Unsaved changes")) ImGui::OpenPopup("Unsaved changes");
+    if (!ImGui::BeginPopupModal("Unsaved changes", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+        return;
+    ImGui::TextWrapped("%s has unsaved changes.", projectDisplayName(g_level.projectPath).c_str());
+    ImGui::Spacing();
+    if (ImGui::Button("Save", ImVec2(90.0f, 0.0f))) {
+        doSaveApply();
+        if (!g_projectDirty) {  // saved: run the pending action (on failure stay)
+            const PendingAction action = g_pendingAction;
+            g_pendingAction = PendingAction::None;
+            ImGui::CloseCurrentPopup();
+            runAction(action);
+        }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Discard", ImVec2(90.0f, 0.0f))) {
+        const PendingAction action = g_pendingAction;
+        g_pendingAction = PendingAction::None;
+        ImGui::CloseCurrentPopup();
+        runAction(action);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel", ImVec2(90.0f, 0.0f))) {
+        g_pendingAction = PendingAction::None;
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
+}
+
+// Modals live at frame scope (they must draw in every layout state): the two
+// file dialogs (Open / New location), the New project dialog and the
+// unsaved-changes confirmation.
+void drawModals() {
+    std::string picked;
+    if (fileDialogDraw(g_projectDlg, "Open project", picked)) openLevel(picked);
+    if (fileDialogDraw(g_newDlg, "New project location", picked))
+        std::snprintf(g_newPath, sizeof(g_newPath), "%s", picked.c_str());
+    drawNewProjectModal();
+    drawUnsavedModal();
 }
 
 // --- camera focus ------------------------------------------------------------
@@ -381,116 +780,82 @@ void focusBBox(const glm::vec3& mn, const glm::vec3& mx) {
 
 // --- panels ------------------------------------------------------------------
 
-// Shared body of the generate panel: the path field with a Browse dialog, the
-// session recent list, the Generate button (disabled while the project field
-// is empty) and the last load error. Enter in the field generates too.
-void drawGenerateControls() {
-    bool generate = false;
-    ImGui::SetNextItemWidth(-78.0f);
-    generate |= ImGui::InputTextWithHint("##project", "project.json", g_projectBuf,
-                                         sizeof(g_projectBuf), ImGuiInputTextFlags_EnterReturnsTrue);
-    ImGui::SameLine();
-    if (ImGui::Button("Browse...##p")) fileDialogOpen(g_projectDlg, g_projectBuf, g_projectsDir);
-    if (!g_recent.empty()) {
-        if (ImGui::BeginCombo("##recent", "recent projects")) {
-            for (const std::string& proj : g_recent) {
-                if (ImGui::Selectable(proj.c_str()))
-                    std::snprintf(g_projectBuf, sizeof(g_projectBuf), "%s", proj.c_str());
-            }
-            ImGui::EndCombo();
-        }
+void drawSidePanel(float y, float h) {
+    ImGui::SetNextWindowPos(ImVec2(0.0f, y), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(kPanelWidth, h), ImGuiCond_Always);
+    ImGui::Begin("##side", nullptr,
+                 ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar |
+                     ImGuiWindowFlags_NoCollapse);
+
+    ImGui::SetNextItemOpen(true, ImGuiCond_Once);
+    if (ImGui::CollapsingHeader("Stats")) {
+        ImGui::TextWrapped("project: %s", g_level.projectPath.c_str());
+        const dungeon_geometry_generator::FillStats& s = g_level.fill.stats;
+        ImGui::Text("rooms %zu  walls %zu  nodes %zu", s.rooms, s.bodies, s.nodes);
+        ImGui::Text("facings %zu  doors %zu  lamps %zu", s.facings, s.doors, s.lamps);
+        ImGui::Text("fill %.0f ms (%zu units: %zu reused, %zu reran)", g_level.fillMs,
+                    g_level.fill.units.size(), s.reused.size(), s.reran.size());
+        ImGui::Text("layout %.0f ms", g_level.layoutMs);
+        ImGui::TextDisabled("unit cache: %zu outputs", g_level.unitCache.size());
+
+        if (ImGui::Button("Refill (reload project)")) doRefill();
+        ImGui::SameLine();
+        if (ImGui::Button("Re-layout")) doRelayout();
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Generate a fresh layout (same seed, attempts=4), rebuild the IR, refill");
+        if (g_projectDirty) ImGui::TextDisabled("modified — Files > Save (Ctrl+S)");
     }
-    const bool hasProject = !trimCopy(g_projectBuf).empty();
-    if (!hasProject) ImGui::BeginDisabled();
-    generate |= ImGui::Button("Generate");
-    if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Load the project, generate the layout (same seed, attempts=4), fill");
-    if (!hasProject) ImGui::EndDisabled();
-    ImGui::SameLine();
-    ImGui::TextDisabled("or drop a project .json onto the window");
-    if (generate) generateFromPanel();
-    if (!g_loadError.empty()) {
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.95f, 0.4f, 0.35f, 1.0f));
-        ImGui::TextWrapped("%s", g_loadError.c_str());
-        ImGui::PopStyleColor();
-    }
-}
 
-void drawSidePanel(int h) {
-    ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(kPanelWidth, static_cast<float>(h)), ImGuiCond_Always);
-    ImGui::Begin("DungeonGeometryGenerator", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
-
-    if (!g_level.loaded) {
-        ImGui::TextDisabled("no level loaded");
-        drawGenerateControls();
-    } else {
-        const std::string header =
-            "Project: " + std::filesystem::path(g_level.projectPath).filename().string();
-        ImGui::SetNextItemOpen(true, ImGuiCond_Once);
-        if (ImGui::CollapsingHeader(header.c_str())) {
-            ImGui::TextWrapped("project: %s", g_level.projectPath.c_str());
-            const dungeon_geometry_generator::FillStats& s = g_level.fill.stats;
-            ImGui::Text("rooms %zu  walls %zu  nodes %zu", s.rooms, s.bodies, s.nodes);
-            ImGui::Text("facings %zu  doors %zu  lamps %zu", s.facings, s.doors, s.lamps);
-            ImGui::Text("fill %.0f ms (%zu units: %zu reused, %zu reran)", g_level.fillMs,
-                        g_level.fill.units.size(), s.reused.size(), s.reran.size());
-            ImGui::Text("layout %.0f ms", g_level.layoutMs);
-            ImGui::TextDisabled("unit cache: %zu outputs", g_level.unitCache.size());
-
-            if (ImGui::Button("Refill (reload project)")) doRefill();
-            ImGui::SameLine();
-            if (ImGui::Button("Re-layout")) doRelayout();
-            if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("Generate a fresh layout (same seed, attempts=4), rebuild the IR, refill");
-            ImGui::SameLine();
-            if (ImGui::Button("Close")) closeLevel();
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip("Close the level (back to the empty state)");
-
-            ImGui::Separator();
-            ImGui::TextDisabled("another project:");
-            drawGenerateControls();
+    if (ImGui::BeginTabBar("##side_tabs")) {
+        if (ImGui::BeginTabItem("Project")) {
+            const ProjectTreeActions ta = drawProjectTree(g_level);
+            if (ta.openTab) openTemplateTab(ta.tab);
+            if (ta.selectRoom) g_selection = Selection{Selection::Kind::Room, ta.roomId};
+            ImGui::EndTabItem();
         }
+        if (ImGui::BeginTabItem("Inspect")) {
+            if (ImGui::CollapsingHeader("Selection", ImGuiTreeNodeFlags_DefaultOpen)) {
+                const InfoActions ia = drawInfoPanel(g_level, g_selection);
+                const std::string selUnit = unitIdForSelection(g_selection);
+                if (ia.focus) {
+                    glm::vec3 mn, mx;
+                    if (selectionBBox(g_level, g_selection, mn, mx)) focusBBox(mn, mx);
+                }
+                if ((ia.highlightUnit || ia.soloUnit) && !findUnit(g_level, selUnit)) {
+                    if (!selUnit.empty()) logLine("no fill unit for " + selUnit, true);
+                } else if (ia.highlightUnit) {
+                    g_selectedUnit = selUnit;
+                    g_highlightedUnit = g_highlightedUnit == selUnit ? "" : selUnit;
+                    rebuild3d(false);
+                } else if (ia.soloUnit) {
+                    g_selectedUnit = selUnit;
+                    g_soloUnit = selUnit;
+                    rebuild3d(true);  // frame the isolated piece
+                }
+            }
 
-        if (ImGui::CollapsingHeader("Selection", ImGuiTreeNodeFlags_DefaultOpen)) {
-            const InfoActions ia = drawInfoPanel(g_level, g_selection);
-            const std::string selUnit = unitIdForSelection(g_selection);
-            if (ia.focus) {
-                glm::vec3 mn, mx;
-                if (selectionBBox(g_level, g_selection, mn, mx)) focusBBox(mn, mx);
+            if (ImGui::CollapsingHeader("Units", ImGuiTreeNodeFlags_DefaultOpen)) {
+                const UnitActions ua =
+                    drawUnitsPanel(g_level, g_selectedUnit, g_highlightedUnit, !g_soloUnit.empty());
+                if (ua.focus) {
+                    glm::vec3 mn, mx;
+                    if (const dungeon_geometry_generator::FillResult::UnitSpan* u = findUnit(g_level, g_selectedUnit);
+                        u && unitSpanBBox(g_level, *u, mn, mx))
+                        focusBBox(mn, mx);
+                }
+                if (ua.toggleHighlight) {
+                    g_highlightedUnit = g_highlightedUnit == g_selectedUnit ? "" : g_selectedUnit;
+                    rebuild3d(false);
+                }
+                if (ua.toggleSolo) {
+                    const bool entering = g_soloUnit.empty();
+                    g_soloUnit = entering ? g_selectedUnit : "";
+                    rebuild3d(entering);  // entering solo: frame the piece; back: keep camera
+                }
             }
-            if ((ia.highlightUnit || ia.soloUnit) && !findUnit(g_level, selUnit)) {
-                if (!selUnit.empty()) logLine("no fill unit for " + selUnit, true);
-            } else if (ia.highlightUnit) {
-                g_selectedUnit = selUnit;
-                g_highlightedUnit = g_highlightedUnit == selUnit ? "" : selUnit;
-                rebuild3d(false);
-            } else if (ia.soloUnit) {
-                g_selectedUnit = selUnit;
-                g_soloUnit = selUnit;
-                rebuild3d(true);  // frame the isolated piece
-            }
+            ImGui::EndTabItem();
         }
-
-        if (ImGui::CollapsingHeader("Units", ImGuiTreeNodeFlags_DefaultOpen)) {
-            const UnitActions ua =
-                drawUnitsPanel(g_level, g_selectedUnit, g_highlightedUnit, !g_soloUnit.empty());
-            if (ua.focus) {
-                glm::vec3 mn, mx;
-                if (const dungeon_geometry_generator::FillResult::UnitSpan* u = findUnit(g_level, g_selectedUnit);
-                    u && unitSpanBBox(g_level, *u, mn, mx))
-                    focusBBox(mn, mx);
-            }
-            if (ua.toggleHighlight) {
-                g_highlightedUnit = g_highlightedUnit == g_selectedUnit ? "" : g_selectedUnit;
-                rebuild3d(false);
-            }
-            if (ua.toggleSolo) {
-                const bool entering = g_soloUnit.empty();
-                g_soloUnit = entering ? g_selectedUnit : "";
-                rebuild3d(entering);  // entering solo: frame the piece; back: keep camera
-            }
-        }
+        ImGui::EndTabBar();
     }
 
     if (ImGui::CollapsingHeader("Log", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -507,33 +872,29 @@ void drawSidePanel(int h) {
         if (g_log.empty()) ImGui::TextDisabled("(empty)");
         ImGui::EndChild();
     }
-
-    // Modal file dialog of the Browse button (drawn every frame while open;
-    // the chosen path only fills the field — Generate stays a separate action).
-    std::string picked;
-    if (fileDialogDraw(g_projectDlg, "Open project", picked))
-        std::snprintf(g_projectBuf, sizeof(g_projectBuf), "%s", picked.c_str());
     ImGui::End();
 }
 
-// Right region: one window holding the two views as tabs (3D is the default)
+// Right region: one window holding the views as tabs (3D is the default)
 // instead of splitting the area; only the active tab's pane is drawn.
-void drawPanes(int w, int h) {
-    ImGui::SetNextWindowPos(ImVec2(kPanelWidth, 0.0f), ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(static_cast<float>(w) - kPanelWidth, static_cast<float>(h)),
-                             ImGuiCond_Always);
-    ImGui::Begin("View", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
+void drawPanes(float x, float y, float w, float h) {
+    applyPendingTabs();
+    ImGui::SetNextWindowPos(ImVec2(x, y), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(w, h), ImGuiCond_Always);
+    ImGui::Begin("##view", nullptr,
+                 ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar |
+                     ImGuiWindowFlags_NoCollapse);
+    int closeTab = -1;
     if (ImGui::BeginTabBar("##views")) {
         if (ImGui::BeginTabItem("3D")) {
             g_activeView = 0;
-            drawPreviewPane(g_preview3d, g_rect3d, "no level loaded — generate a project from the panel");
+            drawPreviewPane(g_preview3d, g_rect3d, "no level loaded");
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("Top")) {
             g_activeView = 1;
             const PreviewPaneResult topRes =
-                drawPreviewPane(g_previewTop, g_rectTop,
-                                "no level loaded — generate a project from the panel", &g_layers);
+                drawPreviewPane(g_previewTop, g_rectTop, "no level loaded", &g_layers);
             if (g_level.loaded) {
                 if (topRes.clicked)
                     g_selection = pickAtSelection(g_level, g_previewTop, g_rectTop, topRes.clickPos);
@@ -578,12 +939,37 @@ void drawPanes(int w, int h) {
                     }
                 }
             } else {
-                ImGui::TextDisabled("no level loaded — generate a project from the panel");
+                ImGui::TextDisabled("no level loaded");
             }
             ImGui::EndTabItem();
         }
+        // Dynamic template/generator tabs opened from the project tree.
+        for (size_t i = 0; i < g_tmplTabs.size(); ++i) {
+            OpenTemplateTab& tab = g_tmplTabs[i];
+            bool open = true;
+            const ImGuiTabItemFlags flags =
+                static_cast<int>(i) == g_raiseTab ? ImGuiTabItemFlags_SetSelected : 0;
+            const std::string label = templateTabLabel(tab.sel);
+            if (ImGui::BeginTabItem(label.c_str(), &open, flags)) {
+                g_activeView = 3 + static_cast<int>(i);
+                if (g_level.loaded) {
+                    const TemplateViewActions ta =
+                        drawTemplateView(g_level, tab.sel, tab.st, g_projectDirty);
+                    if (ta.markDirty) g_projectDirty = true;
+                    if (ta.openTab) openTemplateTab(ta.tab);
+                    if (ta.selectRoom) g_selection = Selection{Selection::Kind::Room, ta.roomId};
+                    if (ta.saveApply) doSaveApply();
+                } else {
+                    ImGui::TextDisabled("no level loaded");
+                }
+                ImGui::EndTabItem();
+            }
+            if (!open) closeTab = static_cast<int>(i);
+        }
         ImGui::EndTabBar();
     }
+    if (closeTab >= 0) g_tmplTabs.erase(g_tmplTabs.begin() + closeTab);
+    g_raiseTab = -1;  // consumed
     ImGui::End();
 }
 
@@ -611,6 +997,8 @@ void init() {
     g_previewTop.setProjection(PreviewProjection::OrthoTop);
 
     g_projectsDir = resolve_dungeon_geometry_generator_projects(g_argv0);
+    g_recent = loadRecentProjects();
+    g_newDlg.saveMode = true;  // the New location picker accepts a not-yet-existing path
 
     if (!g_projectArg.empty()) openLevel(g_projectArg);
 }
@@ -630,8 +1018,24 @@ void frame() {
         // ImGui works in logical points; the framebuffer size needs the dpi.
         const int w = static_cast<int>(std::lround(sapp_widthf() / dpi));
         const int h = static_cast<int>(std::lround(sapp_heightf() / dpi));
-        drawSidePanel(h);
-        drawPanes(w, h);
+
+        const float menuH = drawMainMenu();
+        const float contentH = static_cast<float>(h) - menuH;
+        if (g_level.loaded) {
+            drawSidePanel(menuH, contentH);
+            drawPanes(kPanelWidth, menuH, static_cast<float>(w) - kPanelWidth, contentH);
+        } else {
+            drawStartScreen(menuH, static_cast<float>(w), contentH);
+        }
+        drawModals();
+        updateWindowTitle();
+
+        // Global editor shortcuts.
+        if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_N)) requestAction(PendingAction::New);
+        if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_O)) requestAction(PendingAction::Open);
+        if (g_projectDirty && g_level.loaded &&
+            ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_S))
+            doSaveApply();
 
         // Offscreen pass of the active view only: outside (before) the
         // swapchain pass that draws the ImGui image referencing its target.
@@ -698,8 +1102,8 @@ void event(const sapp_event* ev) {
 void printUsage() {
     std::fprintf(stderr,
                  "usage: DungeonGeometryGeneratorViewer [project.json] [--smoke]\n"
-                 "  no arguments: open the window empty; use the Generate panel or drag & drop\n"
-                 "  the project .json onto the window (the layout is always generated)\n"
+                 "  no arguments: the start screen (New / Open / recent projects); a project\n"
+                 "  .json can also be dropped onto the window (the layout is always generated)\n"
                  "  --smoke      no window: generate the level, print one stats line, exit 0\n"
                  "               (needs a project; usage errors exit 2)\n"
                  "exit codes: 0 ok, 1 data error, 2 usage error\n");
@@ -750,7 +1154,7 @@ int main(int argc, char* argv[]) {
         return 2;
     }
     if (smoke) return runSmoke();
-    // GUI mode: the project is optional — no arguments opens the empty state.
+    // GUI mode: the project is optional — no arguments opens the start screen.
 
     sapp_desc desc = {};
     desc.init_cb = init;
@@ -761,7 +1165,7 @@ int main(int argc, char* argv[]) {
     desc.height = 900;
     // Swapchain stays 1x: the MSAA lives on the preview offscreen passes.
     desc.sample_count = 1;
-    desc.window_title = "DungeonGeometryGeneratorViewer";
+    desc.window_title = "DGG Viewer";
     desc.high_dpi = true;
     desc.enable_dragndrop = true;
     desc.max_dropped_files = 1;  // one project .json per drop
