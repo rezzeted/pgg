@@ -25,14 +25,19 @@ struct Level {
     double layoutMs = 0.0;    // last successful generate
     double fillMs = 0.0;      // last fill_level
     bool loaded = false;
+    bool generated = false;   // layout/IR/fill exist (false = parse-only state)
 
-    // Full pipeline: load the project, generate a layout (attempts=4), build
-    // the IR, then fill with the live cache.
+    // Parse-only open: read the project file and build the F2 catalog. The
+    // layout/fill pipeline does NOT run — opening a project stays fast,
+    // generation is explicit (generate / relayout).
     bool load(const std::string& project, const std::string& assets, std::string& err);
+    // The slow stage: generate a layout (attempts=4), build the IR, then
+    // fill with the live cache.
+    bool generate(std::string& err);
     // Re-read the project file, rebuild the IR from the stored layout and
-    // refill through the same cache.
+    // refill through the same cache. Never generated yet: becomes generate.
     bool refill(std::string& err);
-    // Regenerate the layout from the same project, rebuild the IR, refill.
+    // Re-read the project file, regenerate the layout, rebuild the IR, refill.
     bool relayout(std::string& err);
 
   private:
