@@ -23,6 +23,11 @@ target_include_directories(${AppName} PRIVATE ${SOKOL_INCLUDE_DIRS})
 
 nw_configure_sokol_app(${AppName})
 
+# Symbol names in the crash handler's backtraces (run_log.cpp, -rdynamic).
+if(UNIX)
+    set_target_properties(${AppName} PROPERTIES ENABLE_EXPORTS ON)
+endif()
+
 # F9 smoke: the data path (layout -> IR -> fill) without a window. Projects
 # resolve their slots through the FillOpts::dungeon_geometry_generator_assets fallback, so the repo
 # assets dir is found from the executable upward; the working directory only

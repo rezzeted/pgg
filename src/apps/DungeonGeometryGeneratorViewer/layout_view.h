@@ -2,25 +2,32 @@
 
 // DungeonGeometryGeneratorViewer Layout tab: the project passage graph (the layout
 // tier) as an EDITABLE node view, opened from the project tree's "Layout"
-// row. Unlike the Topo tab's graph pane it does not need a generated layout:
-// before Generate every room is placed by a deterministic BFS-layered
-// fallback, and once the layout exists the real centroids take over for
-// nodes the user has not placed by hand. Dragged positions persist in the
-// project (layout.editor.node_pos, view-only metadata the generator
-// ignores); rooms/passages can be added (toolbar modals or a wire drag from
-// a node's port dot) and deleted, with the project cross-tier checks
-// (validate_project_v1) gating Save/Generate, not the edits themselves (a
-// fresh room is legitimately disconnected until it gets a passage).
+// row. The canvas is the user's stable schematic: node positions are the
+// pinned editor_node_pos or the deterministic BFS-layered fallback from the
+// entry room — never the generated layout's centroids (the read-only Topo
+// tab owns the "how the rooms actually landed" projection). Dragged
+// positions persist in the project (layout.editor.node_pos, view-only
+// metadata the generator ignores); broken pins (a missing room id, a
+// non-finite/absurd coordinate — hand-edit damage) are dropped on load by
+// sanitizeEditorPins with a Log line, the affected nodes fall back to the
+// auto arrangement. Rooms/passages can be added (toolbar modals or a wire
+// drag from a node's port dot) and deleted, with the project cross-tier
+// checks (validate_project_v1) gating Save/Generate, not the edits
+// themselves (a fresh room is legitimately disconnected until it gets a
+// passage).
 
 #include "level.h"
 #include "panel.h"
 #include "topo_view.h"
 
-// Builds the node-view model: build_topo over the generated layout when the
-// level is generated, else build_topo over an empty layout. Node positions:
-// the user's pinned editor_node_pos win, then the real layout centroids,
-// then the fallback arrangement.
+// Builds the node-view model: build_topo over an empty layout (structure
+// only), then pin-or-fallback positions for every node.
 void buildLayoutGraphModel(const Level& level, dungeon_geometry_generator::TopoModel& out);
+
+// Drop broken editor_node_pos entries (a room id that does not exist or a
+// non-finite/absurd coordinate). Returns the count; `dropped` gets the
+// comma-separated room ids for the log line.
+size_t sanitizeEditorPins(dungeon_geometry_generator::LayoutParams& g, std::string& dropped);
 
 // Persistent per-tab editor state.
 struct LayoutGraphState {
