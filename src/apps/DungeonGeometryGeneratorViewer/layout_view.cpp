@@ -208,6 +208,24 @@ void edgeLabelRect(const dg::TopoEdge& e, const TopoCam& cam, const ImVec2& rmin
     b = ImVec2(at.x + ts.x * 0.5f + 3.0f, at.y + ts.y * 0.5f + 2.0f);
 }
 
+// --- connection ports ---------------------------------------------------------
+// Every node box carries one undirected port dot on its right edge; a wire
+// drag port -> node creates a passage.
+
+constexpr float kPortR = 3.5f;     // drawn radius, points
+constexpr float kPortHitR = 8.0f;  // hit-test radius, points
+const ImU32 kWireBad = IM_COL32(235, 90, 80, 255);
+
+ImVec2 portPos(const ImVec2& nodeScreenCenter) {
+    return ImVec2(nodeScreenCenter.x + kGraphNodeW * 0.5f, nodeScreenCenter.y);
+}
+
+// Passages are undirected: the stored selection pair matches either order.
+bool edgeSelected(const LayoutGraphState& st, const dg::TopoEdge& e) {
+    return (st.selEdgeA == e.a && st.selEdgeB == e.b) ||
+           (st.selEdgeA == e.b && st.selEdgeB == e.a);
+}
+
 }  // namespace
 
 void buildLayoutGraphModel(const Level& level, dg::TopoModel& out) {
@@ -302,6 +320,8 @@ LayoutGraphActions drawLayoutGraphView(Level& level, const dg::TopoModel& model,
         st.addPassageB = graph->rooms.size() > 1 ? 1 : 0;
     }
     if (graph->rooms.size() < 2) ImGui::EndDisabled();
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Connect two rooms — or drag from a node's port dot to another node");
     ImGui::SameLine();
 
     // The Delete target: the selected passage wins over the selected room
@@ -319,6 +339,29 @@ LayoutGraphActions drawLayoutGraphView(Level& level, const dg::TopoModel& model,
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Delete the selected room (with its passages) or passage (Del)");
     ImGui::SameLine();
+
+    // Door type of the selected passage (drag-created wires start "open").
+    if (!st.selEdgeA.empty()) {
+        for (auto& p : graph->passages) {
+            const bool same = (p.a == st.selEdgeA && p.b == st.selEdgeB) ||
+                              (p.a == st.selEdgeB && p.b == st.selEdgeA);
+            if (!same) continue;
+            const int cur = p.door == "gate" ? 1 : 0;
+            ImGui::SetNextItemWidth(86.0f);
+            if (ImGui::BeginCombo("##edge_door", kDoors[cur])) {
+                for (int i = 0; i < 2; ++i)
+                    if (ImGui::Selectable(kDoors[i], cur == i) && p.door != kDoors[i]) {
+                        p.door = kDoors[i];
+                        res.markDirty = true;
+                        res.graphChanged = true;  // the Topo tab colors edges by dtype
+                    }
+                ImGui::EndCombo();
+            }
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("Door type of the selected passage");
+            ImGui::SameLine();
+            break;
+        }
+    }
 
     if (ImGui::SmallButton("Fit")) wantFit = true;
     ImGui::SameLine();
@@ -384,20 +427,32 @@ LayoutGraphActions drawLayoutGraphView(Level& level, const dg::TopoModel& model,
         }
         gst.hoverNode = hoverNode;
 
-        // LMB press on a node: select it right away and start a potential
-        // drag (the grab offset keeps the node from jumping).
+        // Wire drag from a port (connectFromId): the drop target under the
+        // cursor and whether the drop would create a passage (not self/dup).
+        int connectTarget = -1;
+        bool connectValid = false;
+
+        // LMB press on a node: the port dot starts a wire drag, anywhere else
+        // selects the node right away and starts a potential move drag (the
+        // grab offset keeps the node from jumping).
         if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && hoverNode >= 0) {
             const auto& n = model.nodes[hoverNode];
-            st.dragId = n.id;
-            st.dragGrabX = mouseWorld.x - n.cx;
-            st.dragGrabY = mouseWorld.y - n.cz;
-            if (selection.kind != Selection::Kind::Room || selection.id != n.id) {
-                selection = Selection{Selection::Kind::Room, n.id};
-                res.selectionChanged = true;
-            }
-            if (!st.selEdgeA.empty()) {
-                st.selEdgeA.clear();
-                st.selEdgeB.clear();
+            const ImVec2 port = portPos(toScreen(gst.cam, rmin, n.cx, n.cz));
+            const float pdx = io.MousePos.x - port.x, pdy = io.MousePos.y - port.y;
+            if (pdx * pdx + pdy * pdy <= kPortHitR * kPortHitR) {
+                st.connectFromId = n.id;
+            } else {
+                st.dragId = n.id;
+                st.dragGrabX = mouseWorld.x - n.cx;
+                st.dragGrabY = mouseWorld.y - n.cz;
+                if (selection.kind != Selection::Kind::Room || selection.id != n.id) {
+                    selection = Selection{Selection::Kind::Room, n.id};
+                    res.selectionChanged = true;
+                }
+                if (!st.selEdgeA.empty()) {
+                    st.selEdgeA.clear();
+                    st.selEdgeB.clear();
+                }
             }
         }
         // Dragging writes the pinned position (absolute, drift-free); the
@@ -418,8 +473,43 @@ LayoutGraphActions drawLayoutGraphView(Level& level, const dg::TopoModel& model,
             }
         }
 
-        // Pan on any-button drag from empty space (node drags belong to the node).
-        if (ImGui::IsItemActive() && st.dragId.empty() &&
+        // Wire drag: a rubber band follows the cursor; releasing over another
+        // node creates the passage (door "open" — retype via the toolbar
+        // combo), Escape cancels. The source room must still exist (a Delete
+        // could have raced the drag).
+        if (!st.connectFromId.empty()) {
+            if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+                st.connectFromId.clear();
+            } else if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+                if (hoverNode >= 0 && model.nodes[hoverNode].id != st.connectFromId) {
+                    connectTarget = hoverNode;
+                    connectValid =
+                        !hasPassage(*graph, st.connectFromId, model.nodes[hoverNode].id);
+                }
+            } else {
+                if (hoverNode >= 0 && model.nodes[hoverNode].id != st.connectFromId &&
+                    hasRoom(*graph, st.connectFromId) &&
+                    !hasPassage(*graph, st.connectFromId, model.nodes[hoverNode].id)) {
+                    dg::Passage p;
+                    p.a = st.connectFromId;
+                    p.b = model.nodes[hoverNode].id;
+                    p.door = "open";
+                    st.selEdgeA = p.a;
+                    st.selEdgeB = p.b;
+                    if (selection.kind != Selection::Kind::None) {
+                        selection = Selection{};
+                        res.selectionChanged = true;
+                    }
+                    graph->passages.push_back(std::move(p));
+                    res.markDirty = true;
+                    res.graphChanged = true;
+                }
+                st.connectFromId.clear();
+            }
+        }
+
+        // Pan on any-button drag from empty space (node/wire drags own the LMB).
+        if (ImGui::IsItemActive() && st.dragId.empty() && st.connectFromId.empty() &&
             (ImGui::IsMouseDragging(ImGuiMouseButton_Left, 0.0f) ||
              ImGui::IsMouseDragging(ImGuiMouseButton_Right, 0.0f) ||
              ImGui::IsMouseDragging(ImGuiMouseButton_Middle, 0.0f))) {
@@ -429,7 +519,7 @@ LayoutGraphActions drawLayoutGraphView(Level& level, const dg::TopoModel& model,
 
         // Edge hover: the door label plates (screen-space rects).
         int hoverEdge = -1;
-        if (hovered && hoverNode < 0 && st.dragId.empty()) {
+        if (hovered && hoverNode < 0 && st.dragId.empty() && st.connectFromId.empty()) {
             for (size_t i = 0; i < model.edges.size(); ++i) {
                 const auto& e = model.edges[i];
                 if (!e.labelOk || e.door.empty()) continue;
@@ -478,8 +568,9 @@ LayoutGraphActions drawLayoutGraphView(Level& level, const dg::TopoModel& model,
             res.focus = true;
         }
 
-        // Delete key (the toolbar button sets wantDelete too).
-        if ((hovered || !st.dragId.empty()) && !io.WantTextInput &&
+        // Delete key (the toolbar button sets wantDelete too); not mid-wire —
+        // the source node of a wire drag must survive until the drop.
+        if ((hovered || !st.dragId.empty()) && st.connectFromId.empty() && !io.WantTextInput &&
             ImGui::IsKeyPressed(ImGuiKey_Delete, false))
             wantDelete = true;
 
@@ -506,7 +597,7 @@ LayoutGraphActions drawLayoutGraphView(Level& level, const dg::TopoModel& model,
                 const ImVec2 p0 = toScreen(gst.cam, rmin, na.cx, na.cz);
                 const ImVec2 p1 = toScreen(gst.cam, rmin, nb.cx, nb.cz);
                 const float bend = std::max(30.0f, std::fabs(p1.x - p0.x) * 0.4f);
-                const bool sel = st.selEdgeA == e.a && st.selEdgeB == e.b;
+                const bool sel = edgeSelected(st, e);
                 const bool hov = st.hoverEdge == static_cast<int>(i);
                 const ImU32 base = e.door == "open" ? kDoorOpen : kDoorOther;
                 const ImU32 c = sel ? kSelection : withAlpha(base, hov ? 255 : 200);
@@ -521,7 +612,7 @@ LayoutGraphActions drawLayoutGraphView(Level& level, const dg::TopoModel& model,
             if (!e.labelOk || e.door.empty()) continue;
             ImVec2 a, b;
             edgeLabelRect(e, gst.cam, rmin, a, b);
-            const bool sel = st.selEdgeA == e.a && st.selEdgeB == e.b;
+            const bool sel = edgeSelected(st, e);
             dl->AddRectFilled(a, b, IM_COL32(16, 18, 22, 200));
             if (sel || st.hoverEdge == static_cast<int>(i))
                 dl->AddRect(a, b, sel ? kSelection : IM_COL32(200, 210, 235, 255), 0.0f, 0, 1.2f);
@@ -529,7 +620,8 @@ LayoutGraphActions drawLayoutGraphView(Level& level, const dg::TopoModel& model,
                         e.door == "open" ? kDoorOpen : kDoorOther, e.door.c_str());
         }
 
-        // Node boxes: fixed 88x36 points, centered at the centroids, id + role.
+        // Node boxes: fixed 88x36 points, centered at the centroids, id + role,
+        // and the connection port dot on the right edge.
         for (size_t i = 0; i < model.nodes.size(); ++i) {
             const auto& n = model.nodes[i];
             if (!n.hasLayout) continue;
@@ -543,6 +635,9 @@ LayoutGraphActions drawLayoutGraphView(Level& level, const dg::TopoModel& model,
             if (selection.kind == Selection::Kind::Room && selection.id == n.id) {
                 border = kSelection;
                 thickness = 2.2f;
+            } else if (connectTarget == static_cast<int>(i)) {
+                border = connectValid ? kDoorOpen : kWireBad;  // wire-drag drop target
+                thickness = 2.2f;
             } else if (gst.hoverNode == static_cast<int>(i)) {
                 border = IM_COL32(200, 210, 235, 255);
             }
@@ -551,6 +646,27 @@ LayoutGraphActions drawLayoutGraphView(Level& level, const dg::TopoModel& model,
             dl->AddText(ImVec2(a.x + 6.0f, a.y + 4.0f), IM_COL32(232, 236, 244, 255), n.id.c_str());
             dl->AddText(ImVec2(a.x + 6.0f, a.y + 19.0f), withAlpha(role, 220), n.role.c_str());
             dl->PopClipRect();
+            const bool portHot = gst.hoverNode == static_cast<int>(i) || st.connectFromId == n.id;
+            dl->AddCircleFilled(portPos(c), kPortR,
+                                portHot ? IM_COL32(240, 240, 250, 255) : withAlpha(role, 220));
+            dl->AddCircle(portPos(c), kPortR, IM_COL32(16, 18, 22, 255), 0, 1.0f);
+        }
+
+        // The wire being dragged from a port: green over a valid drop target,
+        // red over self/duplicate, neutral otherwise.
+        if (!st.connectFromId.empty()) {
+            for (const auto& n : model.nodes) {
+                if (n.id != st.connectFromId || !n.hasLayout) continue;
+                const ImVec2 p0 = portPos(toScreen(gst.cam, rmin, n.cx, n.cz));
+                const ImVec2 p1 = io.MousePos;
+                const float bend = std::max(30.0f, std::fabs(p1.x - p0.x) * 0.4f);
+                const ImU32 c = connectTarget >= 0
+                                    ? (connectValid ? kDoorOpen : kWireBad)
+                                    : IM_COL32(200, 205, 220, 200);
+                dl->AddBezierCubic(p0, ImVec2(p0.x + bend, p0.y), ImVec2(p1.x - bend, p1.y), p1, c,
+                                   2.0f);
+                break;
+            }
         }
 
         dl->PopClipRect();
