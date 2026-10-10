@@ -88,8 +88,9 @@ bool Level::buildIrFromGenerate(std::string& err) {
         err = projectPath + ": dungeon-geometry-generator-project/0 has no layout tier to generate from";
         return false;
     }
-    dungeon_geometry_generator::layout::Catalog catalog;
-    if (!dungeon_geometry_generator::layout::build_catalog(project, catalog, err)) return false;
+    dungeon_geometry_generator::layout::Catalog nextCatalog;
+    if (!dungeon_geometry_generator::layout::build_catalog(project, nextCatalog, err)) return false;
+    catalog = std::move(nextCatalog);
     dungeon_geometry_generator::layout::LayoutGenerator gen;
     dungeon_geometry_generator::layout::GenerateOptions opts;
     opts.attempts = kLayoutAttempts;
@@ -143,6 +144,11 @@ bool Level::refill(std::string& err) {
         return false;
     }
     if (!dungeon_geometry_generator::load_project(projectPath, project, err)) return false;
+    // The layout tier may have changed on disk: refresh the F2 catalog too so
+    // the project tree reads the re-read project, not the stale one.
+    dungeon_geometry_generator::layout::Catalog nextCatalog;
+    if (!dungeon_geometry_generator::layout::build_catalog(project, nextCatalog, err)) return false;
+    catalog = std::move(nextCatalog);
     // Same layout, fresh resolution: rebuild the IR from the stored layout,
     // then refill through the shared cache.
     return dungeon_geometry_generator::build_ir_from_layout(layoutData, project, projectPath, ir, err) && runFill(err);

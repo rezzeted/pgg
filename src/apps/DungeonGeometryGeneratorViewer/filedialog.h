@@ -18,6 +18,7 @@ struct FileDialog {
     std::vector<std::filesystem::directory_entry> dirs;   // subdirs, by name
     std::vector<std::filesystem::directory_entry> files;  // *.json, by name
     bool dirty = true;            // relist on next draw
+    bool saveMode = false;        // Select accepts a non-existing path whose parent dir exists
     char dirBuf[1024] = {};       // editable current directory
     char pathBuf[1024] = {};      // editable selected full path (Enter = Select)
 };

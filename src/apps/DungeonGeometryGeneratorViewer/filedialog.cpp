@@ -154,7 +154,15 @@ bool fileDialogDraw(FileDialog& st, const char* title, std::string& outPath) {
                                               ImGuiInputTextFlags_EnterReturnsTrue);
 
     std::error_code ec;
-    const bool valid = fs::is_regular_file(fs::path(st.pathBuf), ec);
+    bool valid = false;
+    if (st.saveMode) {
+        // A new file: any non-empty name under an existing directory.
+        const fs::path p(st.pathBuf);
+        valid = !p.empty() && !p.filename().empty() &&
+                fs::is_directory(p.has_parent_path() ? p.parent_path() : fs::path("."), ec);
+    } else {
+        valid = fs::is_regular_file(fs::path(st.pathBuf), ec);
+    }
     const float btnW = 90.0f;
     const float rowRight = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x;
     if (!valid) ImGui::BeginDisabled();

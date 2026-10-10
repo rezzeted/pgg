@@ -6,6 +6,7 @@
 
 #include <string>
 
+#include "catalog.h"
 #include "fill.h"
 #include "ir.h"
 #include "layout.h"
@@ -13,6 +14,7 @@
 
 struct Level {
     dungeon_geometry_generator::Project project;
+    dungeon_geometry_generator::layout::Catalog catalog;  // F2 catalog of the loaded layout tier
     dungeon_geometry_generator::LayoutData layoutData;
     dungeon_geometry_generator::IrV2 ir;
     dungeon_geometry_generator::FillResult fill;

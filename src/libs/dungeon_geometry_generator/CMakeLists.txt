@@ -2,6 +2,7 @@ find_package(nlohmann_json CONFIG REQUIRED)
 
 add_library(dungeon_geometry_generator STATIC
     project.cpp
+    project_writer.cpp
     layout.cpp
     ir.cpp
     topo.cpp
