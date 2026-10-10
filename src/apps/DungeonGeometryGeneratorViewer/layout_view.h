@@ -7,10 +7,10 @@
 // fallback, and once the layout exists the real centroids take over for
 // nodes the user has not placed by hand. Dragged positions persist in the
 // project (layout.editor.node_pos, view-only metadata the generator
-// ignores); rooms/passages can be added and deleted, with the project
-// cross-tier checks (validate_project_v1) gating Save/Generate, not the
-// edits themselves (a fresh room is legitimately disconnected until it gets
-// a passage).
+// ignores); rooms/passages can be added (toolbar modals or a wire drag from
+// a node's port dot) and deleted, with the project cross-tier checks
+// (validate_project_v1) gating Save/Generate, not the edits themselves (a
+// fresh room is legitimately disconnected until it gets a passage).
 
 #include "level.h"
 #include "panel.h"
@@ -27,6 +27,7 @@ struct LayoutGraphState {
     TopoGraphState graph;  // camera, hover, fitted (shared fit helper)
     std::string dragId;    // node being LMB-dragged ("" = none)
     double dragGrabX = 0.0, dragGrabY = 0.0;  // world cursor -> node center offset at grab
+    std::string connectFromId;                // port wire-drag source node ("" = none)
     std::string selEdgeA, selEdgeB;           // selected passage (selEdgeA empty = none)
     int hoverEdge = -1;                       // edge index under the cursor (-1 = none)
     // Add-room modal.
