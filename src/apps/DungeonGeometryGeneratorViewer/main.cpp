@@ -49,6 +49,7 @@
 
 #include "GeometryPreview.h"
 #include "filedialog.h"
+#include "layout_view.h"
 #include "level.h"
 #include "panel.h"
 #include "project_tree.h"
@@ -118,6 +119,7 @@ int g_activeView = 0;  // 0 = 3D (default tab), 1 = Top, 2 = Topo, >=3 = templat
 struct OpenTemplateTab {
     ProjectTreeSelection sel;
     TemplateViewState st;
+    TopoGraphState graphSt;  // Kind::Layout: node-graph camera/hover
 };
 std::vector<OpenTemplateTab> g_tmplTabs;
 std::vector<ProjectTreeSelection> g_pendingTabs;
@@ -143,8 +145,10 @@ void closeAllTemplateTabs() {
 
 // Topo tab state: the model is a pure projection of the project graph and
 // the generated layout (rebuilt on load/refill/relayout), the pane state is
-// the camera + layer toggles.
+// the camera + layer toggles. g_layoutGraph is the same projection for the
+// Layout tab, with fallback node positions until the first generate.
 dungeon_geometry_generator::TopoModel g_topoModel;
+dungeon_geometry_generator::TopoModel g_layoutGraph;
 TopoPlanState g_topoPlan;
 TopoGraphState g_topoGraph;
 
@@ -152,6 +156,7 @@ void rebuildTopoModel(bool resetCamera) {
     g_topoModel = g_level.project.layout
                       ? dungeon_geometry_generator::build_topo(g_level.project.layout.value(), g_level.layoutData)
                       : dungeon_geometry_generator::TopoModel{};
+    buildLayoutGraphModel(g_level, g_layoutGraph);
     if (resetCamera) {
         g_topoPlan = TopoPlanState{};
         g_topoGraph = TopoGraphState{};
@@ -318,6 +323,7 @@ void openLevel(const std::string& projRaw) {
 void closeLevel() {
     g_level = Level{};
     g_topoModel = dungeon_geometry_generator::TopoModel{};
+    g_layoutGraph = dungeon_geometry_generator::TopoModel{};
     g_topoPlan = TopoPlanState{};
     g_topoGraph = TopoGraphState{};
     resetViewState();
@@ -1005,7 +1011,18 @@ void drawPanes(float x, float y, float w, float h) {
             const std::string label = templateTabLabel(tab.sel);
             if (ImGui::BeginTabItem(label.c_str(), &open, flags)) {
                 g_activeView = 3 + static_cast<int>(i);
-                if (g_level.loaded) {
+                if (tab.sel.kind == ProjectTreeSelection::Kind::Layout) {
+                    const TopoGraphResult gr =
+                        drawLayoutGraphView(g_level, g_layoutGraph, g_selection, tab.graphSt);
+                    if (gr.focus) {
+                        for (const auto& n : g_layoutGraph.nodes) {
+                            if (n.id == g_selection.id) {
+                                fitTopoGraphCam(tab.graphSt, n.minx, n.miny, n.maxx, n.maxy);
+                                break;
+                            }
+                        }
+                    }
+                } else if (g_level.loaded) {
                     const TemplateViewActions ta =
                         drawTemplateView(g_level, tab.sel, tab.st, g_projectDirty);
                     if (ta.markDirty) g_projectDirty = true;

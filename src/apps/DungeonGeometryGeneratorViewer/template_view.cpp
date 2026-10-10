@@ -614,6 +614,7 @@ void drawGeneratorCard(Level& level, bool rects, bool projectDirty, TemplateView
 
 std::string templateTabLabel(const ProjectTreeSelection& sel) {
     switch (sel.kind) {
+        case ProjectTreeSelection::Kind::Layout: return "Layout";
         case ProjectTreeSelection::Kind::GeneratorRects: return "gen: rooms_rect";
         case ProjectTreeSelection::Kind::GeneratorCorridors: return "gen: corridors";
         case ProjectTreeSelection::Kind::Template: return sel.name;
