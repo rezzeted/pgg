@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <numbers>
 #include <random>
@@ -1256,6 +1257,19 @@ bool fill_level(const IrV2& ir, const Project& project, const FillOpts& opts, Fi
         return true;
     };
 
+    // One processUnit with the async-host hooks: cancellation polled before
+    // the unit starts, progress reported after it lands.
+    size_t doneUnits = 0;
+    auto runOne = [&](const Unit& u, bool collectBlockers, UnitOut& o) -> bool {
+        if (opts.shouldCancel && opts.shouldCancel()) {
+            err = "dungeon_geometry_generator/run: cancelled";
+            return false;
+        }
+        if (!processUnit(u, collectBlockers, o)) return false;
+        if (opts.onUnit) opts.onUnit(++doneUnits);
+        return true;
+    };
+
     // Slots §1: a declared geo param without a default is host-bound stream
     // data (room_fill `cuts`, D5). A unit without data for it gets an empty
     // geo of the declared kind, so the asset always sees its full signature
@@ -1287,7 +1301,7 @@ bool fill_level(const IrV2& ir, const Project& project, const FillOpts& opts, Fi
     const bool rfCuts = rfCutsIt != declared["room_fill"].end() && !rfCutsIt->second.hasDefault;
     std::vector<UnitOut> outs(units.size());
     for (size_t i = 0; i < units.size(); ++i)
-        if (!processUnit(units[i], true, outs[i])) return false;
+        if (!runOne(units[i], true, outs[i])) return false;
     const size_t roomCount = units.size();
 
     for (const auto& w : ir.walls) {
@@ -1360,7 +1374,7 @@ bool fill_level(const IrV2& ir, const Project& project, const FillOpts& opts, Fi
                     break;
                 }
             UnitOut o2;
-            if (!processUnit(units[i], false, o2)) return false;
+            if (!runOne(units[i], false, o2)) return false;
             outs[i] = std::move(o2);
         }
     }
@@ -1368,7 +1382,7 @@ bool fill_level(const IrV2& ir, const Project& project, const FillOpts& opts, Fi
     // C4 phase 2: everything past the room fills.
     for (size_t i = roomCount; i < units.size(); ++i) {
         outs.emplace_back();
-        if (!processUnit(units[i], true, outs[i])) return false;
+        if (!runOne(units[i], true, outs[i])) return false;
     }
 
     // Assembly in unit order: spans, merge inputs, F8 stats.

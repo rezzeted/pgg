@@ -64,6 +64,11 @@ std::string findAssetsUp(fs::path dir) {
 
 }  // namespace
 
+Level::Level() : layoutGen(std::make_unique<dungeon_geometry_generator::layout::LayoutGenerator>()) {}
+Level::~Level() = default;
+Level::Level(Level&&) noexcept = default;
+Level& Level::operator=(Level&&) noexcept = default;
+
 std::string resolve_dungeon_geometry_generator_assets(const std::string& argv0, const std::string& projectPath) {
     std::error_code ec;
     if (isAssetsDir(fs::current_path(ec) / "assets"))
@@ -88,28 +93,53 @@ bool Level::buildIrFromGenerate(std::string& err) {
         err = projectPath + ": dungeon-geometry-generator-project/0 has no layout tier to generate from";
         return false;
     }
+    if (onStage) onStage(kStageCatalog);
+    const double tc = nowMs();
     dungeon_geometry_generator::layout::Catalog nextCatalog;
     if (!dungeon_geometry_generator::layout::build_catalog(project, nextCatalog, err)) return false;
     catalog = std::move(nextCatalog);
-    dungeon_geometry_generator::layout::LayoutGenerator gen;
+    catalogMs = nowMs() - tc;
+    if (shouldCancel && shouldCancel()) {
+        err = "cancelled";
+        return false;
+    }
+    if (onStage) onStage(kStageLayout);
+    layoutGen->reset_cancel();
     dungeon_geometry_generator::layout::GenerateOptions opts;
     opts.attempts = kLayoutAttempts;
     dungeon_geometry_generator::layout::LayoutResult result;
     const double t0 = nowMs();
-    if (!gen.generate(project, catalog, opts, result, err)) return false;
+    if (!layoutGen->generate(project, catalog, opts, result, err)) return false;
     layoutMs = nowMs() - t0;
+    if (shouldCancel && shouldCancel()) {
+        err = "cancelled";
+        return false;
+    }
+    if (onStage) onStage(kStageIR);
+    const double ti = nowMs();
     // The generator speaks dungeon_topology_generator types; dungeon-geometry-generator-layout/0 is the canonical
     // handoff into the IR builder (serialize, then parse back).
     std::string text;
-    if (!dungeon_geometry_generator::layout::write_layout_json(result, project, projectPath, text, err)) return false;
+    if (!dungeon_geometry_generator::layout::write_layout_json(result, project, projectPath, text, err))
+        return false;
     if (!dungeon_geometry_generator::read_layout_json(text, layoutData, err)) return false;
-    return dungeon_geometry_generator::build_ir_from_layout(layoutData, project, projectPath, ir, err);
+    if (!dungeon_geometry_generator::build_ir_from_layout(layoutData, project, projectPath, ir, err))
+        return false;
+    irMs = nowMs() - ti;
+    return true;
 }
 
 bool Level::runFill(std::string& err) {
+    if (onStage) onStage(kStageFill);
+    if (shouldCancel && shouldCancel()) {
+        err = "cancelled";
+        return false;
+    }
     dungeon_geometry_generator::FillOpts opts;
     opts.dungeon_geometry_generator_assets = dungeon_geometry_generatorAssets;
     opts.cache = &unitCache;
+    opts.shouldCancel = shouldCancel;
+    opts.onUnit = onUnit;
     const double t0 = nowMs();
     if (!dungeon_geometry_generator::fill_level(ir, project, opts, fill, err)) return false;
     fillMs = nowMs() - t0;
@@ -156,11 +186,23 @@ bool Level::refill(std::string& err) {
     if (!dungeon_geometry_generator::load_project(projectPath, project, err)) return false;
     // The layout tier may have changed on disk: refresh the F2 catalog too so
     // the project tree reads the re-read project, not the stale one.
+    if (onStage) onStage(kStageCatalog);
+    const double tc = nowMs();
     dungeon_geometry_generator::layout::Catalog nextCatalog;
     if (!dungeon_geometry_generator::layout::build_catalog(project, nextCatalog, err)) return false;
     catalog = std::move(nextCatalog);
+    catalogMs = nowMs() - tc;
+    if (shouldCancel && shouldCancel()) {
+        err = "cancelled";
+        return false;
+    }
     if (!generated) return generate(err);  // no stored layout to reuse: the first fill is a generate
     // Same layout, fresh resolution: rebuild the IR from the stored layout,
     // then refill through the shared cache.
-    return dungeon_geometry_generator::build_ir_from_layout(layoutData, project, projectPath, ir, err) && runFill(err);
+    if (onStage) onStage(kStageIR);
+    const double ti = nowMs();
+    if (!dungeon_geometry_generator::build_ir_from_layout(layoutData, project, projectPath, ir, err))
+        return false;
+    irMs = nowMs() - ti;
+    return runFill(err);
 }

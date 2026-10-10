@@ -23,7 +23,11 @@
 // window. Opening is parse-only (the app does not block); the layout tier is
 // generated on demand (the Generate button at the side panel bottom or
 // Project > Re-layout, attempts=4), then the IR is built and the level
-// filled. Frozen IR files are a DungeonGeometryGeneratorCli input, not the viewer's.
+// filled. Generation runs on a worker thread (GenTask): the strip shows the
+// stage/elapsed/fill progress with a Cancel button (cooperative cancel: the
+// F3 generator's request_cancel + between-unit checks in fill), the Log
+// narrates the stages with timings, and file actions are locked until it
+// ends. Frozen IR files are a DungeonGeometryGeneratorCli input, not the viewer's.
 // --smoke runs the same data path without a window (ctest), prints one stats
 // line and exits 0. Exit codes: 0 ok, 1 data error, 2 usage error.
 // Diagnostics (run_log.h): every run logs to <repo>/logs/DungeonGeometryGeneratorViewer/
@@ -35,13 +39,18 @@
 #include "pch.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cfloat>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -53,6 +62,7 @@
 
 #include "GeometryPreview.h"
 #include "filedialog.h"
+#include "generate.h"
 #include "layout_view.h"
 #include "level.h"
 #include "panel.h"
@@ -98,6 +108,10 @@ constexpr const char* kUnitGroup = "unit";
 
 bool g_gfxOk = false;
 bool g_imguiOk = false;
+bool g_smokeAsync = false;  // --smoke-async: windowed diagnostic of the async pipeline
+// --smoke-async diagnostics: when >= 0, auto-cancel the task this many ms
+// after launch (DGG_SMOKE_ASYNC_CANCEL_MS; exercises the cancel path headlessly).
+int g_smokeAsyncCancelMs = -1;
 
 std::string g_argv0;
 std::string g_projectArg;
@@ -357,45 +371,178 @@ void closeLevel() {
     logLine("level closed");
 }
 
-void doRefill() {
-    std::string err;
+// --- async generation ---------------------------------------------------------
+// Generate/Re-layout/Refill run on a worker thread over a COPY of the project
+// (the UI keeps reading and editing g_level.project; edits made mid-run are
+// preserved and simply apply to the next run — refill is the exception: it is
+// an explicit reload, so its completion swaps the disk state back in). The F8
+// unit cache rides along with the task and returns on completion. Cancel is
+// cooperative: the F3 layout generator's request_cancel (thread-safe) plus
+// between-stage and between-unit checks. The worker never touches UI state:
+// its log lines go through a queue the main thread drains into the Log dock.
+
+struct GenTask {
+    std::thread th;
+    std::unique_ptr<Level> work;  // the worker's pipeline state (project copy)
+    int mode = 0;                 // 0 = generate/re-layout, 1 = refill
+    std::string label;            // log prefix
+    std::chrono::steady_clock::time_point t0;
+    bool dirtyAtLaunch = false;
+    std::atomic<bool> cancel{false};
+    std::atomic<bool> done{false};
+    std::atomic<int> stage{-1};  // kStage* of the running stage (-1 = starting)
+    std::atomic<size_t> fillUnits{0};
+    bool ok = false;     // worker -> main, valid once done
+    std::string err;     // worker -> main, valid once done
+    std::mutex logMu;
+    std::vector<std::pair<std::string, bool>> logQ;  // worker -> main
+};
+std::unique_ptr<GenTask> g_task;
+int g_taskExitCode = -1;  // --smoke-async: the finished task's 0/1
+
+double taskElapsedS(const GenTask& t) {
+    return std::chrono::duration<double>(std::chrono::steady_clock::now() - t.t0).count();
+}
+
+std::string fmtSec(double s) {
+    char b[32];
+    std::snprintf(b, sizeof(b), "%.1f", s);
+    return b;
+}
+
+const char* kStageNames[] = {"catalog", "layout", "ir", "fill"};
+
+void taskLog(GenTask& t, const std::string& s, bool isError = false) {
+    std::lock_guard<std::mutex> lock(t.logMu);
+    t.logQ.push_back({s, isError});
+}
+
+void taskRun(GenTask& t) {
+    Level& w = *t.work;
+    w.shouldCancel = [&t] { return t.cancel.load(); };
+    w.onUnit = [&t](size_t n) { t.fillUnits.store(n); };
+    w.onStage = [&t](int s) {
+        t.stage.store(s);
+        taskLog(t, "  [" + fmtSec(taskElapsedS(t)) + "s] " + kStageNames[s] + " ...");
+    };
+    t.ok = t.mode == 1 ? w.refill(t.err) : w.generate(t.err);
+    t.done.store(true);
+}
+
+void launchTask(int mode, const char* label) {
+    if (g_task) return;
+    auto t = std::make_unique<GenTask>();
+    t->mode = mode;
+    t->label = label;
+    t->work = std::make_unique<Level>();
+    t->work->unitCache = std::move(g_level.unitCache);  // the F8 cache rides along
+    t->work->project = g_level.project;                 // snapshot copy
+    t->work->projectPath = g_level.projectPath;
+    t->work->dungeon_geometry_generatorAssets = g_level.dungeon_geometry_generatorAssets;
+    t->work->layoutData = g_level.layoutData;           // refill reuses the stored layout
+    t->work->generated = g_level.generated;
+    t->work->loaded = true;
+    t->dirtyAtLaunch = g_projectDirty;
+    t->t0 = std::chrono::steady_clock::now();
     g_pipelineRun += 1;
-    logLine("refill: reloading " + g_level.projectPath + " ...");
-    runlogSnapshotProject(g_level.project, g_pipelineRun);  // the in-memory state refill discards
-    if (!g_level.refill(err)) {
-        logLine("refill failed: " + err, true);
+    runlogSnapshotProject(g_level.project, g_pipelineRun);
+    logLine(std::string(label) + ": started (" + g_level.projectPath +
+            (g_projectDirty ? ", unsaved edits" : "") + ")");
+    GenTask* raw = t.get();
+    t->th = std::thread([raw] { taskRun(*raw); });
+    g_task = std::move(t);
+}
+
+void requestTaskCancel(GenTask& t) {
+    t.cancel.store(true);
+    t.work->layoutGen->request_cancel();  // F3 cooperative cancel (thread-safe, sticky)
+}
+
+// Task completion on the main thread: apply the pipeline results (or log the
+// failure/cancel), bring the unit cache back either way.
+void finishTask(GenTask& t) {
+    Level& w = *t.work;
+    g_level.unitCache = std::move(w.unitCache);
+    const std::string total = fmtSec(taskElapsedS(t));
+    if (t.cancel.load()) {
+        logLine(t.label + ": cancelled after " + total + " s", true);
+        g_taskExitCode = 1;
         return;
     }
-    sanitizeEditorPinsLogged();  // refill re-reads the file: pins could change on disk
+    if (!t.ok) {
+        logLine(t.label + " failed: " + t.err, true);
+        g_taskExitCode = 1;
+        return;
+    }
+    g_level.catalog = std::move(w.catalog);
+    g_level.layoutData = std::move(w.layoutData);
+    g_level.ir = std::move(w.ir);
+    g_level.fill = std::move(w.fill);
+    g_level.catalogMs = w.catalogMs;
+    g_level.layoutMs = w.layoutMs;
+    g_level.irMs = w.irMs;
+    g_level.fillMs = w.fillMs;
+    g_level.generated = true;
+    const bool freshLayout = t.mode == 0;
+    if (t.mode == 1) {
+        // Refill is an explicit reload: the disk project replaces in-memory
+        // edits (mid-run ones included).
+        if (g_projectDirty) logLine("refill: in-memory edits discarded (reloaded from disk)");
+        g_level.project = std::move(w.project);
+        g_projectDirty = false;
+        sanitizeEditorPinsLogged();
+    } else if (g_projectDirty != t.dirtyAtLaunch) {
+        logLine("note: the project was edited during the run — the result shows the "
+                "pre-edit graph, Re-layout to pick the edits up");
+    }
     resetViewState();
-    rebuildTopoModel(false);  // same layout: keep the camera
-    rebuildPreviews(false);  // same layout: keep the camera
-    logLine(fillSummary("refill"));
+    rebuildTopoModel(freshLayout);
+    rebuildPreviews(freshLayout);
+    std::string stages = "catalog " + std::to_string(static_cast<long long>(g_level.catalogMs)) +
+                         " ms, ";
+    if (freshLayout)
+        stages += "layout " + std::to_string(static_cast<long long>(g_level.layoutMs)) + " ms, ";
+    stages += "ir " + std::to_string(static_cast<long long>(g_level.irMs)) + " ms, fill " +
+              std::to_string(static_cast<long long>(g_level.fillMs)) + " ms";
+    logLine(t.label + ": done in " + total + " s (" + stages + ")");
+    logLine(fillSummary(t.label.c_str()));
+    g_taskExitCode = 0;
+}
+
+// Drain the worker's log queue; join + apply when the task is done.
+void pumpTask() {
+    if (!g_task) return;
+    GenTask& t = *g_task;
+    {
+        std::lock_guard<std::mutex> lock(t.logMu);
+        for (const auto& [s, isErr] : t.logQ) logLine(s, isErr);
+        t.logQ.clear();
+    }
+    if (!t.done.load()) return;
+    if (t.th.joinable()) t.th.join();
+    finishTask(t);
+    g_task.reset();
+}
+
+void doRefill() {
+    if (g_task) return;
+    launchTask(1, "refill");
 }
 
 // Fresh layout from the CURRENT in-memory project (unsaved editor edits
 // included — reloading from disk here would silently drop them). Validated
-// first: the graph editor allows invalid intermediate states.
+// first: the graph editor allows invalid intermediate states. Runs async
+// (GenTask): the UI stays live, Cancel is the strip button.
 void doRelayout() {
+    if (g_task) return;
     std::string err;
-    g_pipelineRun += 1;
-    logLine("re-layout: starting (" + g_level.projectPath +
-            (g_projectDirty ? ", unsaved edits" : "") + ") ...");
-    runlogSnapshotProject(g_level.project, g_pipelineRun);
     if (g_level.project.layout &&
         !dungeon_geometry_generator::validate_project_v1(g_level.project, g_level.projectPath,
                                                          err)) {
         logLine("re-layout failed: " + err, true);
         return;
     }
-    if (!g_level.generate(err)) {
-        logLine("re-layout failed: " + err, true);
-        return;
-    }
-    resetViewState();
-    rebuildTopoModel(true);  // new layout: fresh camera (auto-fit)
-    rebuildPreviews(true);  // new layout: refit
-    logLine(fillSummary("re-layout"));
+    launchTask(0, "re-layout");
 }
 
 // First generation of a just-opened project (open is parse-only). Uses the
@@ -403,25 +550,15 @@ void doRelayout() {
 // the cross-tier checks run first (the editor allows invalid intermediate
 // states, e.g. a fresh room without passages).
 void doGenerate() {
+    if (g_task) return;
     std::string err;
-    g_pipelineRun += 1;
-    logLine("generate: starting (" + g_level.projectPath +
-            (g_projectDirty ? ", unsaved edits" : "") + ") ...");
-    runlogSnapshotProject(g_level.project, g_pipelineRun);
     if (g_level.project.layout &&
         !dungeon_geometry_generator::validate_project_v1(g_level.project, g_level.projectPath,
                                                          err)) {
         logLine("generate failed: " + err, true);
         return;
     }
-    if (!g_level.generate(err)) {
-        logLine("generate failed: " + err, true);
-        return;
-    }
-    resetViewState();
-    rebuildTopoModel(true);  // fresh layout: fresh camera (auto-fit)
-    rebuildPreviews(true);
-    logLine(fillSummary("generate"));
+    launchTask(0, "generate");
 }
 
 // Save the in-memory project (template cards and the Layout graph editor edit
@@ -519,19 +656,20 @@ float drawMainMenu() {
     float h = 0.0f;
     if (ImGui::BeginMainMenuBar()) {
         h = ImGui::GetWindowHeight();
+        const bool busy = g_task != nullptr;  // a generation runs: file ops are locked out
         if (ImGui::BeginMenu("Files")) {
-            if (ImGui::MenuItem("New...", "Ctrl+N")) requestAction(PendingAction::New);
-            if (ImGui::MenuItem("Open...", "Ctrl+O")) requestAction(PendingAction::Open);
-            if (ImGui::MenuItem("Save", "Ctrl+S", false, g_level.loaded && g_projectDirty))
+            if (ImGui::MenuItem("New...", "Ctrl+N", false, !busy)) requestAction(PendingAction::New);
+            if (ImGui::MenuItem("Open...", "Ctrl+O", false, !busy)) requestAction(PendingAction::Open);
+            if (ImGui::MenuItem("Save", "Ctrl+S", false, g_level.loaded && g_projectDirty && !busy))
                 doSaveApply();
             ImGui::Separator();
-            if (ImGui::MenuItem("Close", nullptr, false, g_level.loaded))
+            if (ImGui::MenuItem("Close", nullptr, false, g_level.loaded && !busy))
                 requestAction(PendingAction::Close);
             ImGui::Separator();
-            if (ImGui::MenuItem("Exit")) requestAction(PendingAction::Exit);
+            if (ImGui::MenuItem("Exit", nullptr, false, !busy)) requestAction(PendingAction::Exit);
             ImGui::EndMenu();
         }
-        if (ImGui::BeginMenu("Project", g_level.loaded)) {
+        if (ImGui::BeginMenu("Project", g_level.loaded && !busy)) {
             if (ImGui::MenuItem("Refill (reload project)")) doRefill();
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("Re-read project.json, rebuild the IR from the same layout, refill");
@@ -938,24 +1076,50 @@ void drawSidePanel(float y, float h) {
     ImGui::EndChild();
 
     // Generation is explicit (opening a project only parses it): the button
-    // strip sits at the panel bottom, always reachable.
+    // strip sits at the panel bottom, always reachable. While a task runs it
+    // becomes the progress + Cancel strip (the pipeline is async, GenTask).
     ImGui::Separator();
-    const ImVec2 btnSize(200.0f, 36.0f);
-    const float availH = ImGui::GetContentRegionAvail().y;
-    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + std::max((availH - btnSize.y) * 0.5f, 0.0f));
-    ImGui::SetCursorPosX(std::max((ImGui::GetWindowWidth() - btnSize.x) * 0.5f,
-                                  ImGui::GetStyle().WindowPadding.x));
-    if (ImGui::Button(g_level.generated ? "Re-layout" : "Generate", btnSize)) {
-        if (g_level.generated) {
-            doRelayout();
+    if (g_task) {
+        GenTask& t = *g_task;
+        const double el = taskElapsedS(t);
+        static const char kSpin[] = "|/-\\";
+        const char spin = kSpin[static_cast<int>(ImGui::GetTime() * 8.0) & 3];
+        const int st = t.stage.load();
+        char status[96];
+        if (st == kStageFill) {
+            std::snprintf(status, sizeof(status), "%c %s: %zu units, %.1f s", spin,
+                          kStageNames[st], t.fillUnits.load(), el);
+        } else if (st >= 0) {
+            std::snprintf(status, sizeof(status), "%c %s, %.1f s", spin, kStageNames[st], el);
         } else {
-            doGenerate();
+            std::snprintf(status, sizeof(status), "%c starting, %.1f s", spin, el);
         }
+        ImGui::TextUnformatted(status);
+        const bool cancelling = t.cancel.load();
+        if (cancelling) ImGui::BeginDisabled();
+        if (ImGui::Button(cancelling ? "cancelling..." : "Cancel", ImVec2(-1.0f, 0.0f)))
+            requestTaskCancel(t);
+        if (cancelling) ImGui::EndDisabled();
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Stop the %s (cooperative: between stages and fill units)", t.label.c_str());
+    } else {
+        const ImVec2 btnSize(200.0f, 36.0f);
+        const float availH = ImGui::GetContentRegionAvail().y;
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + std::max((availH - btnSize.y) * 0.5f, 0.0f));
+        ImGui::SetCursorPosX(std::max((ImGui::GetWindowWidth() - btnSize.x) * 0.5f,
+                                      ImGui::GetStyle().WindowPadding.x));
+        if (ImGui::Button(g_level.generated ? "Re-layout" : "Generate", btnSize)) {
+            if (g_level.generated) {
+                doRelayout();
+            } else {
+                doGenerate();
+            }
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip(g_level.generated
+                                  ? "Generate a fresh layout (same seed, attempts=4), rebuild the IR, refill"
+                                  : "Generate the layout, build the IR, fill the level");
     }
-    if (ImGui::IsItemHovered())
-        ImGui::SetTooltip(g_level.generated
-                              ? "Generate a fresh layout (same seed, attempts=4), rebuild the IR, refill"
-                              : "Generate the layout, build the IR, fill the level");
     ImGui::End();
 }
 
@@ -1136,10 +1300,29 @@ void init() {
     g_newDlg.saveMode = true;  // the New location picker accepts a not-yet-existing path
 
     if (!g_projectArg.empty()) openLevel(g_projectArg);
+    // --smoke-async (diagnostic, xvfb-run): kick the async generate right away;
+    // frame() quits with its exit code once the task finishes.
+    if (g_smokeAsync) {
+        if (!g_level.loaded) {
+            std::fprintf(stderr, "DungeonGeometryGeneratorViewer --smoke-async: %s\n",
+                         g_loadError.c_str());
+            std::exit(1);
+        }
+        doGenerate();
+        if (!g_task) std::exit(1);  // the pre-launch validation refused
+    }
 }
 
 void frame() {
     if (!g_gfxOk) return;
+    pumpTask();
+    // --smoke-async diagnostics: the auto-cancel hook fires once the task is
+    // this old (cancel is sticky, the check here can afford every frame).
+    if (g_smokeAsync && g_task && g_smokeAsyncCancelMs >= 0 &&
+        taskElapsedS(*g_task) * 1000.0 >= static_cast<double>(g_smokeAsyncCancelMs))
+        requestTaskCancel(*g_task);
+    // --smoke-async: the diagnostic quits with the finished task's status.
+    if (g_smokeAsync && g_taskExitCode >= 0) std::exit(g_taskExitCode);
 
     if (g_imguiOk) {
         const float dpi = std::max(sapp_dpi_scale(), 0.01f);
@@ -1167,10 +1350,10 @@ void frame() {
         drawModals();
         updateWindowTitle();
 
-        // Global editor shortcuts.
-        if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_N)) requestAction(PendingAction::New);
-        if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_O)) requestAction(PendingAction::Open);
-        if (g_projectDirty && g_level.loaded &&
+        // Global editor shortcuts (locked while a generation runs).
+        if (!g_task && ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_N)) requestAction(PendingAction::New);
+        if (!g_task && ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_O)) requestAction(PendingAction::Open);
+        if (!g_task && g_projectDirty && g_level.loaded &&
             ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_S))
             doSaveApply();
 
@@ -1197,6 +1380,13 @@ void frame() {
 }
 
 void cleanup() {
+    // Quitting mid-run: cancel cooperatively and wait the worker out before
+    // tearing anything down (a unit in flight finishes — PGG has no cancel).
+    if (g_task) {
+        requestTaskCancel(*g_task);
+        if (g_task->th.joinable()) g_task->th.join();
+        g_task.reset();
+    }
     if (g_imguiOk) {
         g_preview3d.shutdown();
         g_previewTop.shutdown();
@@ -1222,6 +1412,10 @@ bool sniffIsIr(const std::string& path) {
 // is always generated from the project) — say so instead of failing later.
 void handleDrop() {
     if (sapp_get_num_dropped_files() < 1) return;
+    if (g_task) {
+        logLine("busy: a generation is running — drop ignored", true);
+        return;
+    }
     const std::string path = sapp_get_dropped_file_path(0);
     if (sniffIsIr(path)) {
         g_loadError = "frozen IR is not opened here — drop the project .json";
@@ -1238,11 +1432,13 @@ void event(const sapp_event* ev) {
 
 void printUsage() {
     std::fprintf(stderr,
-                 "usage: DungeonGeometryGeneratorViewer [project.json] [--smoke]\n"
+                 "usage: DungeonGeometryGeneratorViewer [project.json] [--smoke] [--smoke-async]\n"
                  "  no arguments: the start screen (New / Open / recent projects); a project\n"
                  "  .json can also be dropped onto the window (the layout is always generated)\n"
-                 "  --smoke      no window: generate the level, print one stats line, exit 0\n"
+                 "  --smoke       no window: generate the level, print one stats line, exit 0\n"
                  "               (needs a project; usage errors exit 2)\n"
+                 "  --smoke-async windowed diagnostic: auto-start the async generate, quit with\n"
+                 "               its exit code (run under xvfb-run; needs a project)\n"
                  "exit codes: 0 ok, 1 data error, 2 usage error\n");
 }
 
@@ -1290,6 +1486,8 @@ int main(int argc, char* argv[]) {
         const std::string arg(argv[i]);
         if (arg == "--smoke") {
             smoke = true;
+        } else if (arg == "--smoke-async") {
+            g_smokeAsync = true;
         } else if (arg.rfind("--", 0) != 0) {
             g_projectArg = arg;
         } else {
@@ -1298,11 +1496,12 @@ int main(int argc, char* argv[]) {
             return 2;
         }
     }
-    if (smoke && g_projectArg.empty()) {
-        std::fprintf(stderr, "DungeonGeometryGeneratorViewer: --smoke needs a project\n");
+    if ((smoke || g_smokeAsync) && g_projectArg.empty()) {
+        std::fprintf(stderr, "DungeonGeometryGeneratorViewer: --smoke/--smoke-async need a project\n");
         printUsage();
         return 2;
     }
+    if (const char* e = std::getenv("DGG_SMOKE_ASYNC_CANCEL_MS")) g_smokeAsyncCancelMs = std::atoi(e);
     if (smoke) return runSmoke();
     // GUI mode: the project is optional — no arguments opens the start screen.
 

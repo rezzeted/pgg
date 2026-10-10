@@ -4,6 +4,7 @@
 // F8: optional unit-output cache (cache.h), keyed by slot + bindings + asset
 // content (R-A7); local-frame hits are placed at assembly.
 
+#include <functional>
 #include <map>
 #include <set>
 #include <string>
@@ -108,6 +109,13 @@ struct FillOpts {
     std::string dungeon_geometry_generator_assets;
     unsigned threads = 0;        // 0 = PGG default (hardware)
     UnitCache* cache = nullptr;  // F8: caller-owned unit cache (null = off)
+    // Cooperative cancel/progress for async hosts (the viewer's worker
+    // thread). shouldCancel is polled between units: true aborts the fill
+    // with err "dungeon_geometry_generator/run: cancelled" (a unit run in flight
+    // finishes — PGG runs have no cancel). onUnit fires after each processed
+    // unit with the running count.
+    std::function<bool()> shouldCancel;
+    std::function<void(size_t unitsDone)> onUnit;
 };
 
 bool fill_level(const IrV2& ir, const Project& project, const FillOpts& opts,
