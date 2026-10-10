@@ -251,7 +251,7 @@ bool parse_layout(const nlohmann::json& j, const std::string& path, LayoutParams
     for (const auto& [key, _] : j.items()) {
         if (key != "corridors" && key != "rooms_rect" && key != "door_length" &&
             key != "door_corner_distance" && key != "min_room_distance" && key != "catalog_budget" &&
-            key != "rooms" && key != "passages" && key != "templates") {
+            key != "rooms" && key != "passages" && key != "templates" && key != "editor") {
             err = path + ": layout." + key + ": unknown key";
             return false;
         }
@@ -517,6 +517,37 @@ bool parse_layout(const nlohmann::json& j, const std::string& path, LayoutParams
                     return false;
             }
             l.templates.push_back(std::move(d));
+        }
+    }
+
+    // Viewer metadata: editor canvas node positions (view-only, see layout.h).
+    // Ids missing from `rooms` parse fine — the writer drops them.
+    if (j.contains("editor")) {
+        const auto& e = j["editor"];
+        if (!e.is_object()) {
+            err = path + ": layout.editor: expected an object";
+            return false;
+        }
+        for (const auto& [key, _] : e.items()) {
+            if (key != "node_pos") {
+                err = path + ": layout.editor." + key + ": unknown key";
+                return false;
+            }
+        }
+        if (e.contains("node_pos")) {
+            const auto& np = e["node_pos"];
+            if (!np.is_object()) {
+                err = path + ": layout.editor.node_pos: expected an object (room id -> [x, y])";
+                return false;
+            }
+            for (const auto& [id, v] : np.items()) {
+                if (!v.is_array() || v.size() != 2 || !v[0].is_number() || !v[1].is_number()) {
+                    err = path + ": layout.editor.node_pos." + id +
+                          ": expected [x, y] numbers (cells)";
+                    return false;
+                }
+                l.editor_node_pos[id] = {v[0].get<double>(), v[1].get<double>()};
+            }
         }
     }
 

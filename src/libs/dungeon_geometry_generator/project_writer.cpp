@@ -11,6 +11,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <set>
 
 #include <nlohmann/json.hpp>
 
@@ -125,6 +126,19 @@ ordered_json layout_to_json(const LayoutParams& l) {
             templates.push_back(std::move(jt));
         }
         layout["templates"] = std::move(templates);
+    }
+
+    // Viewer metadata: editor canvas positions of existing rooms only
+    // (std::map iteration keeps the ids sorted, N6).
+    if (!l.editor_node_pos.empty()) {
+        std::set<std::string> ids;
+        for (const GraphRoom& r : l.rooms) ids.insert(r.id);
+        ordered_json pos = ordered_json::object();
+        for (const auto& [id, p] : l.editor_node_pos) {
+            if (!ids.count(id)) continue;
+            pos[id] = ordered_json::array({p.first, p.second});
+        }
+        if (!pos.empty()) layout["editor"] = ordered_json{{"node_pos", std::move(pos)}};
     }
     return layout;
 }

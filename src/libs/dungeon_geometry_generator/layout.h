@@ -70,6 +70,10 @@ struct LayoutParams {
     std::vector<GraphRoom> rooms;
     std::vector<Passage> passages;
     std::vector<TemplateDecl> templates;
+    // Viewer metadata (the DungeonGeometryGeneratorViewer Layout editor): editor canvas node
+    // positions in world grid cells, keyed by room id. The generation
+    // pipeline ignores them; the writer drops ids missing from `rooms`.
+    std::map<std::string, std::pair<double, double>> editor_node_pos;
 };
 
 inline constexpr const char* kProjectFormatV1 = "dungeon-geometry-generator-project/1";

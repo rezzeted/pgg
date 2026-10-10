@@ -109,6 +109,11 @@ struct Project {
 // naming key/expectation/fact. Role names are validated against the fixed v0 set.
 bool load_project(const std::string& path, Project& out, std::string& err);
 
+// The cross-tier v1 checks of load_project (R-G3 connectivity/roles, 5.4
+// clearances) over an already-parsed project. Editors validate in-memory
+// edits with it before save_project; `path` only prefixes error messages.
+bool validate_project_v1(const Project& p, const std::string& path, std::string& err);
+
 // Serialize a v1 project (fixed key order, N6; role entries write only their
 // explicit set_fields keys so the F12 provenance survives a round trip).
 // False + err on a /0 project (no layout tier — legacy is read-only).
