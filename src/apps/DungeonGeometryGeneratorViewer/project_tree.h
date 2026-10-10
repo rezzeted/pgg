@@ -12,7 +12,7 @@ struct Level;
 
 // Identity of a View-window tab the tree can ask to open.
 struct ProjectTreeSelection {
-    enum class Kind { None, Template, GeneratorRects, GeneratorCorridors } kind = Kind::None;
+    enum class Kind { None, Layout, Template, GeneratorRects, GeneratorCorridors } kind = Kind::None;
     std::string name;  // Kind::Template: the catalog entry name
 
     bool operator==(const ProjectTreeSelection& o) const {

@@ -19,14 +19,6 @@ std::string joinNames(const std::vector<std::string>& names) {
     return s;
 }
 
-void roomTooltip(const dungeon_geometry_generator::GraphRoom& room) {
-    ImGui::BeginTooltip();
-    ImGui::Text("%s [%s]", room.id.c_str(), room.role.c_str());
-    if (!room.tags.empty()) ImGui::Text("tags: %s", joinNames(room.tags).c_str());
-    if (!room.fill.empty()) ImGui::TextDisabled("has fill overrides");
-    ImGui::EndTooltip();
-}
-
 }  // namespace
 
 ProjectTreeActions drawProjectTree(const Level& level) {
@@ -45,24 +37,17 @@ ProjectTreeActions drawProjectTree(const Level& level) {
     ImGui::TextDisabled("catalog: %d templates, %d instances (budget %d)", catalog.stats.templates,
                         catalog.stats.instances, layout.catalog_budget);
 
-    if (ImGui::TreeNode("rooms", "Rooms (%zu)", layout.rooms.size())) {
-        for (const dungeon_geometry_generator::GraphRoom& room : layout.rooms) {
-            char label[256];
-            std::snprintf(label, sizeof(label), "%s  [%s]##room", room.id.c_str(), room.role.c_str());
-            if (ImGui::Selectable(label)) {
-                actions.selectRoom = true;
-                actions.roomId = room.id;
-            }
-            if (ImGui::IsItemHovered()) roomTooltip(room);
-        }
-        ImGui::TreePop();
+    // The whole passage graph collapsed into one entity; it opens as a
+    // node-graph tab in the View window (layout_view.h).
+    char layoutLabel[96];
+    std::snprintf(layoutLabel, sizeof(layoutLabel), "Layout (%zu rooms, %zu passages)",
+                  layout.rooms.size(), layout.passages.size());
+    if (ImGui::Selectable(layoutLabel)) {
+        actions.openTab = true;
+        actions.tab = {ProjectTreeSelection::Kind::Layout, {}};
     }
-
-    if (ImGui::TreeNode("passages", "Passages (%zu)", layout.passages.size())) {
-        for (const dungeon_geometry_generator::Passage& p : layout.passages)
-            ImGui::BulletText("%s - %s (%s)", p.a.c_str(), p.b.c_str(), p.door.c_str());
-        ImGui::TreePop();
-    }
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("the passage graph: rooms as nodes, doors as wires — opens in a View tab");
 
     if (ImGui::TreeNode("templates", "Templates (%d)", catalog.stats.templates)) {
         ImGui::TextDisabled("%d parametric (%d corridors + %d rects), %d explicit",
