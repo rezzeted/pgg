@@ -100,14 +100,14 @@ DungeonGeometryGeneratorCli <command> [args] [--json] [--assets <dir>]
 
 ```
 # полный путь одной командой
-DungeonGeometryGeneratorCli export projects/demo/project.json -o out --json
+DungeonGeometryGeneratorCli export content/dgg/demo/project.json -o out --json
 
 # или по шагам с артефактами между ними
-DungeonGeometryGeneratorCli validate projects/demo/project.json
-DungeonGeometryGeneratorCli layout   projects/demo/project.json -o out/layout.json
-DungeonGeometryGeneratorCli ir       projects/demo/project.json --layout out/layout.json -o out/ir.json
-DungeonGeometryGeneratorCli check    projects/demo/project.json --ir out/ir.json
-DungeonGeometryGeneratorCli export   projects/demo/project.json --ir out/ir.json -o out
+DungeonGeometryGeneratorCli validate content/dgg/demo/project.json
+DungeonGeometryGeneratorCli layout   content/dgg/demo/project.json -o out/layout.json
+DungeonGeometryGeneratorCli ir       content/dgg/demo/project.json --layout out/layout.json -o out/ir.json
+DungeonGeometryGeneratorCli check    content/dgg/demo/project.json --ir out/ir.json
+DungeonGeometryGeneratorCli export   content/dgg/demo/project.json --ir out/ir.json -o out
 ```
 
 Каждая ошибка — код класса + место + исправление; правка проекта и повторный

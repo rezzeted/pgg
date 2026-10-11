@@ -19,8 +19,8 @@ nw_add_console_app(
 )
 
 # Smoke: a real server on 127.0.0.1:0 plus real TCP clients. The working
-# directory is the repo root so the relative fixture paths and the ./assets
-# fallback resolve like in the DungeonGeometryGeneratorCli smokes.
+# directory is the repo root so the relative fixture paths resolve and the
+# content/dgg/assets probe hits, like in the DungeonGeometryGeneratorCli smokes.
 add_test(NAME DungeonGeometryGeneratorServe_smoke COMMAND DungeonGeometryGeneratorServe --smoke)
 set_tests_properties(DungeonGeometryGeneratorServe_smoke PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 

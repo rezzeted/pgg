@@ -78,8 +78,8 @@
   размещения обратно (предметы одного правила не наезжают). `place: wall` —
   кандидаты обходом фасадов как у бра, выбор без возврата.
 - Файлы: `project.{h,cpp}`, `fill.{h,cpp}` (splitBlockers, двухфазность,
-  expandDecorFloor v2 / expandDecorWall), `assets/codes.pgg` (AK_BLOCKER=4),
-  `assets/rooms/fill_v2.pgg` (blocker-якоря), тесты
+  expandDecorFloor v2 / expandDecorWall), `content/dgg/assets/codes.pgg` (AK_BLOCKER=4),
+  `content/dgg/assets/rooms/fill_v2.pgg` (blocker-якоря), тесты
   (`OccupiedRegistryClearsDecor`, `DecorAlignCenter/NearDoor`,
   `DecorWallPlace`, обновления parity/RA4), `docs/dungeon_geometry_generator/project_v0.md`,
   `docs/dungeon_geometry_generator/fill_v1.md`, `docs/dungeon_geometry_generator/slots_v1.md`, `docs/dungeon_geometry_generator/assets_v1.md`.
@@ -110,8 +110,8 @@
   `pit = 1` убирает обманки (оконтовка, диск «воды»).
 - Файлы: `project.{h,cpp}` (`cut_r`), `fill.h`/`fill_ra3.cpp` (declared
   params, R-A2 geo-экстра), `fill.cpp` (трёхфазная заливка),
-  `assets/rooms/fill_v2.pgg` (+фикстуры cuts), `assets/decor/drain_v2.pgg`,
-  `projects/iso/project.json` (drain: `cut_r 0.28`), тесты
+  `content/dgg/assets/rooms/fill_v2.pgg` (+фикстуры cuts), `content/dgg/assets/decor/drain_v2.pgg`,
+  `content/dgg/iso/project.json` (drain: `cut_r 0.28`), тесты
   (`DecorFloorCuts`, `runDrain(pit)`, обновления RA4), `docs/dungeon_geometry_generator/project_v0.md`,
   `docs/dungeon_geometry_generator/fill_v1.md`, `docs/dungeon_geometry_generator/slots_v1.md`, `docs/dungeon_geometry_generator/assets_v1.md`.
 - Гейты: быстрые сьюты + smoke + check (без PassFrozen) зелёные;

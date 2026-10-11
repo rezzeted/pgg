@@ -837,7 +837,7 @@ const char* kNewProjectJson = R"JSON({
     "door": "doors/opening_v1.pgg",
     "decor:lamp": "decor/lamp_v1.pgg"
   },
-  "asset_roots": ["assets"]
+  "asset_roots": ["../assets"]
 }
 )JSON";
 

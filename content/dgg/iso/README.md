@@ -5,12 +5,12 @@
 настенные факелы вместо потолочных ламп (`lamp_place: wall`).
 
 Папка самодостаточна (R-P0): слот-ассеты подтягиваются из библиотеки
-`assets/` репозитория по обычному порядку корней (R-A5).
+`content/dgg/assets/` репозитория по обычному порядку корней (R-A5).
 
 ## Открыть
 
 ```
-DungeonGeometryGeneratorViewer projects/iso/project.json
+DungeonGeometryGeneratorViewer content/dgg/iso/project.json
 ```
 
 ## Граф (9 комнат, 8 связей)
@@ -45,7 +45,7 @@ entry ─c1─ hall ─c2─ [crypt] ─c4─ stairs
 ## Машинная петля
 
 ```
-DungeonGeometryGeneratorCli validate projects/iso/project.json   # F1
-DungeonGeometryGeneratorCli check    projects/iso/project.json   # F6+F11 (~15 с)
-DungeonGeometryGeneratorCli export   projects/iso/project.json -o out/iso   # F7: OBJ + якоря + IR
+DungeonGeometryGeneratorCli validate content/dgg/iso/project.json   # F1
+DungeonGeometryGeneratorCli check    content/dgg/iso/project.json   # F6+F11 (~15 с)
+DungeonGeometryGeneratorCli export   content/dgg/iso/project.json -o out/iso   # F7: OBJ + якоря + IR
 ```

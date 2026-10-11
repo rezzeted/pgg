@@ -132,7 +132,7 @@ def dungeon_geometry_generator_load(path: str) -> dict:
     текущим для этого MCP-клиента: ``file`` в остальных инструментах можно
     опускать. Явный load после правок на диске не нужен — fill/check/export
     перечитывают проект по mtime сами.
-    Пример: dungeon_geometry_generator_load("projects/demo/project.json") → has_errors=false.
+    Пример: dungeon_geometry_generator_load("content/dgg/demo/project.json") → has_errors=false.
     """
     return _call("load", {"path": path})
 

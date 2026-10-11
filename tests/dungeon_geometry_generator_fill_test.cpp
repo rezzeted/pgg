@@ -349,7 +349,7 @@ TEST(DungeonGeometryGeneratorFill, CacheInvalidatesOnParamEdit) {
     std::string err;
     ASSERT_TRUE(loadText(base, p, err)) << err;
     p.dir = std::filesystem::path(DUNGEON_GEOMETRY_GENERATOR_ASSETS_DIR).parent_path().string();
-    p.asset_roots = {"tests/data/fill", "assets"};
+    p.asset_roots = {DUNGEON_GEOMETRY_GENERATOR_TEST_DATA "/fill", "assets"};
     p.slots["room_fill"] = "empty_room_fill.pgg";
     p.slots["wall_body"] = "empty_wall_body.pgg";
     p.slots["facing"] = "empty_facing.pgg";
@@ -425,6 +425,7 @@ TEST(DungeonGeometryGeneratorFill, CacheInvalidatesOnAssetEdit) {
 
     dungeon_geometry_generator::Project p = loadD1Project();
     p.dir = tmp;
+    p.asset_roots = {"assets"};  // the sandbox copy at tmp/assets, not the fixture's roots
     p.slots["room_fill"] = "empty_room_fill.pgg";
     p.slots["wall_body"] = "empty_wall_body.pgg";
     p.slots["door"] = "empty_door.pgg";
@@ -485,7 +486,7 @@ TEST(DungeonGeometryGeneratorFill, RotatedFrameEquivalence) {
 
     // Isolate the facing: every other slot gets an empty asset.
     const std::string data = DUNGEON_GEOMETRY_GENERATOR_TEST_DATA;
-    p.asset_roots = {"tests/data/fill", "assets"};
+    p.asset_roots = {DUNGEON_GEOMETRY_GENERATOR_TEST_DATA "/fill", "assets"};
     p.slots["room_fill"] = "empty_room_fill.pgg";
     p.slots["wall_body"] = "empty_wall_body.pgg";
     p.slots["node"] = "empty_node.pgg";
@@ -800,7 +801,7 @@ dungeon_geometry_generator::Project loadDotProject(const std::string& ruleJson) 
                          p, err))
         << err;
     p.dir = std::filesystem::path(DUNGEON_GEOMETRY_GENERATOR_ASSETS_DIR).parent_path().string();
-    p.asset_roots = {"tests/data/fill", "assets"};
+    p.asset_roots = {DUNGEON_GEOMETRY_GENERATOR_TEST_DATA "/fill", "assets"};
     p.slots["room_fill"] = "empty_room_fill.pgg";
     p.slots["wall_body"] = "empty_wall_body.pgg";
     p.slots["facing"] = "empty_facing.pgg";
@@ -972,7 +973,7 @@ TEST(DungeonGeometryGeneratorFill, FillRejects) {
     {
         dungeon_geometry_generator::Project bad = p;
         bad.dir = DUNGEON_GEOMETRY_GENERATOR_TEST_DATA;
-        bad.asset_roots = {".", "../../../assets"};
+        bad.asset_roots = {".", "../../content/dgg/assets"};
         bad.slots["facing"] = "fill/ra3_missing_param.pgg";
         EXPECT_FALSE(dungeon_geometry_generator::fill_level(ir, bad, opts, out, err));
         EXPECT_NE(err.find("missing param 'zones'"), std::string::npos) << err;

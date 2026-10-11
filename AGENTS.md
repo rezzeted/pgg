@@ -9,7 +9,7 @@
 - **PGG** — язык процедурной геометрии: библиотека, CLI, вьюер, тесты,
   арт-примеры. Устройство языка и грабли реализации — `docs/pgg/`; правя код,
   обновляй `docs/pgg/implementation.md`, а не этот файл.
-- **DungeonGeometryGenerator** — оркестратор подземелий поверх PGG (слот-ассеты `assets/`) и
+- **DungeonGeometryGenerator** — оркестратор подземелий поверх PGG (слот-ассеты `content/dgg/assets/`) и
   dungeon_topology_generator (раскладки). Нормативный документ — `docs/dungeon_geometry_generator/requirements.md`
   (§5–§9 — конвейер F1–F11, N-хвосты — сквозные требования).
 - **level-synth / dungeon_topology_generator** — порт Edgar-DotNet: библиотека раскладок
@@ -173,9 +173,9 @@ Linux-флоу — Ninja (single-config) + CMake Presets, триплет `x64-li
   петля — `docs/dungeon_geometry_generator/cli_v1.md`) и `src/apps/DungeonGeometryGeneratorServe` (RPC-демон с тёплыми
   слотами — `docs/dungeon_geometry_generator/mcp_v1.md`); MCP-сервер `dungeon_geometry_generator` — `tools/dungeon_geometry_generator_mcp/`
   (Python, FastMCP → DungeonGeometryGeneratorServe, pgg-слой к PggServe); тесты
-  `tests/dungeon_geometry_generator_*_test.cpp` + данные `tests/data`; слот-ассеты `assets/`;
-  доки `docs/dungeon_geometry_generator/`; демо-проекты `projects/` (превью в DungeonGeometryGeneratorViewer, см.
-  `projects/demo/README.md`).
+  `tests/dungeon_geometry_generator_*_test.cpp` + данные `tests/data`; слот-ассеты `content/dgg/assets/`;
+  доки `docs/dungeon_geometry_generator/`; демо-проекты `content/dgg/` (превью в DungeonGeometryGeneratorViewer, см.
+  `content/dgg/demo/README.md`).
 - Доки dungeon_geometry_generator — русские. Форматы версионируются (`dungeon-geometry-generator-ir/2`,
   `dungeon-geometry-generator-layout/0`); смена схемы = bump версии + N7-хинт для старой.
 - PGG-ассеты dungeon_geometry_generator используют общую библиотеку `resources/pgg/lib/` — правки

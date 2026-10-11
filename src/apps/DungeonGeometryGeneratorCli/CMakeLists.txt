@@ -10,8 +10,9 @@ nw_add_console_app(
         dungeon_geometry_generator_export
 )
 
-# F10 smoke: the machine loop end to end. Working directory is the repo root so
-# the assets fallback resolves like in the DungeonGeometryGeneratorViewer smokes. F11 checks run
+# F10 smoke: the machine loop end to end. Working directory is the repo root;
+# the assets dir (content/dgg/assets) resolves via the walk-up probe like in
+# the DungeonGeometryGeneratorViewer smokes. F11 checks run
 # on the small layout fixture — on the frozen level they take minutes in Debug.
 add_test(NAME DungeonGeometryGeneratorCli_smoke_validate
          COMMAND DungeonGeometryGeneratorCli validate "${CMAKE_SOURCE_DIR}/src/apps/DungeonGeometryGeneratorViewer/smoke_project.json")

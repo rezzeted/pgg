@@ -8,7 +8,7 @@
 + орбит-камера), панели и оверлей — Dear ImGui. Тест: smoke-прогон в ctest
 (`DungeonGeometryGeneratorViewer_smoke_layout`).
 
-## Скриншоты (проект `projects/iso`)
+## Скриншоты (проект `content/dgg/iso`)
 
 | Стартовый экран | Вкладка Layout — редактор графа |
 |---|---|
@@ -29,9 +29,9 @@
 DungeonGeometryGeneratorViewer [project.json] [--smoke]
 ```
 
-Быстрый старт: `DungeonGeometryGeneratorViewer projects/demo/project.json` — демо-подземелье из
+Быстрый старт: `DungeonGeometryGeneratorViewer content/dgg/demo/project.json` — демо-подземелье из
 репозитория (L-зал, ворота, переходы камень|кирпич; см.
-`projects/demo/README.md`).
+`content/dgg/demo/README.md`).
 
 - Без аргументов: стартовый экран — крупные кнопки **New** (модалка с путём
   нового файла; пишется минимальный валидный стартовый проект — entry —
@@ -75,7 +75,8 @@ DungeonGeometryGeneratorViewer [project.json] [--smoke]
 
 Наполнение — `fill_level` с живым `UnitCache` (F8), активы DungeonGeometryGenerator ищутся по
 `assets/codes.pgg`: `./assets` от cwd, затем вверх от каталога исполняемого
-файла, затем вверх от каталога проекта; слоты проекта дополнительно
+файла и каталога проекта (на каждом уровне пробуются `assets/` и каноничный
+для монорепо `content/dgg/assets/`); слоты проекта дополнительно
 отваливаются в `FillOpts::dungeon_geometry_generator_assets` (порядок корней — fill_v1).
 
 ## Панели

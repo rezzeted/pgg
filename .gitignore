@@ -36,7 +36,7 @@ tools/pgg/*.jar
 toolchain/jre/
 
 # Локальные референсы iso-проекта (картинки для агента, не ассеты)
-projects/iso/refs_tmp/
+content/dgg/iso/refs_tmp/
 
 # level-synth standalone build dirs and artifacts
 _build/

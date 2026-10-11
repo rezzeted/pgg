@@ -2,7 +2,7 @@
 
 **PGG** is a procedural geometry language: a text-first node graph for LLM agents, with a node projection for humans. This repository is the language, library, CLI, viewer, tests, and art examples — and the monorepo home of the projects built on it:
 
-- **DungeonGeometryGenerator** — a dungeon orchestrator on top of PGG (slot assets) and dungeon_topology_generator (layout generation): project files, IR, fill, checks, OBJ export, viewer, CLI and RPC daemon. Docs: [`docs/dungeon_geometry_generator`](docs/dungeon_geometry_generator/requirements.md), demo projects under `projects/`.
+- **DungeonGeometryGenerator** — a dungeon orchestrator on top of PGG (slot assets) and dungeon_topology_generator (layout generation): project files, IR, fill, checks, OBJ export, viewer, CLI and RPC daemon. Docs: [`docs/dungeon_geometry_generator`](docs/dungeon_geometry_generator/requirements.md), demo projects under `content/dgg/`.
 - **level-synth / dungeon_topology_generator** — a C++20 port of [Edgar-DotNet](https://github.com/OndrejNepozitek/Edgar-DotNet) graph-based 2D layout generation (`src/libs/dungeon_topology_generator`), with an SDL3 + ImGui viewer (`src/apps/DungeonTopologyGeneratorViewer`). Docs: [`docs/level-synth`](docs/level-synth/README.md).
 
 | [Spire House](resources/AmberEstate/spire_house.pgg) | [Cottage](resources/AmberEstate/cottage.pgg) |
@@ -19,10 +19,10 @@ How the shots were framed and how to regenerate them: [`docs/gallery/README.md`]
 the *passage graph* (rooms, corridors, and which door connects what) plus room *templates* —
 fixed room shapes are optional; the 2D layout itself is solved per seed by
 **dungeon_topology_generator** (the Edgar-DotNet port, level-synth). The solved plan is then
-filled with geometry built by PGG slot assets (`assets/`: walls, doors, decor, patterns),
+filled with geometry built by PGG slot assets (`content/dgg/assets/`: walls, doors, decor, patterns),
 checked, and exported to OBJ. Docs:
 [`docs/dungeon_geometry_generator`](docs/dungeon_geometry_generator/requirements.md) · demo
-projects: [`projects/demo`](projects/demo), [`projects/iso`](projects/iso).
+projects: [`content/dgg/demo`](content/dgg/demo), [`content/dgg/iso`](content/dgg/iso).
 
 **DGG Viewer** (`src/apps/DungeonGeometryGeneratorViewer`) is the project editor for that
 pipeline — not just a preview:
@@ -49,7 +49,7 @@ pipeline — not just a preview:
   snapshots the in-memory project before each generation (enough to reproduce a crash), plus
   a POSIX crash handler that appends a backtrace to the log.
 
-Screenshots below run the isometric demo project [`projects/iso`](projects/iso/README.md)
+Screenshots below run the isometric demo project [`content/dgg/iso`](content/dgg/iso/README.md)
 (10 rooms, no ceilings, wall torches):
 
 | Start screen | Layout tab — passage graph editor |
@@ -83,8 +83,7 @@ Generation runs in the background with stage timings and Cancel; the Log dock na
 | `resources/AmberEstate` | Estate mini-project: cottages, spire house, church, stone arch, props |
 | `resources/Mansion` | Brick-style mansion built from photo references (`reference/`, `analysis.md`) |
 | `resources/dungeon_topology_generator_gui` | level-synth viewer data (MapDescriptions, Images, …) |
-| `assets/` | DungeonGeometryGenerator slot assets (rooms, walls, doors, decor, patterns) |
-| `projects/` | DungeonGeometryGenerator demo projects |
+| `content/dgg` | DungeonGeometryGenerator: slot asset pack (`assets/`) and demo projects (`demo/`, `iso/`) |
 | `docs/pgg` | PGG language spec, implementation notes, cheatsheet, RPC contract |
 | `docs/dungeon_geometry_generator` | DungeonGeometryGenerator docs (requirements, pipeline, formats, MCP) |
 | `docs/level-synth` | level-synth docs (port parity, presets, test matrix) |
@@ -117,9 +116,9 @@ PggTool check resources/AmberEstate/cottage.pgg
 PggTool docs builtins
 PggViewer resources/AmberEstate/spire_house.pgg
 PggServe                                  # RPC 127.0.0.1:9878
-DungeonGeometryGeneratorCli validate projects/demo/project.json
-DungeonGeometryGeneratorCli export projects/iso/project.json -o tmp/iso_export
-DungeonGeometryGeneratorViewer projects/demo/project.json
+DungeonGeometryGeneratorCli validate content/dgg/demo/project.json
+DungeonGeometryGeneratorCli export content/dgg/iso/project.json -o tmp/iso_export
+DungeonGeometryGeneratorViewer content/dgg/demo/project.json
 DungeonGeometryGeneratorServe                                # RPC daemon, warm project slots
 ```
 

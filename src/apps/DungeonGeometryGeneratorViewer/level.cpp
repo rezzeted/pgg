@@ -47,14 +47,16 @@ bool isAssetsDir(const fs::path& dir) {
     return fs::is_regular_file(dir / "codes.pgg", ec);
 }
 
-// dir, then up to 12 parents: <dir>/assets with codes.pgg wins; a dir that is
-// itself the assets root is accepted too.
+// dir, then up to 12 parents: <dir>/assets with codes.pgg wins, then the
+// monorepo's canonical <dir>/content/dgg/assets; a dir that is itself the
+// assets root is accepted too.
 std::string findAssetsUp(fs::path dir) {
     std::error_code ec;
     dir = fs::weakly_canonical(dir, ec);
     if (ec) return {};
     for (int i = 0; i < 12; ++i) {
         if (isAssetsDir(dir / "assets")) return (dir / "assets").string();
+        if (isAssetsDir(dir / "content" / "dgg" / "assets")) return (dir / "content" / "dgg" / "assets").string();
         if (isAssetsDir(dir)) return dir.string();
         if (!dir.has_parent_path() || dir == dir.parent_path()) break;
         dir = dir.parent_path();
@@ -84,8 +86,12 @@ std::string resolve_dungeon_geometry_generator_projects(const std::string& argv0
     const std::string assets = resolve_dungeon_geometry_generator_assets(argv0, "");
     if (assets.empty()) return {};
     std::error_code ec;
-    const fs::path projects = fs::path(assets).parent_path() / "projects";
-    return fs::is_directory(projects, ec) ? projects.string() : std::string{};
+    // Legacy standalone layout: <root>/assets next to <root>/projects.
+    const fs::path parent = fs::path(assets).parent_path();
+    if (const fs::path legacy = parent / "projects"; fs::is_directory(legacy, ec)) return legacy.string();
+    // Monorepo layout: the projects (iso/, demo/, ...) sit next to the assets
+    // pack under content/dgg/.
+    return parent.string();
 }
 
 bool Level::buildIrFromGenerate(std::string& err) {

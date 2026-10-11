@@ -28,10 +28,9 @@ if(UNIX)
     set_target_properties(${AppName} PROPERTIES ENABLE_EXPORTS ON)
 endif()
 
-# F9 smoke: the data path (layout -> IR -> fill) without a window. Projects
-# resolve their slots through the FillOpts::dungeon_geometry_generator_assets fallback, so the repo
-# assets dir is found from the executable upward; the working directory only
-# shortens the search.
+# F9 smoke: the data path (layout -> IR -> fill) without a window. The repo
+# assets dir (content/dgg/assets) is found by the walk-up probe from the
+# executable; the fixture also carries an explicit asset_roots.
 # The smoke uses the app's own fixture: tests/data/d2_project.json can
 # never build an IR (5.2: its corridor role overrides wall_t, so corridor/
 # room shared walls resolve different thicknesses — an F4 error by design).

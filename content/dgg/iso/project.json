@@ -312,6 +312,6 @@
     "wall_body": "walls/body_v2.pgg"
   },
   "asset_roots": [
-    "assets"
+    "../assets"
   ]
 }
