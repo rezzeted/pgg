@@ -13,6 +13,57 @@
 
 How the shots were framed and how to regenerate them: [`docs/gallery/README.md`](docs/gallery/README.md).
 
+## DungeonGeometryGenerator
+
+**DungeonGeometryGenerator** turns a compact project file into a full 3D dungeon. The input is
+the *passage graph* (rooms, corridors, and which door connects what) plus room *templates* —
+fixed room shapes are optional; the 2D layout itself is solved per seed by
+**dungeon_topology_generator** (the Edgar-DotNet port, level-synth). The solved plan is then
+filled with geometry built by PGG slot assets (`assets/`: walls, doors, decor, patterns),
+checked, and exported to OBJ. Docs:
+[`docs/dungeon_geometry_generator`](docs/dungeon_geometry_generator/requirements.md) · demo
+projects: [`projects/demo`](projects/demo), [`projects/iso`](projects/iso).
+
+**DGG Viewer** (`src/apps/DungeonGeometryGeneratorViewer`) is the project editor for that
+pipeline — not just a preview:
+
+- Start screen with **New** / **Open** and persistent **Recent Projects**; **Files** menu
+  (New / Open / Save / Close / Exit), `DGG Viewer - <project>` window title, drag & drop of
+  `project.json`.
+- Project tree: seed and catalog stats, the passage graph as a single **Layout** row, room
+  templates (parametric generators + explicit), fill roles, slots.
+- **Layout tab** — node-graph editor of the passage graph: drag rooms to arrange the schema,
+  wire doors by dragging from node ports, add/delete rooms and passages, change door types.
+  Canvas positions are saved with the project (`layout.editor.node_pos`); the generated
+  placement lives in the read-only **Topo** tab, so the user's schema never jumps around.
+- **Template cards** — edit roles, transforms, door rules and fill overrides of explicit
+  templates and generator size ranges; a contour canvas shows the shape and valid door
+  positions.
+- **3D / Top / Topo views** — orbit the filled level, inspect the plan overlay (rooms, doors,
+  owners, anchors), or compare the solved 2D plan with the passage graph side by side.
+- **Async generation** — opening a project only parses it (no UI freeze); Generate /
+  Re-layout / Refill run on a worker thread with IDE-style stage timings
+  (`catalog → layout → ir → fill`), a progress strip and cooperative **Cancel**. Unchanged
+  fill units come back from the F8 cache (a same-seed re-layout is sub-second).
+- **Diagnostics** — every run writes `logs/DungeonGeometryGeneratorViewer/run_*.log` and
+  snapshots the in-memory project before each generation (enough to reproduce a crash), plus
+  a POSIX crash handler that appends a backtrace to the log.
+
+Screenshots below run the isometric demo project [`projects/iso`](projects/iso/README.md)
+(10 rooms, no ceilings, wall torches):
+
+| Start screen | Layout tab — passage graph editor |
+|---|---|
+| ![Start screen: New / Open and Recent Projects](docs/dungeon_geometry_generator/images/viewer_start.png) | ![Node-graph editor of the passage graph: rooms as role-colored boxes, doors as wires](docs/dungeon_geometry_generator/images/viewer_layout.png) |
+| Topo tab — solved plan vs passage graph | Template card — `vault_L` with its L-contour |
+| ![Topo tab: 2D plan in world-grid cells next to the passage graph](docs/dungeon_geometry_generator/images/viewer_topo.png) | ![Template card editing roles, transforms, door rules and fill overrides](docs/dungeon_geometry_generator/images/viewer_template.png) |
+| 3D view — the filled dungeon | Top view — plan overlay layers |
+| ![Generated dungeon, 3D orbit view](docs/dungeon_geometry_generator/images/viewer_3d.png) | ![Top view with room/door/anchor overlay layers](docs/dungeon_geometry_generator/images/viewer_top.png) |
+
+Generation runs in the background with stage timings and Cancel; the Log dock narrates:
+
+![Progress strip with spinner, fill unit counter and Cancel; stage log with timings](docs/dungeon_geometry_generator/images/viewer_generating.png)
+
 | Path | What it is |
 |---|---|
 | `src/libs/pgg` | PGG library: parser (ANTLR4 4.13.2), AST, execution core |
@@ -23,7 +74,7 @@ How the shots were framed and how to regenerate them: [`docs/gallery/README.md`]
 | `src/apps/PggTool` | PGG CLI: `check` / `fmt` / `ast` / `run` / `docs` / `diff` |
 | `src/apps/PggViewer` | PGG node projection + geometry preview (no TCP) |
 | `src/apps/PggServe` | PGG agent RPC daemon: slots by `.pgg` path, `:9878` |
-| `src/apps/DungeonGeometryGeneratorViewer` | DungeonGeometryGenerator layout/fill preview |
+| `src/apps/DungeonGeometryGeneratorViewer` | DungeonGeometryGenerator project editor: passage-graph editor, template cards, 3D/Top/Topo views, async generation |
 | `src/apps/DungeonGeometryGeneratorCli` | DungeonGeometryGenerator machine loop: `validate` / `layout` / `fill` / `export` / `check` |
 | `src/apps/DungeonGeometryGeneratorServe` | DungeonGeometryGenerator RPC daemon: warm project slots |
 | `src/apps/DungeonTopologyGeneratorViewer` | level-synth SDL3 + ImGui viewer |

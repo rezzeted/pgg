@@ -8,6 +8,21 @@
 + орбит-камера), панели и оверлей — Dear ImGui. Тест: smoke-прогон в ctest
 (`DungeonGeometryGeneratorViewer_smoke_layout`).
 
+## Скриншоты (проект `projects/iso`)
+
+| Стартовый экран | Вкладка Layout — редактор графа |
+|---|---|
+| ![New / Open и Recent Projects](images/viewer_start.png) | ![Граф переходов: комнаты боксами цвета роли, двери — проводами](images/viewer_layout.png) |
+| Topo — план и граф рядом | Карточка шаблона `vault_L` |
+| ![2D-план в клетках и граф переходов](images/viewer_topo.png) | ![Роли, трансформации, двери, fill-override'ы, контур](images/viewer_template.png) |
+| 3D — наполненный уровень | Top — оверлей плана |
+| ![Орбит-вид сгенерированного подземелья](images/viewer_3d.png) | ![Слои комнаты/двери/якоря поверх плана](images/viewer_top.png) |
+
+Асинхронная генерация: стрип прогресса со спиннером, счётчиком юнитов и Cancel,
+лог стадий со временем:
+
+![Прогресс-стрип и лог стадий](images/viewer_generating.png)
+
 ## CLI
 
 ```
