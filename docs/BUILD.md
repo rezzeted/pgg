@@ -6,7 +6,7 @@ _Команды configure/build/test по платформам — в `AGENTS.md
 
 - **CLion:** пресеты `macos-clion` (Ninja, `_int_clion`, Debug + compile_commands) и `macos-clion-release` (`_int_clion_release`, Release с оптимизациями) — CLion не поддерживает Xcode-генератор основного пресета. `macos-index` (`_intermediate_ide`) оставлен под индексацию clangd, в IDE его не используем.
 - **sokol_app на macOS** требует Objective-C++: `main.cpp` standalone-приложений компилируется как ObjC++ через макрос `nw_configure_sokol_app(target)` в `cmake/utils.cmake` (там же линковка `Cocoa/QuartzCore/Metal/MetalKit`; на Windows — `d3d11/dxgi`). Все новые standalone sokol-приложения — через этот макрос.
-- **Sokol-overlay несёт патч `macos-framebuffer-readback.patch`** (`vcpkg_overlays/ports/sokol`): `CAMetalLayer.framebufferOnly = false`, иначе текстуру drawable нельзя прочитать и `PggViewer --shot` на Metal не работает (readback — blit → shared-текстура → `getBytes`).
+- **Sokol-overlay несёт патч `macos-framebuffer-readback.patch`** (`toolchain/vcpkg-overlay/ports/sokol`): `CAMetalLayer.framebufferOnly = false`, иначе текстуру drawable нельзя прочитать и `PggViewer --shot` на Metal не работает (readback — blit → shared-текстура → `getBytes`).
 - **glad нельзя включать в TU с `SOKOL_IMPL`:** sokol_gfx тянет системные GL-заголовки, которые конфликтуют с glad-макросами.
 - После обновления Xcode **сбрасывать CMake-кэш** (`cmake -U LIBRESOLV` или чистый `_intermediate_64`): `find_library` кэширует пути внутрь старого SDK.
 
@@ -14,7 +14,7 @@ _Команды configure/build/test по платформам — в `AGENTS.md
 
 - vcpkg подключён как submodule (`toolchain/vcpkg`). **Не патчить** `toolchain/vcpkg` напрямую.
 - Зависимости — через `vcpkg.json`.
-- Для overlay-фиксов — `vcpkg_overlays/ports`; путь уже подключён в `CMakePresets.json` через `VCPKG_OVERLAY_PORTS`.
+- Для overlay-фиксов — `toolchain/vcpkg-overlay/ports`; путь уже подключён в `CMakePresets.json` через `VCPKG_OVERLAY_PORTS`.
   - Sokol подключён через overlay, чтобы держать `util/sokol_imgui.h` совместимым с актуальным Dear ImGui из vcpkg.
 - При добавлении зависимости: обновить `vcpkg.json` → `find_package(...)` → прилинковать импортированный target в `LIBS` у соответствующего `nw_add_...`.
 

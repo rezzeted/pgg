@@ -14,7 +14,7 @@
       "cacheVariables": {
         "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/toolchain/vcpkg/scripts/buildsystems/vcpkg.cmake",
         "VCPKG_TARGET_TRIPLET": "x64-windows",
-        "VCPKG_OVERLAY_PORTS": "${sourceDir}/vcpkg_overlays/ports",
+        "VCPKG_OVERLAY_PORTS": "${sourceDir}/toolchain/vcpkg-overlay/ports",
         "VCPKG_INSTALL_OPTIONS": "--x-buildtrees-root=d:/_build"
       }
     },
@@ -35,7 +35,7 @@
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/toolchain/vcpkg/scripts/buildsystems/vcpkg.cmake",
         "VCPKG_TARGET_TRIPLET": "x64-windows",
-        "VCPKG_OVERLAY_PORTS": "${sourceDir}/vcpkg_overlays/ports",
+        "VCPKG_OVERLAY_PORTS": "${sourceDir}/toolchain/vcpkg-overlay/ports",
         "VCPKG_INSTALL_OPTIONS": "--x-buildtrees-root=d:/_build",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       }
@@ -51,7 +51,7 @@
       "cacheVariables": {
         "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/toolchain/vcpkg/scripts/buildsystems/vcpkg.cmake",
         "VCPKG_TARGET_TRIPLET": "arm64-osx",
-        "VCPKG_OVERLAY_PORTS": "${sourceDir}/vcpkg_overlays/ports"
+        "VCPKG_OVERLAY_PORTS": "${sourceDir}/toolchain/vcpkg-overlay/ports"
       }
     },
     {
@@ -66,7 +66,7 @@
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/toolchain/vcpkg/scripts/buildsystems/vcpkg.cmake",
         "VCPKG_TARGET_TRIPLET": "arm64-osx",
-        "VCPKG_OVERLAY_PORTS": "${sourceDir}/vcpkg_overlays/ports",
+        "VCPKG_OVERLAY_PORTS": "${sourceDir}/toolchain/vcpkg-overlay/ports",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       }
     },
@@ -97,7 +97,7 @@
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/toolchain/vcpkg/scripts/buildsystems/vcpkg.cmake",
         "VCPKG_TARGET_TRIPLET": "x64-linux",
-        "VCPKG_OVERLAY_PORTS": "${sourceDir}/vcpkg_overlays/ports",
+        "VCPKG_OVERLAY_PORTS": "${sourceDir}/toolchain/vcpkg-overlay/ports",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       }
     },

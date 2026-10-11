@@ -43,7 +43,7 @@
 - В каждой lib/app pgg-происхождения есть `pch.h` — подключать первым, если
   файл есть.
 - Единственный git-submodule — `toolchain/vcpkg`. **Не патчить** его напрямую;
-  overlay-фиксы — `vcpkg_overlays/ports` (уже подключён в `CMakePresets.json`
+  overlay-фиксы — `toolchain/vcpkg-overlay/ports` (уже подключён в `CMakePresets.json`
   через `VCPKG_OVERLAY_PORTS`).
 
 ## CMake и макросы

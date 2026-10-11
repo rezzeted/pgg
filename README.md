@@ -92,7 +92,7 @@ Generation runs in the background with stage timings and Cancel; the Log dock na
 
 ## Build
 
-Build is CMake + vcpkg: submodule `toolchain/vcpkg`, presets in `CMakePresets.json`, overlay `vcpkg_overlays/ports`. The first configure bootstraps dependencies from `vcpkg.json`.
+Build is CMake + vcpkg: submodule `toolchain/vcpkg`, presets in `CMakePresets.json`, overlay `toolchain/vcpkg-overlay/ports`. The first configure bootstraps dependencies from `vcpkg.json`.
 
 ```sh
 git submodule update --init toolchain/vcpkg

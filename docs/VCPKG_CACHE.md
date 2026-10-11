@@ -144,7 +144,7 @@ operation failed with error code 92` прямо перед `Restored N package(s
 ```bash
 VCPKG_BINARY_SOURCES="clear;http,http://192.168.1.201:8088/{name}/{version}/{triplet}/{sha},readwrite" \
   toolchain/vcpkg/vcpkg install --triplet x64-linux --x-manifest-root=. \
-  --x-install-root=<builddir>/vcpkg_installed --overlay-ports=vcpkg_overlays/ports
+  --x-install-root=<builddir>/vcpkg_installed --overlay-ports=toolchain/vcpkg-overlay/ports
 ```
 
 после чего обычный `cmake --preset ...` видит «All requested packages are

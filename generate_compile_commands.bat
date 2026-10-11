@@ -62,7 +62,7 @@ cmake -G "Ninja" ^
     -DCMAKE_BUILD_TYPE=Debug ^
     -DCMAKE_TOOLCHAIN_FILE="%VCPKG%" ^
     -DVCPKG_TARGET_TRIPLET=x64-windows ^
-    -DVCPKG_OVERLAY_PORTS="%REPO_ROOT%\vcpkg_overlays\ports" ^
+    -DVCPKG_OVERLAY_PORTS="%REPO_ROOT%\toolchain\vcpkg-overlay\ports" ^
     -DVCPKG_INSTALL_OPTIONS="--x-buildtrees-root=d:/_build" ^
     -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ^
     -S "%REPO_ROOT%" ^
