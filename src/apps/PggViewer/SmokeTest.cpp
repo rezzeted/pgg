@@ -83,7 +83,7 @@ bool layoutsEqual(const pgg::GraphProject& a, const pgg::GraphProject& b) {
 
 bool runPggViewerSmokeTest() {
     g_failures = 0;
-    const std::string corpus = findRepoRoot() + "/src/tests/pgg/corpus";
+    const std::string corpus = findRepoRoot() + "/tests/pgg/corpus";
 
     // 1. tower.pgg: instance paths and dive targets (the §16 composition).
     {

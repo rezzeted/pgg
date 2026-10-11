@@ -287,8 +287,8 @@ TEST(MeshFromSdf, SphereMatchesGoldenAndIsWatertight) {
     pgg::GeoPtr m = pggtest::geoOutput(r, "m");
     ASSERT_TRUE(m);
     // Golden structural fingerprint of the current numeric profile
-    // (src/tests/pgg/goldens/e4_mesh_sphere.fp; re-record: PggTool run
-    // src/tests/pgg/corpus/e4_mesh_sphere.pgg --update-goldens).
+    // (tests/pgg/goldens/e4_mesh_sphere.fp; re-record: PggTool run
+    // tests/pgg/corpus/e4_mesh_sphere.pgg --update-goldens).
     pggtest::expectGolden("e4_mesh_sphere", r);
     EXPECT_EQ(pgg::nonManifoldEdgeCount(*m), 0u);
     // Attribute barrier: only @P (normals come from compute_normals).
@@ -554,8 +554,8 @@ TEST(SdfCorpus, RockAndWallMatchGoldens) {
 
     // Golden structural fingerprints of both §15 criteria (rock = the
     // SDF-pipeline criterion, wall = the instance-wall criterion):
-    // src/tests/pgg/goldens/e4_sdf_rock.fp; re-record: PggTool run
-    // src/tests/pgg/corpus/e4_sdf_rock.pgg --update-goldens.
+    // tests/pgg/goldens/e4_sdf_rock.fp; re-record: PggTool run
+    // tests/pgg/corpus/e4_sdf_rock.pgg --update-goldens.
     pggtest::expectGolden("e4_sdf_rock", r);
     pgg::GeoPtr rock = pggtest::geoOutput(r, "rock");
     ASSERT_TRUE(rock);

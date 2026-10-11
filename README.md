@@ -78,14 +78,13 @@ Generation runs in the background with stage timings and Cancel; the Log dock na
 | `src/apps/DungeonGeometryGeneratorCli` | DungeonGeometryGenerator machine loop: `validate` / `layout` / `fill` / `export` / `check` |
 | `src/apps/DungeonGeometryGeneratorServe` | DungeonGeometryGenerator RPC daemon: warm project slots |
 | `src/apps/DungeonTopologyGeneratorViewer` | level-synth SDL3 + ImGui viewer |
-| `src/tests` | gtest suites: `pgg/`, `dungeon_geometry_generator_*_test.cpp`, dungeon_topology_generator tests |
+| `tests` | gtest suites (`pgg/`, `dungeon_geometry_generator_*`, dungeon_topology_generator), test data (`data/`, `test_data/`), C# parity runner |
 | `resources/pgg` | PGG shared `lib/` and art examples (inn_hotel, clocktower, …) |
 | `resources/AmberEstate` | Estate mini-project: cottages, spire house, church, stone arch, props |
 | `resources/Mansion` | Brick-style mansion built from photo references (`reference/`, `analysis.md`) |
 | `resources/dungeon_topology_generator_gui` | level-synth viewer data (MapDescriptions, Images, …) |
 | `assets/` | DungeonGeometryGenerator slot assets (rooms, walls, doors, decor, patterns) |
 | `projects/` | DungeonGeometryGenerator demo projects |
-| `test_data/` | level-synth parity/preset fixtures |
 | `docs/pgg` | PGG language spec, implementation notes, cheatsheet, RPC contract |
 | `docs/dungeon_geometry_generator` | DungeonGeometryGenerator docs (requirements, pipeline, formats, MCP) |
 | `docs/level-synth` | level-synth docs (port parity, presets, test matrix) |

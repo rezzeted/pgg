@@ -1,6 +1,6 @@
 // Formatter tests: canonical output, comment preservation, kw-arg reorder,
 // and the E0 round-trip criterion parse(format(x)) == parse(x) over the
-// corpus (src/tests/pgg/corpus, PGG_CORPUS_DIR is set by CMake).
+// corpus (tests/pgg/corpus, PGG_CORPUS_DIR is set by CMake).
 #include <gtest/gtest.h>
 
 #include <algorithm>

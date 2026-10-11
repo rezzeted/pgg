@@ -33,7 +33,7 @@
 
 **Сквозное:**
 
-4. **Golden-паритет seed→layout** — каталог `test_data/parity/` пустой (только README-договорённости); эталонных выгрузок из C# нет, формата сравнения нет.
+4. **Golden-паритет seed→layout** — каталог `tests/test_data/parity/` пустой (только README-договорённости); эталонных выгрузок из C# нет, формата сравнения нет.
 5. **Производительность** — только ручной `tools/benchmark_layout_generation.ps1` (Windows-only, на Mac не работает), порога в CI нет.
 
 **Приложение (GUI-паритет с Edgar.GUI):**
@@ -89,7 +89,7 @@
 ### Этап E. Golden-пайплайн seed→layout (~3–5 дней)
 
 - Определить общий входной формат (JSON-описание уровня: граф, шаблоны, двери, seed) и формат эталона (позиции/контуры комнат + двери; допуски на порядок).
-- Написать выгрузчик эталонов на C# (консоль над `_edgar_ref`): вход → эталонный JSON в `test_data/parity/expected/`.
+- Написать выгрузчик эталонов на C# (консоль над `_edgar_ref`): вход → эталонный JSON в `tests/test_data/parity/expected/`.
 - Написать C++-прогонщик (GTest или отдельный бинарь): тот же вход → сравнение с эталоном с допусками.
 - Первые сценарии: эталонные из `parity_dod.md` (4-room cycle, 3-room corridor line, 6-room star).
 - **Решение (2026-09-29, владелец):** сравнение **только логическое** — контуры/позиции комнат, смежность, двери. Побайтовое совпадение (RNG, PNG-отрисовка) не требуется и не проверяется.
@@ -117,7 +117,7 @@
 | B Mapping/shapes (ит. 2) | ✅ 10 новых тестов (`DungeonTopologyGeneratorRoomShapesCsharpParity`, `DungeonTopologyGeneratorMappingCsharpParity`); контрактация коридоров в `get_stage_one_graph` | тот же |
 | C Configuration spaces (ит. 3) | ✅ точечные C#-множества КП; point-двери как в C#; `get_room_template_instances` с дедупликацией симметрий; degenerate-направления линий | `Close configuration-spaces parity...` |
 | D Двери (ит. 4) | ✅ все 7 сценариев Overlap/SpecificPositions с точными (from,to,dir,length) | `Port door mode handler tests...` |
-| E Golden-пайплайн | ✅ 3 сценария × оба движка, логические инварианты зелёные (`parity_golden_test`, `tools/parity_runner_cs`) | `Add golden parity pipeline...` |
+| E Golden-пайплайн | ✅ 3 сценария × оба движка, логические инварианты зелёные (`parity_golden_test`, `tests/parity_runner_cs`) | `Add golden parity pipeline...` |
 | F GUI-фичи | не начат (опционально) | — |
 | G Перфоманс-gate | ✅ `benchmark_layout` + `tools/benchmark_layout_generation.py`, smoke-gate в ctest | см. ниже |
 

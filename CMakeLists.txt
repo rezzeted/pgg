@@ -37,7 +37,7 @@ enable_testing()
 add_subdirectory(src/libs)
 # DungeonGeometryGenerator-era consumers include pgg kernel headers as <pgg/src/...>; in the pgg
 # repo this path comes from the src/libs directory scope, which does not reach
-# src/apps and src/tests.
+# src/apps and tests.
 target_include_directories(pgg PUBLIC "${CMAKE_SOURCE_DIR}/src/libs")
 add_subdirectory(src/apps)
-add_subdirectory(src/tests)
+add_subdirectory(tests)

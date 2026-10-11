@@ -3,7 +3,7 @@
 > **Исторический документ standalone-репозитория level-synth** (до слияния в
 > монорепозиторий pgg). Пути сборки ниже описывают старый репозиторий; в
 > монорепо актуальны корневые `README.md` и `AGENTS.md`, библиотека dungeon_topology_generator —
-> `src/libs/dungeon_topology_generator`, приложение — `src/apps/DungeonTopologyGeneratorViewer`, данные — `test_data/`.
+> `src/libs/dungeon_topology_generator`, приложение — `src/apps/DungeonTopologyGeneratorViewer`, данные — `tests/test_data/`.
 
 Приложение **LevelSynth** на C++20 с Dear ImGui, SDL3 и OpenGL 3 (CMake-проект в репозитории: `ImguiPlayground`). Библиотека **dungeon_topology_generator** — порт [Edgar-DotNet](https://github.com/OndrejNepozitek/Edgar-DotNet) для процедурной раскладки комнат. Сборка через **CMake**; зависимости задаются **манифестом vcpkg** ([`vcpkg.json`](vcpkg.json)), сам **vcpkg** — **git submodule** в [`toolchain/vcpkg`](toolchain/vcpkg).
 
@@ -87,8 +87,8 @@ cmake --build --preset release-macos
 ├── src/libs/dungeon_topology_generator/           # библиотека dungeon_topology_generator (генерация уровней)
 ├── src/libs/drui/            # темы, тосты, иконки поверх ImGui
 ├── src/apps/DungeonTopologyGeneratorViewer/
-├── src/tests/
-├── test_data/                # сценарии для ручных/parity-прогонов (см. test_data/parity/)
+├── tests/                    # C++-сьюты gtest + данные
+│   └── test_data/            # сценарии для ручных/parity-прогонов (см. tests/test_data/parity/)
 ├── resources/dungeon_topology_generator_gui/      # копия из референса (см. ниже)
 └── docs/
     port_vs_original_gap.md
@@ -144,7 +144,7 @@ robocopy %CD%\_edgar_ref\src\Resources %CD%\resources\dungeon_topology_generator
 
 ## Тесты
 
-- `enable_testing()` в корневом CMake, цели в [`src/tests/`](src/tests/).
+- `enable_testing()` в корневом CMake, цели в [`tests/`](../../tests/).
 - Исполняемые файлы: **`dungeon_topology_generator_tests`**, **`dungeon_topology_generator_parity_tests`**, **`preset_loader_tests`**, **`generation_diagnostic_test`** (в `bin/<Config>/`).
 - Запуск: `ctest -C Debug` (или `Release`) из каталога сборки.
 

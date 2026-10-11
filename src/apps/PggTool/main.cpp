@@ -101,7 +101,7 @@ void usage() {
                  "                                      materializes it as @__eval and prints its stats —\n"
                  "                                      outputs are computed as usual, --eval never narrows\n"
                  "                                      the run; --on takes the probe-path syntax;\n"
-                 "                                      --update-goldens rewrites src/tests/pgg/goldens/\n"
+                 "                                      --update-goldens rewrites tests/pgg/goldens/\n"
                  "                                      <basename>.fp (path relative to the cwd — run from\n"
                  "                                      the repo root) with the fingerprints of this run;\n"
                  "                                      a failed run writes nothing)\n"
@@ -439,7 +439,7 @@ std::optional<uint64_t> outputFingerprint(const pgg::Value& v) {
 }
 
 // C3 (agent_tooling_plan): (re)writes the golden fingerprint file of a run —
-// src/tests/pgg/goldens/<basename>.fp, the path relative to the cwd (run from
+// tests/pgg/goldens/<basename>.fp, the path relative to the cwd (run from
 // the repo root; a missing directory is an error, we never create the tree
 // elsewhere by accident). The content is exactly the run --fingerprint block
 // (plus comment lines the diff --baseline parser skips), so a golden doubles
@@ -449,7 +449,7 @@ std::optional<uint64_t> outputFingerprint(const pgg::Value& v) {
 int writeGoldenFile(const std::string& path,
                     const std::vector<std::pair<std::string, std::string>>& params,
                     const pgg::RunResult& result, bool json) {
-    const std::string dir = "src/tests/pgg/goldens";
+    const std::string dir = "tests/pgg/goldens";
     std::error_code ec;
     if (!std::filesystem::is_directory(dir, ec)) {
         std::fprintf(stderr, "--update-goldens: %s is not a directory (run from the repo root)\n",

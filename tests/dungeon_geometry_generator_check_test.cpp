@@ -129,7 +129,7 @@ TEST(DungeonGeometryGeneratorCheck, PassageRejects) {
 
 TEST(DungeonGeometryGeneratorCheck, VoidsReject) {
     dungeon_geometry_generator::Project p = loadD1Project();
-    p.asset_roots = {"src/tests/data", "assets"};
+    p.asset_roots = {"tests/data", "assets"};
     p.slots["wall_body"] = "fill/body_nocuts_v1.pgg";
     const dungeon_geometry_generator::IrV2 ir = buildIr(p, std::string(DUNGEON_GEOMETRY_GENERATOR_TEST_DATA) + "/corner_frozen.json");
     const dungeon_geometry_generator::FillResult fill = fillIr(ir, p);
@@ -144,7 +144,7 @@ TEST(DungeonGeometryGeneratorCheck, TransitionsReject) {
     {
         dungeon_geometry_generator::Project p = loadD1Project();
         p.fill.transitions.place = "wall";
-        p.asset_roots = {"src/tests/data", "assets"};
+        p.asset_roots = {"tests/data", "assets"};
         p.slots["facing"] = "fill/facing_nozones_v1.pgg";
         const dungeon_geometry_generator::IrV2 ir = buildIr(p, std::string(DUNGEON_GEOMETRY_GENERATOR_TEST_DATA) + "/corner_frozen.json");
         size_t zoned = 0;
@@ -159,7 +159,7 @@ TEST(DungeonGeometryGeneratorCheck, TransitionsReject) {
     // paints one side wrong there.
     {
         dungeon_geometry_generator::Project p = loadD1Project();
-        p.asset_roots = {"src/tests/data", "assets"};
+        p.asset_roots = {"tests/data", "assets"};
         p.slots["node"] = "fill/node_nozones_v1.pgg";
         const dungeon_geometry_generator::IrV2 ir = buildIr(p, std::string(DUNGEON_GEOMETRY_GENERATOR_TEST_DATA) + "/corner_frozen.json");
         size_t zoned = 0;
@@ -177,7 +177,7 @@ TEST(DungeonGeometryGeneratorCheck, TransitionsReject) {
         dungeon_geometry_generator::Project p = loadD1Project();
         p.fill.transitions.pattern = "chase";
         p.fill.transitions.place = "wall";
-        p.asset_roots = {"src/tests/data", "assets"};
+        p.asset_roots = {"tests/data", "assets"};
         p.slots["facing"] = "fill/facing_nozones_v1.pgg";
         const dungeon_geometry_generator::IrV2 ir = buildIr(p, std::string(DUNGEON_GEOMETRY_GENERATOR_TEST_DATA) + "/corner_frozen.json");
         const dungeon_geometry_generator::FillResult fill = fillIr(ir, p);
@@ -531,7 +531,7 @@ TEST(DungeonGeometryGeneratorCheck, GenerateFiguredLevelEndToEnd) {
     q.dir = std::filesystem::path(DUNGEON_GEOMETRY_GENERATOR_ASSETS_DIR).parent_path().string();
     // The v1 room_fill asset is rect-only by contract (assets_v1.md); the
     // figured hall runs the empty test double, everything else is real.
-    q.asset_roots = {"src/tests/data", "assets"};
+    q.asset_roots = {"tests/data", "assets"};
     q.slots["room_fill"] = "fill/empty_room_fill.pgg";
 
     const dungeon_geometry_generator::IrV2 ir = generateIr(q);

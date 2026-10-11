@@ -80,7 +80,7 @@ fs::path findAncestorSubdir(const fs::path& from, const fs::path& subdir) {
 }  // namespace
 
 fs::path findPggCorpusDir(const fs::path& from) {
-    return findAncestorSubdir(from, fs::path("src") / "tests" / "pgg" / "corpus");
+    return findAncestorSubdir(from, fs::path("tests") / "pgg" / "corpus");
 }
 
 fs::path findPggResourcesDir(const fs::path& from) {

@@ -27,4 +27,4 @@
 
 ## Тестовые данные
 
-Минимальный комплект для GTest: [`test_data/gui_presets`](../test_data/gui_presets).
+Минимальный комплект для GTest: [`tests/test_data/gui_presets`](../tests/test_data/gui_presets).

@@ -46,7 +46,7 @@ _edgar_ref/
 vcpkg_installed/
 imgui.ini
 # Golden parity generated outputs (C++ side regenerates on each run)
-test_data/parity/actual/*.cpp.json
+tests/test_data/parity/actual/*.cpp.json
 # dotnet build artifacts
-tools/parity_runner_cs/bin/
-tools/parity_runner_cs/obj/
+tests/parity_runner_cs/bin/
+tests/parity_runner_cs/obj/

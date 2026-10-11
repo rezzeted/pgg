@@ -8,8 +8,8 @@
 namespace {
 
 std::filesystem::path repo_root_from_this_file() {
-    // src/tests/preset_loader_tests.cpp -> repo root is three levels up
-    return std::filesystem::path(__FILE__).parent_path().parent_path().parent_path();
+    // tests/preset_loader_tests.cpp -> repo root is two levels up
+    return std::filesystem::path(__FILE__).parent_path().parent_path();
 }
 
 } // namespace
@@ -22,7 +22,7 @@ TEST(PresetLoader, MissingPath_returnsError) {
 
 TEST(PresetLoader, TinyFixture_loads) {
     using namespace dungeon_topology_generator::generator::grid2d;
-    const std::filesystem::path base = repo_root_from_this_file() / "test_data" / "gui_presets";
+    const std::filesystem::path base = repo_root_from_this_file() / "tests" / "test_data" / "gui_presets";
     ASSERT_TRUE(std::filesystem::exists(base)) << base.string();
 
     auto r = load_preset_catalog_with_status(base.string());

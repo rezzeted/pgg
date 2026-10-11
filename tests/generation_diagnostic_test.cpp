@@ -37,7 +37,7 @@ using dungeon_topology_generator::geometry::Vector2Int;
 using dungeon_topology_generator::graphs::UndirectedAdjacencyListGraph;
 
 fs::path repo_root_from_this_file() {
-    return fs::path(__FILE__).parent_path().parent_path().parent_path();
+    return fs::path(__FILE__).parent_path().parent_path();
 }
 
 /// spdlog -> stderr, no timestamps; each message is one JSON line (NDJSON).

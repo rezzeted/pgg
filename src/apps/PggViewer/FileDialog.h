@@ -28,7 +28,7 @@ void fileDialogOpen(FileDialogState& st, const std::filesystem::path& startDir);
 // double-click / Enter); nullopt otherwise. Closes itself on Cancel / Esc.
 std::optional<std::filesystem::path> fileDialogDraw(FileDialogState& st, const char* title = "Open .pgg file");
 
-// Walks up from `from` looking for `<ancestor>/src/tests/pgg/corpus`; empty if not found.
+// Walks up from `from` looking for `<ancestor>/tests/pgg/corpus`; empty if not found.
 std::filesystem::path findPggCorpusDir(const std::filesystem::path& from);
 
 // Walks up from `from` looking for `<ancestor>/resources/pgg` (product/art

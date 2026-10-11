@@ -67,9 +67,9 @@ check на тёплой петле DungeonGeometryGeneratorServe реплеит 
 
 ## Саботажные фикстуры (тесты)
 
-`src/tests/data/fill/*_v1.pgg` — копии ассетов v1 с выключенной логикой
+`tests/data/fill/*_v1.pgg` — копии ассетов v1 с выключенной логикой
 зон/проёмов (`*_nocuts`, `*_nozones`); слоты переопределены через
-`p.asset_roots = {"src/tests/data", "assets"}`. Сценарии
+`p.asset_roots = {"tests/data", "assets"}`. Сценарии
 `dungeon_geometry_generator_check_test`: заросший проём (`VoidsReject`), облицовка без зон
 на стыке (`TransitionsReject`: стена + угол + штраба), пересекающиеся
 стены (`SpansReject`), узкий/низкий/вылезающий проём (`PassageRejects`).

@@ -32,7 +32,7 @@ endif()
 # resolve their slots through the FillOpts::dungeon_geometry_generator_assets fallback, so the repo
 # assets dir is found from the executable upward; the working directory only
 # shortens the search.
-# The smoke uses the app's own fixture: src/tests/data/d2_project.json can
+# The smoke uses the app's own fixture: tests/data/d2_project.json can
 # never build an IR (5.2: its corridor role overrides wall_t, so corridor/
 # room shared walls resolve different thicknesses — an F4 error by design).
 add_test(NAME DungeonGeometryGeneratorViewer_smoke_layout

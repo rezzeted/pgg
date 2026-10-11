@@ -41,7 +41,7 @@ add_test(NAME dungeon_geometry_generator_d0_test COMMAND dungeon_geometry_genera
 add_executable(dungeon_geometry_generator_project_test dungeon_geometry_generator_project_test.cpp)
 target_link_libraries(dungeon_geometry_generator_project_test PRIVATE GTest::gtest_main dungeon_geometry_generator)
 target_compile_definitions(dungeon_geometry_generator_project_test PRIVATE
-    DUNGEON_GEOMETRY_GENERATOR_TEST_DATA="${CMAKE_SOURCE_DIR}/src/tests/data")
+    DUNGEON_GEOMETRY_GENERATOR_TEST_DATA="${CMAKE_SOURCE_DIR}/tests/data")
 target_compile_features(dungeon_geometry_generator_project_test PRIVATE cxx_std_20)
 set_property(TARGET dungeon_geometry_generator_project_test PROPERTY FOLDER tests)
 
@@ -50,7 +50,7 @@ add_test(NAME dungeon_geometry_generator_project_test COMMAND dungeon_geometry_g
 add_executable(dungeon_geometry_generator_layout_test dungeon_geometry_generator_layout_test.cpp)
 target_link_libraries(dungeon_geometry_generator_layout_test PRIVATE GTest::gtest_main dungeon_geometry_generator_layout)
 target_compile_definitions(dungeon_geometry_generator_layout_test PRIVATE
-    DUNGEON_GEOMETRY_GENERATOR_TEST_DATA="${CMAKE_SOURCE_DIR}/src/tests/data")
+    DUNGEON_GEOMETRY_GENERATOR_TEST_DATA="${CMAKE_SOURCE_DIR}/tests/data")
 target_compile_features(dungeon_geometry_generator_layout_test PRIVATE cxx_std_20)
 set_property(TARGET dungeon_geometry_generator_layout_test PROPERTY FOLDER tests)
 
@@ -66,7 +66,7 @@ add_test(NAME dungeon_geometry_generator_topo_test COMMAND dungeon_geometry_gene
 add_executable(dungeon_geometry_generator_ir_test dungeon_geometry_generator_ir_test.cpp)
 target_link_libraries(dungeon_geometry_generator_ir_test PRIVATE GTest::gtest_main dungeon_geometry_generator nlohmann_json::nlohmann_json)
 target_compile_definitions(dungeon_geometry_generator_ir_test PRIVATE
-    DUNGEON_GEOMETRY_GENERATOR_TEST_DATA="${CMAKE_SOURCE_DIR}/src/tests/data"
+    DUNGEON_GEOMETRY_GENERATOR_TEST_DATA="${CMAKE_SOURCE_DIR}/tests/data"
     DUNGEON_GEOMETRY_GENERATOR_D0_DIR="${CMAKE_SOURCE_DIR}/docs/dungeon_geometry_generator/d0")
 target_compile_features(dungeon_geometry_generator_ir_test PRIVATE cxx_std_20)
 set_property(TARGET dungeon_geometry_generator_ir_test PROPERTY FOLDER tests)
@@ -84,7 +84,7 @@ add_test(NAME dungeon_geometry_generator_assets_test COMMAND dungeon_geometry_ge
 add_executable(dungeon_geometry_generator_fill_test dungeon_geometry_generator_fill_test.cpp)
 target_link_libraries(dungeon_geometry_generator_fill_test PRIVATE GTest::gtest_main dungeon_geometry_generator_fill nlohmann_json::nlohmann_json)
 target_compile_definitions(dungeon_geometry_generator_fill_test PRIVATE
-    DUNGEON_GEOMETRY_GENERATOR_TEST_DATA="${CMAKE_SOURCE_DIR}/src/tests/data"
+    DUNGEON_GEOMETRY_GENERATOR_TEST_DATA="${CMAKE_SOURCE_DIR}/tests/data"
     DUNGEON_GEOMETRY_GENERATOR_D0_DIR="${CMAKE_SOURCE_DIR}/docs/dungeon_geometry_generator/d0"
     DUNGEON_GEOMETRY_GENERATOR_ASSETS_DIR="${CMAKE_SOURCE_DIR}/assets")
 target_compile_features(dungeon_geometry_generator_fill_test PRIVATE cxx_std_20)
@@ -95,7 +95,7 @@ add_test(NAME dungeon_geometry_generator_fill_test COMMAND dungeon_geometry_gene
 add_executable(dungeon_geometry_generator_check_test dungeon_geometry_generator_check_test.cpp)
 target_link_libraries(dungeon_geometry_generator_check_test PRIVATE GTest::gtest_main dungeon_geometry_generator_check dungeon_geometry_generator_layout)
 target_compile_definitions(dungeon_geometry_generator_check_test PRIVATE
-    DUNGEON_GEOMETRY_GENERATOR_TEST_DATA="${CMAKE_SOURCE_DIR}/src/tests/data"
+    DUNGEON_GEOMETRY_GENERATOR_TEST_DATA="${CMAKE_SOURCE_DIR}/tests/data"
     DUNGEON_GEOMETRY_GENERATOR_D0_DIR="${CMAKE_SOURCE_DIR}/docs/dungeon_geometry_generator/d0"
     DUNGEON_GEOMETRY_GENERATOR_ASSETS_DIR="${CMAKE_SOURCE_DIR}/assets")
 target_compile_features(dungeon_geometry_generator_check_test PRIVATE cxx_std_20)
@@ -106,7 +106,7 @@ add_test(NAME dungeon_geometry_generator_check_test COMMAND dungeon_geometry_gen
 add_executable(dungeon_geometry_generator_export_test dungeon_geometry_generator_export_test.cpp)
 target_link_libraries(dungeon_geometry_generator_export_test PRIVATE GTest::gtest_main dungeon_geometry_generator_export nlohmann_json::nlohmann_json)
 target_compile_definitions(dungeon_geometry_generator_export_test PRIVATE
-    DUNGEON_GEOMETRY_GENERATOR_TEST_DATA="${CMAKE_SOURCE_DIR}/src/tests/data"
+    DUNGEON_GEOMETRY_GENERATOR_TEST_DATA="${CMAKE_SOURCE_DIR}/tests/data"
     DUNGEON_GEOMETRY_GENERATOR_D0_DIR="${CMAKE_SOURCE_DIR}/docs/dungeon_geometry_generator/d0"
     DUNGEON_GEOMETRY_GENERATOR_ASSETS_DIR="${CMAKE_SOURCE_DIR}/assets")
 target_compile_features(dungeon_geometry_generator_export_test PRIVATE cxx_std_20)
@@ -126,24 +126,24 @@ target_link_libraries(dungeon_topology_generator_parity_tests PRIVATE dungeon_to
 gtest_discover_tests(dungeon_topology_generator_parity_tests)
 
 find_package(yaml-cpp CONFIG REQUIRED)
-add_executable(preset_loader_tests preset_loader_tests.cpp ../apps/DungeonTopologyGeneratorViewer/preset_loader.cpp)
+add_executable(preset_loader_tests preset_loader_tests.cpp ${CMAKE_SOURCE_DIR}/src/apps/DungeonTopologyGeneratorViewer/preset_loader.cpp)
 target_include_directories(preset_loader_tests PRIVATE "${CMAKE_SOURCE_DIR}/src/apps/DungeonTopologyGeneratorViewer")
 target_link_libraries(preset_loader_tests PRIVATE dungeon_topology_generator yaml-cpp::yaml-cpp GTest::gtest_main)
 gtest_discover_tests(preset_loader_tests)
 
-add_executable(generation_diagnostic_test generation_diagnostic_test.cpp ../apps/DungeonTopologyGeneratorViewer/preset_loader.cpp)
+add_executable(generation_diagnostic_test generation_diagnostic_test.cpp ${CMAKE_SOURCE_DIR}/src/apps/DungeonTopologyGeneratorViewer/preset_loader.cpp)
 target_include_directories(generation_diagnostic_test PRIVATE "${CMAKE_SOURCE_DIR}/src/apps/DungeonTopologyGeneratorViewer")
 target_link_libraries(generation_diagnostic_test PRIVATE dungeon_topology_generator yaml-cpp::yaml-cpp spdlog::spdlog GTest::gtest_main)
 gtest_discover_tests(generation_diagnostic_test)
 
-# Golden parity with the reference C# (logical comparison; see test_data/parity/README.md)
+# Golden parity with the reference C# (logical comparison; see tests/test_data/parity/README.md)
 add_executable(parity_golden_test parity_golden_test.cpp)
 target_link_libraries(parity_golden_test PRIVATE dungeon_topology_generator nlohmann_json::nlohmann_json GTest::gtest_main)
-target_compile_definitions(parity_golden_test PRIVATE PARITY_DATA_DIR="${CMAKE_SOURCE_DIR}/test_data/parity")
+target_compile_definitions(parity_golden_test PRIVATE PARITY_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/test_data/parity")
 gtest_discover_tests(parity_golden_test)
 
 # Layout generation benchmark (cross-platform replacement for tools/benchmark_layout_generation.ps1)
-add_executable(benchmark_layout benchmark_layout.cpp ../apps/DungeonTopologyGeneratorViewer/preset_loader.cpp)
+add_executable(benchmark_layout benchmark_layout.cpp ${CMAKE_SOURCE_DIR}/src/apps/DungeonTopologyGeneratorViewer/preset_loader.cpp)
 target_include_directories(benchmark_layout PRIVATE "${CMAKE_SOURCE_DIR}/src/apps/DungeonTopologyGeneratorViewer")
 target_link_libraries(benchmark_layout PRIVATE dungeon_topology_generator yaml-cpp::yaml-cpp nlohmann_json::nlohmann_json)
 # Smoke gate with a generous threshold; finer thresholds via tools/benchmark_layout_generation.py

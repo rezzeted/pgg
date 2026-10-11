@@ -7,7 +7,7 @@
 ## Макет
 
 ```
-test_data/parity/
+tests/test_data/parity/
   README.md           (этот файл)
   scenarios/*.json    (входы: граф, шаблоны rect+simple-doors, seed, ожидаемые счётчики)
   actual/             (результаты прогонов: <name>.cs.json / <name>.cpp.json; генерируются)
@@ -24,10 +24,10 @@ test_data/parity/
 1. **C#-сторона** (нужен .NET SDK и клон `_edgar_ref` в корне репозитория):
 
 ```sh
-dotnet build tools/parity_runner_cs -c Release
+dotnet build tests/parity_runner_cs -c Release
 for s in four_room_cycle three_room_corridor_line six_room_star; do
-  dotnet run --project tools/parity_runner_cs -c Release --no-build -- \
-    test_data/parity/scenarios/$s.json test_data/parity/actual/$s.cs.json
+  dotnet run --project tests/parity_runner_cs -c Release --no-build -- \
+    tests/test_data/parity/scenarios/$s.json tests/test_data/parity/actual/$s.cs.json
 done
 ```
 
@@ -46,5 +46,5 @@ ctest --test-dir _build -R DungeonTopologyGeneratorGoldenParity --output-on-fail
 
 ## Связь с тестами
 
-- C++ тесты: [src/tests/README.md](../../src/tests/README.md), `dungeon_topology_generator_tests`, `dungeon_topology_generator_parity_tests`, `parity_golden_test`.
+- C++ тесты: [tests/README.md](../../README.md), `dungeon_topology_generator_tests`, `dungeon_topology_generator_parity_tests`, `parity_golden_test`.
 - Матрица покрытия C#: [docs/test_matrix_iteration0.md](../../docs/test_matrix_iteration0.md) (все строки закрыты: done или skip(na)).

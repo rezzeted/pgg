@@ -1,4 +1,4 @@
-// Golden parity runner (C# side): reads a scenario JSON from test_data/parity/scenarios,
+// Golden parity runner (C# side): reads a scenario JSON from tests/test_data/parity/scenarios,
 // generates a layout with the reference Edgar-DotNet GraphBasedGeneratorGrid2D (the same engine
 // Edgar.GUI uses) and dumps the logical structure (room outlines/positions/doors) as JSON
 // for comparison with the C++ port.

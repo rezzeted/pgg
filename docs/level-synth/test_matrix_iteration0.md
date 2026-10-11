@@ -90,4 +90,4 @@
 
 Каждая строка матрицы имеет ровно один из статусов выше (критерий роадмапа итерации 7).
 
-Обновлять эту матрицу при добавлении значимых `TEST` в [`dungeon_topology_generator_tests.cpp`](../src/tests/dungeon_topology_generator_tests.cpp) / [`dungeon_topology_generator_parity_tests.cpp`](../src/tests/dungeon_topology_generator_parity_tests.cpp).
+Обновлять эту матрицу при добавлении значимых `TEST` в [`dungeon_topology_generator_tests.cpp`](../tests/dungeon_topology_generator_tests.cpp) / [`dungeon_topology_generator_parity_tests.cpp`](../tests/dungeon_topology_generator_parity_tests.cpp).

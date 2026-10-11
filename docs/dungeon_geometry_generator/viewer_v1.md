@@ -257,6 +257,6 @@ Generate — кнопкой внизу сайд-панели. Все три — 
 
 - `DungeonGeometryGeneratorViewer_smoke_layout`: `--smoke src/apps/DungeonGeometryGeneratorViewer/smoke_project.json`
   (генерация раскладки → IR → fill). Свой фикстурный проект, потому что
-  `src/tests/data/d2_project.json` IR построить не может: роль corridor в нём
+  `tests/data/d2_project.json` IR построить не может: роль corridor в нём
   переопределяет wall_t, и общие стены коридора с комнатами дают конфликт
   толщин — ошибку F4 по 5.2 (by design).

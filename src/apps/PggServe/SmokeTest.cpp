@@ -109,7 +109,7 @@ nlohmann::json rpcCall(SocketFd fd, const nlohmann::json& req, std::string& inbu
 
 bool runPggServeSmokeTest() {
     g_failures = 0;
-    const std::string corpus = findRepoRoot() + "/src/tests/pgg/corpus";
+    const std::string corpus = findRepoRoot() + "/tests/pgg/corpus";
 
     ServeRpcServer server;
     ServeRuntime runtime(server);

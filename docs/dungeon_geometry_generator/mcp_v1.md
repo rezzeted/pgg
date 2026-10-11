@@ -248,7 +248,7 @@ dungeon_geometry_generator_layout() → dungeon_geometry_generator_fill()   # la
   fill вытесненного проекта снова холодный.
 - `check`/`export` без предварительного `fill` честно обеспечивают fill —
   первый такой вызов может быть холодным (десятки секунд в Debug).
-- Тестовый `src/tests/data/d2_project.json` не проходит F4 по 5.2
+- Тестовый `tests/data/d2_project.json` не проходит F4 по 5.2
   (коридорные `wall_t` против проектных) — для smoke-клиентов используй
   `src/apps/DungeonGeometryGeneratorViewer/smoke_project.json`.
 - Занятый 9879: второй DungeonGeometryGeneratorServe не стартует (exit 1); MCP подключится к

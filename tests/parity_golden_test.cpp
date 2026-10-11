@@ -1,6 +1,6 @@
-// Golden parity harness (C++ side): runs scenarios from test_data/parity/scenarios through
-// the C++ generator, dumps the logical layout structure to test_data/parity/actual/*.cpp.json
-// and, when the reference C# output (*.cs.json, produced by tools/parity_runner_cs) is present,
+// Golden parity harness (C++ side): runs scenarios from tests/test_data/parity/scenarios through
+// the C++ generator, dumps the logical layout structure to tests/test_data/parity/actual/*.cpp.json
+// and, when the reference C# output (*.cs.json, produced by tests/parity_runner_cs) is present,
 // checks both engines against the same logical invariants (room counts, no overlaps, every
 // graph connection realized by a door, outlines only from allowed template pools).
 //
@@ -24,7 +24,7 @@
 #include "dungeon_topology_generator/geometry/polygon_overlap_grid2d.hpp"
 
 #ifndef PARITY_DATA_DIR
-#define PARITY_DATA_DIR "test_data/parity"
+#define PARITY_DATA_DIR "tests/test_data/parity"
 #endif
 
 namespace {
@@ -257,7 +257,7 @@ TEST_P(DungeonTopologyGeneratorGoldenParity, Scenario_GeneratesAndMatchesReferen
 
     const auto cs_path = actual_dir / (scenario.name + ".cs.json");
     if (!std::filesystem::exists(cs_path)) {
-        GTEST_SKIP() << "reference C# output missing (run tools/parity_runner_cs first): " << cs_path;
+        GTEST_SKIP() << "reference C# output missing (run tests/parity_runner_cs first): " << cs_path;
     }
     const auto cs_json = json::parse(std::ifstream(cs_path));
 

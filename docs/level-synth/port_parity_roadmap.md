@@ -18,7 +18,7 @@
 
 ## Итерация 0 — Базовая линия
 
-**Статус:** done — матрица [`test_matrix_iteration0.md`](test_matrix_iteration0.md), golden-пайплайн `parity_golden_test` (3 сценария, логическое сравнение с C# через `tools/parity_runner_cs`, `.cs.json` эталоны в репозитории).
+**Статус:** done — матрица [`test_matrix_iteration0.md`](test_matrix_iteration0.md), golden-пайплайн `parity_golden_test` (3 сценария, логическое сравнение с C# через `tests/parity_runner_cs`, `.cs.json` эталоны в репозитории).
 
 **План работ для агента (пошагово):** [iteration_0_agent_brief.md](iteration_0_agent_brief.md).
 
@@ -26,7 +26,7 @@
 - Матрица тестов: `Edgar.Tests` / `GeneralAlgorithmsTests` / `IntegrationTests` (референс `_edgar_ref`) → существующие или новые `TEST` в C++.
 - Опционально: golden-пайплайн (общий вход описания уровня → сравнение структуры layout C# и C++ с допусками).
 
-**Тесты после итерации:** таблица «файл/класс C# → существующий `TEST` или TODO» в репозитории (например `docs/` или `src/tests/README`); чек-лист критериев DoD; при наличии скрипта — один smoke-прогон golden (пусть даже с ручным эталоном).
+**Тесты после итерации:** таблица «файл/класс C# → существующий `TEST` или TODO» в репозитории (например `docs/` или `tests/README`); чек-лист критериев DoD; при наличии скрипта — один smoke-прогон golden (пусть даже с ручным эталоном).
 
 ---
 
@@ -139,7 +139,7 @@
 
 ## Итерация 7 — Интеграция и перфоманс
 
-**Статус:** done — матрица итерации 0 закрыта полностью (26 done / 6 skip (na)) в [`test_matrix_iteration0.md`](test_matrix_iteration0.md); интеграционные инварианты pipeline в `DungeonTopologyGeneratorIntegration.DungeonGenerator_*` ([`dungeon_topology_generator_tests.cpp`](../src/tests/dungeon_topology_generator_tests.cpp)); производительность — [`tools/benchmark_layout_generation.py`](../tools/benchmark_layout_generation.py) с CI-гейтами `--check`, паритет по времени с C#-референсом подтверждён на bundled-картах (см. [parity_next_steps_plan.md](parity_next_steps_plan.md), секция H4).
+**Статус:** done — матрица итерации 0 закрыта полностью (26 done / 6 skip (na)) в [`test_matrix_iteration0.md`](test_matrix_iteration0.md); интеграционные инварианты pipeline в `DungeonTopologyGeneratorIntegration.DungeonGenerator_*` ([`dungeon_topology_generator_tests.cpp`](../tests/dungeon_topology_generator_tests.cpp)); производительность — [`tools/benchmark_layout_generation.py`](../tools/benchmark_layout_generation.py) с CI-гейтами `--check`, паритет по времени с C#-референсом подтверждён на bundled-картах (см. [parity_next_steps_plan.md](parity_next_steps_plan.md), секция H4).
 
 - Портировать ключевые `Edgar.IntegrationTests` по мере необходимости.
 - Опционально: слой performance-тестов на эталонных картах.

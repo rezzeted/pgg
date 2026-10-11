@@ -23,7 +23,7 @@
 ## TBD (вне итерации 0)
 
 - Полное покрытие дверных режимов overlap / specific (C# `OverlapModeHandlerTests`) — итерация 4 roadmap.
-- Паритет seed→layout с исполняемым C# — опционально после golden-пайплайна (`test_data/parity/`).
+- Паритет seed→layout с исполняемым C# — опционально после golden-пайплайна (`tests/test_data/parity/`).
 
 ## Итерация 5 — события и жизненный цикл (сопоставление с C#)
 

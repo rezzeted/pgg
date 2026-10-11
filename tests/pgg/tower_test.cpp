@@ -1,7 +1,7 @@
 // E5 acceptance (spec §15, §16): the composition tower runs end-to-end
 // verbatim — def calls inline through four composition levels, expect
 // contracts hold, tap stays a no-op — with the golden structural fingerprints
-// of the current numeric profile (src/tests/pgg/goldens/tower.fp, C3) and
+// of the current numeric profile (tests/pgg/goldens/tower.fp, C3) and
 // run-to-run reproducibility (N1).
 #include <gtest/gtest.h>
 
@@ -27,8 +27,8 @@ TEST(Tower, CorpusMatchesGoldensAndReproduces) {
 
     // Golden structural fingerprints of scene (the watertight merge of wall
     // and hero, no welding) and anchors (the poisson landing points on the
-    // wall's flat tops): src/tests/pgg/goldens/tower.fp; re-record: PggTool
-    // run src/tests/pgg/corpus/tower.pgg --param world_seed=42 --update-goldens.
+    // wall's flat tops): tests/pgg/goldens/tower.fp; re-record: PggTool
+    // run tests/pgg/corpus/tower.pgg --param world_seed=42 --update-goldens.
     pggtest::expectGolden("tower", r);
     pgg::GeoPtr scene = pggtest::geoOutput(r, "scene");
     ASSERT_TRUE(scene != nullptr);

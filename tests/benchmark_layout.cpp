@@ -33,7 +33,7 @@ namespace fs = std::filesystem;
 namespace grid2d = dungeon_topology_generator::generator::grid2d;
 
 fs::path repo_root_from_this_file() {
-    return fs::path(__FILE__).parent_path().parent_path().parent_path();
+    return fs::path(__FILE__).parent_path().parent_path();
 }
 
 void usage() {
@@ -48,7 +48,7 @@ void usage() {
                  "  --dump-scenario  write the built level as a parity scenario JSON and exit\n");
 }
 
-// Full-fidelity scenario dump for tools/parity_runner_cs: per-room template pools with polygon
+// Full-fidelity scenario dump for tests/parity_runner_cs: per-room template pools with polygon
 // outlines (post-scale) and door modes, so the C# reference runs the *identical* level the
 // C++ side builds from a YAML preset.
 void dump_scenario(const fs::path& out_path, const grid2d::PresetMap& map,

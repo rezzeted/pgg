@@ -186,7 +186,7 @@
 
 После переноса `spire_house/*.pgg`, `inn_hotel/*.pgg` и `cottage*/*.pgg` переключить на lib, `<model>/common.pgg` оставить только специфичное. Удалить мёртвый код `spire_lucarne`, `hexa_ring`, `cone_r` в `spire_house/common.pgg`.
 
-**Приёмка B:** `tower.pgg::clock_tier` собирает 6 граней кладки одной строкой через `polar_array`; в `resources/pgg` нет литерала `1.1547` вне `lib`; `inn_hotel/common.pgg` не содержит `plan_*`/`arc_*`/`roll`/`chord`/`point_grid` (всё из `lib.plan`); тесты корпуса (`src/tests/pgg`) зелёные, кадры `house` и `hotel` по `pgg_diff` без изменений (или с ожидаемыми, зафиксированными в коммите).
+**Приёмка B:** `tower.pgg::clock_tier` собирает 6 граней кладки одной строкой через `polar_array`; в `resources/pgg` нет литерала `1.1547` вне `lib`; `inn_hotel/common.pgg` не содержит `plan_*`/`arc_*`/`roll`/`chord`/`point_grid` (всё из `lib.plan`); тесты корпуса (`tests/pgg`) зелёные, кадры `house` и `hotel` по `pgg_diff` без изменений (или с ожидаемыми, зафиксированными в коммите).
 
 ---
 

@@ -13,7 +13,7 @@
   dungeon_topology_generator (раскладки). Нормативный документ — `docs/dungeon_geometry_generator/requirements.md`
   (§5–§9 — конвейер F1–F11, N-хвосты — сквозные требования).
 - **level-synth / dungeon_topology_generator** — порт Edgar-DotNet: библиотека раскладок
-  `src/libs/dungeon_topology_generator`, SDL3-вьюер `src/apps/DungeonTopologyGeneratorViewer`, данные `test_data/`,
+  `src/libs/dungeon_topology_generator`, SDL3-вьюер `src/apps/DungeonTopologyGeneratorViewer`, данные `tests/test_data/`,
   доки `docs/level-synth/`.
 
 ## Коммуникация и язык
@@ -30,8 +30,10 @@
 ## Репозиторий
 
 - Не плодить изолированные проекты со своими `project(...)` без необходимости —
-  корневой `CMakeLists.txt` один, `src/{libs,apps,tests}` подхватывают
-  подкаталоги GLOB'ом.
+  корневой `CMakeLists.txt` один, `src/{libs,apps}` и корневой `tests/`
+  подхватывают подкаталоги GLOB'ом. Тесты и их данные живут в корневом
+  `tests/` (сьюты, `tests/pgg/` с корпусом и голденами, `tests/data`,
+  `tests/test_data`, `tests/parity_runner_cs`), а не в `src/`.
 - **Стек:** C++20, ANTLR4 4.13.2, glm, gtest; PggViewer/DungeonGeometryGeneratorViewer — Sokol +
   Dear ImGui + spdlog; dungeon_topology_generator — boost-graph, yaml-cpp, nlohmann-json, SDL3
   (вьюер). Без Qt. Не вводить тяжёлые зависимости без согласования.
@@ -74,7 +76,7 @@ macOS-флоу — Xcode generator + CMake Presets, та же `_intermediate_64`
 - Конфигурация: `./build_mac.sh` (обёртка над `cmake --preset macos`). Первая конфигурация собирает vcpkg-зависимости.
 - Сборка из CLI: `cmake --build --preset macos-debug --target PggViewer`.
 - Бинарники: `_intermediate_64/src/apps/<App>/Debug/<App>`.
-- Smoke-проверки: `PggViewer --smoke`; `PggServe --smoke`; юнит-тесты — `_intermediate_64/src/tests/Debug/pgg_tests`.
+- Smoke-проверки: `PggViewer --smoke`; `PggServe --smoke`; юнит-тесты — `_intermediate_64/tests/Debug/pgg_tests`.
 - Платформенные особенности порта — `docs/BUILD.md`.
 
 ### vcpkg и зависимости
@@ -98,14 +100,14 @@ Linux-флоу — Ninja (single-config) + CMake Presets, триплет `x64-li
 - Релизная сборка: пресет `linux-release` (`CMAKE_BUILD_TYPE=Release`, отдельная бинарная директория `_int_linux_release`, наследует `linux`).
 - Бинарники: `_int_linux/src/apps/<App>/Debug/<App>` (app-макросы кладут exe в подпапку `$<CONFIG>`).
 - Smoke-проверки и юнит-тесты: `PggViewer --smoke`, `PggServe --smoke`,
-  `_int_linux/src/tests/pgg_tests` (ctest: `ctest --test-dir _int_linux --output-on-failure`).
+  `_int_linux/tests/pgg_tests` (ctest: `ctest --test-dir _int_linux --output-on-failure`).
 - Системные пакеты и особенности порта — `docs/BUILD.md`.
 
 ## Тестирование
 
-- **pgg:** unit-тесты (gtest) — `src/tests/pgg/<name>_test.cpp`, подхватываются
-  GLOB'ом; бинарь `pgg_tests`. Корпус эталонов — `src/tests/pgg/corpus/`;
-  голдены фингерпринтов — `src/tests/pgg/goldens/` (перезапись:
+- **pgg:** unit-тесты (gtest) — `tests/pgg/<name>_test.cpp`, подхватываются
+  GLOB'ом; бинарь `pgg_tests`. Корпус эталонов — `tests/pgg/corpus/`;
+  голдены фингерпринтов — `tests/pgg/goldens/` (перезапись:
   `PggTool run <file> --update-goldens` из корня репо).
 - **dungeon_geometry_generator:** быстрые сьюты (секунды) — `dungeon_geometry_generator_ir_test`, `dungeon_geometry_generator_project_test`,
   `dungeon_geometry_generator_layout_test`, `dungeon_geometry_generator_topo_test`, `dungeon_geometry_generator_d0_test`, `dungeon_geometry_generator_assets_test`,
@@ -118,7 +120,7 @@ Linux-флоу — Ninja (single-config) + CMake Presets, триплет `x64-li
   незагруженной машине). Детерминизм (N1) и стабильный порядок ключей (N6) —
   проверять тестами; чужой `format` отклонять с подсказкой (N7).
 - **dungeon_topology_generator:** `dungeon_topology_generator_tests`, `dungeon_topology_generator_parity_tests`, `preset_loader_tests`,
-  `generation_diagnostic_test`, `parity_golden_test` (данные — `test_data/`),
+  `generation_diagnostic_test`, `parity_golden_test` (данные — `tests/test_data/`),
   `benchmark_layout` (smoke-гейт).
 - Продуктовые/арт-примеры pgg — `resources/pgg/` (`lib/` и сцены) и
   минипроекты `resources/AmberEstate/`, `resources/ManorHouse/`,
@@ -135,8 +137,8 @@ Linux-флоу — Ninja (single-config) + CMake Presets, триплет `x64-li
   `src/apps/PggServe` или корпус, обновляй его, а не этот файл.**
 - Коротко: `src/libs/pgg` (ANTLR4 4.13.2; сгенерированный парсер коммитится в
   `parser_gen/`, после правок `grammar/Pgg.g4` — `tools/pgg/regen_parser.sh`),
-  ядро исполнения `src/libs/pgg/src/eval/`, тесты `src/tests/pgg/*_test.cpp` +
-  корпус `src/tests/pgg/corpus/`, CLI `PggTool` (`check`/`fmt`/`ast`/`run`/`docs`),
+  ядро исполнения `src/libs/pgg/src/eval/`, тесты `tests/pgg/*_test.cpp` +
+  корпус `tests/pgg/corpus/`, CLI `PggTool` (`check`/`fmt`/`ast`/`run`/`docs`),
   вьювер `PggViewer` (нодовая проекция + превью, `--smoke`, без TCP), демон
   `PggServe` (слоты по `.pgg`, RPC `:9878`).
 - Перед grep по спеке и ядру: `pgg_docs("<name>")` / `PggTool docs builtins` /
@@ -171,7 +173,7 @@ Linux-флоу — Ninja (single-config) + CMake Presets, триплет `x64-li
   петля — `docs/dungeon_geometry_generator/cli_v1.md`) и `src/apps/DungeonGeometryGeneratorServe` (RPC-демон с тёплыми
   слотами — `docs/dungeon_geometry_generator/mcp_v1.md`); MCP-сервер `dungeon_geometry_generator` — `tools/dungeon_geometry_generator_mcp/`
   (Python, FastMCP → DungeonGeometryGeneratorServe, pgg-слой к PggServe); тесты
-  `src/tests/dungeon_geometry_generator_*_test.cpp` + данные `src/tests/data`; слот-ассеты `assets/`;
+  `tests/dungeon_geometry_generator_*_test.cpp` + данные `tests/data`; слот-ассеты `assets/`;
   доки `docs/dungeon_geometry_generator/`; демо-проекты `projects/` (превью в DungeonGeometryGeneratorViewer, см.
   `projects/demo/README.md`).
 - Доки dungeon_geometry_generator — русские. Форматы версионируются (`dungeon-geometry-generator-ir/2`,
@@ -184,8 +186,8 @@ Linux-флоу — Ninja (single-config) + CMake Presets, триплет `x64-li
 - `src/libs/dungeon_topology_generator` — библиотека раскладок (порт Edgar-DotNet); Clipper2 тянется
   FetchContent'ом при configure (нужна сеть). `src/libs/drui` — ImGui-helpers
   вьюера. `src/apps/DungeonTopologyGeneratorViewer` — SDL3 + ImGui вьюер.
-- Паритет с оригинальным C# — `docs/level-synth/`, данные `test_data/parity`
-  (регенерируемые `actual/*.cpp.json` в .gitignore), раннер `tools/parity_runner_cs`.
+- Паритет с оригинальным C# — `docs/level-synth/`, данные `tests/test_data/parity`
+  (регенерируемые `actual/*.cpp.json` в .gitignore), раннер `tests/parity_runner_cs`.
 
 ## MCP
 

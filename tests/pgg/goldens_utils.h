@@ -1,6 +1,6 @@
 #pragma once
 
-// Golden fingerprint files (agent_tooling_plan C3): src/tests/pgg/goldens/
+// Golden fingerprint files (agent_tooling_plan C3): tests/pgg/goldens/
 // <name>.fp stores one `fingerprint <output>: <hex16>` line per run output —
 // the same format `PggTool run --fingerprint` prints and `diff --baseline`
 // reads — recorded by `PggTool run <file> --update-goldens` (from the repo
@@ -90,7 +90,7 @@ inline void expectGolden(const std::string& name, const pgg::RunResult& r) {
     std::string err;
     if (!loadGoldenFingerprints(path, golden, err)) {
         ADD_FAILURE() << err << "\nrecord the golden with: PggTool run <file.pgg> --update-goldens"
-                      << " (from the repo root; writes src/tests/pgg/goldens/<basename>.fp)";
+                      << " (from the repo root; writes tests/pgg/goldens/<basename>.fp)";
         return;
     }
     std::map<std::string, std::optional<uint64_t>> byName;

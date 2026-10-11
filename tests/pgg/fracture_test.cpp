@@ -279,8 +279,8 @@ TEST(EvalE7, FractureCorpusMatchesGoldens) {
     expectNoErrors(r);
     ASSERT_EQ(r.outputs.size(), 3u);
     // Golden structural fingerprints of rock/fractured/chunks:
-    // src/tests/pgg/goldens/e7_fracture.fp; re-record: PggTool run
-    // src/tests/pgg/corpus/e7_fracture.pgg --update-goldens.
+    // tests/pgg/goldens/e7_fracture.fp; re-record: PggTool run
+    // tests/pgg/corpus/e7_fracture.pgg --update-goldens.
     pggtest::expectGolden("e7_fracture", r);
     const pgg::Geo& fractured = *pgg::asGeo(*outputOf(r, "fractured"));
     // Three non-empty pieces: dense @island_id 0..2 on the faces.

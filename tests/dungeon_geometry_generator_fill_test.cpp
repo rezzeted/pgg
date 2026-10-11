@@ -349,7 +349,7 @@ TEST(DungeonGeometryGeneratorFill, CacheInvalidatesOnParamEdit) {
     std::string err;
     ASSERT_TRUE(loadText(base, p, err)) << err;
     p.dir = std::filesystem::path(DUNGEON_GEOMETRY_GENERATOR_ASSETS_DIR).parent_path().string();
-    p.asset_roots = {"src/tests/data/fill", "assets"};
+    p.asset_roots = {"tests/data/fill", "assets"};
     p.slots["room_fill"] = "empty_room_fill.pgg";
     p.slots["wall_body"] = "empty_wall_body.pgg";
     p.slots["facing"] = "empty_facing.pgg";
@@ -485,7 +485,7 @@ TEST(DungeonGeometryGeneratorFill, RotatedFrameEquivalence) {
 
     // Isolate the facing: every other slot gets an empty asset.
     const std::string data = DUNGEON_GEOMETRY_GENERATOR_TEST_DATA;
-    p.asset_roots = {"src/tests/data/fill", "assets"};
+    p.asset_roots = {"tests/data/fill", "assets"};
     p.slots["room_fill"] = "empty_room_fill.pgg";
     p.slots["wall_body"] = "empty_wall_body.pgg";
     p.slots["node"] = "empty_node.pgg";
@@ -800,7 +800,7 @@ dungeon_geometry_generator::Project loadDotProject(const std::string& ruleJson) 
                          p, err))
         << err;
     p.dir = std::filesystem::path(DUNGEON_GEOMETRY_GENERATOR_ASSETS_DIR).parent_path().string();
-    p.asset_roots = {"src/tests/data/fill", "assets"};
+    p.asset_roots = {"tests/data/fill", "assets"};
     p.slots["room_fill"] = "empty_room_fill.pgg";
     p.slots["wall_body"] = "empty_wall_body.pgg";
     p.slots["facing"] = "empty_facing.pgg";

@@ -195,7 +195,7 @@ bool runDungeonGeometryGeneratorServeSmokeTest(const std::string& argv0, const s
                   noSuch["data"]["diagnostics"][0].value("code", std::string{}) == "D100",
               "rpc load of a missing project -> ok:true D100");
         const json bad = call(
-            {{"op", "load"}, {"args", {{"path", "src/tests/data/d4_bad_project.json"}}}});
+            {{"op", "load"}, {"args", {{"path", "tests/data/d4_bad_project.json"}}}});
         check(bad.value("ok", false) && bad["data"].value("has_errors", false) &&
                   !bad["data"]["diagnostics"].empty() &&
                   bad["data"]["diagnostics"][0].value("code", std::string{}) == "D101",

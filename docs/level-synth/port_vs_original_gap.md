@@ -78,7 +78,7 @@
 | `Edgar.GeneralAlgorithmsTests`, `Edgar.Tests`, `Edgar.IntegrationTests`, `Edgar.PerformanceTests` | Два бинарника GTest: `dungeon_topology_generator_tests.cpp`, `dungeon_topology_generator_parity_tests.cpp` (225 тестов) |
 | Покрытие модулей по слоям + интеграции (dungeon, room shapes, mapping) | Регрессия C++ + портированные C#-юниты (geometry, graphs, КП, doors, mapping, room shapes) + интеграция graph-based генератора |
 | Производительность — BenchmarkDotNet, ручной запуск | `tools/benchmark_layout_generation.py --check` — гейт по времени/сходимости на bundled-картах |
-| Глобальный паритет с одним репозиторием | **Логический паритет на уровне сценариев**: `parity_golden_test` сравнивает выдачу C++ и C# (через `tools/parity_runner_cs`) на трёх golden-картах (размеры/структура layout), `.cs.json` эталоны закоммичены |
+| Глобальный паритет с одним репозиторием | **Логический паритет на уровне сценариев**: `parity_golden_test` сравнивает выдачу C++ и C# (через `tests/parity_runner_cs`) на трёх golden-картах (размеры/структура layout), `.cs.json` эталоны закоммичены |
 
 Имя файла `dungeon_topology_generator_parity_tests` **не** означает автоматический прогон против .NET — это массовые юниты по геометрии/графам/КП в духе GeneralAlgorithms. Реальное сравнение с C# делают suite `*CsharpParity` (портированные тесты) и `parity_golden_test` (логическое сравнение сценариев, не побайтовое).
 
