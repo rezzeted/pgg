@@ -1,8 +1,9 @@
 #pragma once
 
 // Per-run diagnostics. init() opens a fresh log file for this process in
-// <repo>/logs/DungeonGeometryGeneratorViewer/ (the repo root is the parent of the
-// located dungeon_geometry_generator assets dir; the system temp dir is the fallback),
+// <repo>/logs/DungeonGeometryGeneratorViewer/ (the repo root is found walking up
+// from the located dungeon_geometry_generator assets dir to the checkout's .git;
+// the system temp dir is the fallback),
 // adds it to spdlog's default logger (the UI Log dock lines land in the file
 // too) and installs a crash handler (POSIX: SIGSEGV/SIGABRT/SIGILL/SIGFPE/
 // SIGBUS append a signal header + backtrace to the file before re-raising).

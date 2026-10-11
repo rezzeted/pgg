@@ -60,18 +60,28 @@ std::string runStamp() {
     return buf;
 }
 
-// The repo root is the parent of the located assets dir (the codes.pgg
-// walk-up); a portable build with no assets around falls back to temp.
+// The log root is the repo checkout root: walk up from the located assets dir
+// to the dir holding .git ("parent of the assets dir" stopped being the root
+// when the pack moved to content/dgg/assets). A portable build with no
+// assets/checkout around falls back to temp.
 std::string resolveLogDir(const std::string& argv0) {
     namespace fs = std::filesystem;
     std::error_code ec;
     const std::string assets = resolve_dungeon_geometry_generator_assets(argv0, "");
     fs::path base;
     if (!assets.empty()) {
-        base = fs::path(assets).parent_path() / "logs" / "DungeonGeometryGeneratorViewer";
-    } else {
-        base = fs::temp_directory_path(ec) / "dgg-viewer-logs";
+        fs::path dir = fs::weakly_canonical(assets, ec);
+        for (int i = 0; i < 12 && !ec && !dir.empty(); ++i) {
+            if (fs::exists(dir / ".git", ec)) {
+                base = dir / "logs" / "DungeonGeometryGeneratorViewer";
+                break;
+            }
+            const fs::path parent = dir.parent_path();
+            if (parent == dir) break;
+            dir = parent;
+        }
     }
+    if (base.empty()) base = fs::temp_directory_path(ec) / "dgg-viewer-logs";
     fs::create_directories(base, ec);
     if (ec) return {};
     return base.string();
