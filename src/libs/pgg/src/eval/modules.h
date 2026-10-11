@@ -52,10 +52,11 @@ bool hasImports(const File& file);
 ModuleClosure loadModuleClosure(const File& mainFile, const std::vector<std::string>& roots,
                                 std::vector<Diagnostic>& diags);
 
-// Walks up from `from` (file or directory) looking for `<ancestor>/resources/pgg`
-// that contains `lib/`. Falls back to the process cwd. Empty if not found.
+// Walks up from `from` (file or directory) looking for `<ancestor>/content/pgg`
+// (legacy: `<ancestor>/resources/pgg`) that contains `lib/`. Falls back to the
+// process cwd. Empty if not found.
 // Tools (PggViewer, PggTool, MCP) append this so `import lib.parts` works from
-// files outside `resources/pgg/` (e.g. `resources/AmberEstate/`). The engine
+// files outside `content/pgg/` (e.g. `content/pgg/AmberEstate/`). The engine
 // itself does not add it: `runFile` still only appends the file's directory.
 std::string findProductLibRoot(const std::string& from);
 

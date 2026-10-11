@@ -122,9 +122,9 @@ Linux-флоу — Ninja (single-config) + CMake Presets, триплет `x64-li
 - **dungeon_topology_generator:** `dungeon_topology_generator_tests`, `dungeon_topology_generator_parity_tests`, `preset_loader_tests`,
   `generation_diagnostic_test`, `parity_golden_test` (данные — `tests/test_data/`),
   `benchmark_layout` (smoke-гейт).
-- Продуктовые/арт-примеры pgg — `resources/pgg/` (`lib/` и сцены) и
-  минипроекты `resources/AmberEstate/`, `resources/ManorHouse/`,
-  `resources/Mansion/`, `resources/Roads/`; не путать с тестовым корпусом.
+- Продуктовые/арт-примеры pgg — `content/pgg/`: общая библиотека `lib/`,
+  свободные сцены `scenes/`, минипроекты `AmberEstate/`, `ManorHouse/`,
+  `Mansion/`, `Roads/`; не путать с тестовым корпусом.
 
 ## PGG
 
@@ -144,7 +144,7 @@ Linux-флоу — Ninja (single-config) + CMake Presets, триплет `x64-li
 - Перед grep по спеке и ядру: `pgg_docs("<name>")` / `PggTool docs builtins` /
   `docs/pgg/cheatsheet.md`.
 - Арт-итерации: правка общего def → рендер **всех** потребителей (grep имени в
-  `resources/pgg`, `resources/AmberEstate` и `resources/Roads`); сравнение «как
+  `content/pgg`); сравнение «как
   у дома» — один кадр, где обе детали рядом; числа (`pgg_measure` / `bbox`) до
   картинки; новые грабли — сразу в cheatsheet §«Грабли»; виды — в
   `<stem>.views.json`, не в чат; коммит-единица — один визуальный эффект. С нуля
@@ -178,7 +178,7 @@ Linux-флоу — Ninja (single-config) + CMake Presets, триплет `x64-li
   `content/dgg/demo/README.md`).
 - Доки dungeon_geometry_generator — русские. Форматы версионируются (`dungeon-geometry-generator-ir/2`,
   `dungeon-geometry-generator-layout/0`); смена схемы = bump версии + N7-хинт для старой.
-- PGG-ассеты dungeon_geometry_generator используют общую библиотеку `resources/pgg/lib/` — правки
+- PGG-ассеты dungeon_geometry_generator используют общую библиотеку `content/pgg/lib/` — правки
   общих def'ов проверять рендерами всех потребителей (см. «PGG → Арт-итерации»).
 
 ## level-synth / dungeon_topology_generator

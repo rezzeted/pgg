@@ -303,7 +303,7 @@ def pgg_load(path: str, lib_roots: Optional[list[str]] = None) -> dict:
     lib_roots — корни import'ов; БЕЗ него подставляются автоматически: каталог
     ассета + <dungeon_geometry_generator>/assets (+ каталог проекта и его asset_roots, если был
     dungeon_geometry_generator_load) — этого хватает для ``import codes as c`` / ``import patterns
-    as z`` dungeon-geometry-generator-ассетов; сверху PggServe всегда дописывает свой resources/pgg.
+    as z`` dungeon-geometry-generator-ассетов; сверху PggServe всегда дописывает свой content/pgg.
     Относительные lib_roots — от корня dungeon_geometry_generator. Ответ: {diagnostics:
     [{code,line,col,warning,message}], has_errors, ms, path, session:{file}}.
     После load ``file`` в pgg_params/pgg_render/pgg_probe/pgg_docs можно

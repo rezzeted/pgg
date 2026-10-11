@@ -1,6 +1,6 @@
 ---
-description: Авторский цикл PGG в resources/pgg и минипроектах — поиск семантики, render, регрессии.
-globs: resources/pgg/**/*.pgg, resources/AmberEstate/**/*.pgg
+description: Авторский цикл PGG в content/pgg и минипроектах — поиск семантики, render, регрессии.
+globs: content/pgg/**/*.pgg, content/pgg/AmberEstate/**/*.pgg
 alwaysApply: false
 ---
 
@@ -10,7 +10,7 @@ alwaysApply: false
 
 Цикл: правка → `pgg_render(node, view=…)` (F4 перечитает файл; `pgg_load` только для нового файла или статики; без load в этом ходе — `file=`) → разница непонятна — `compare="prev"`. Форма: явный `wire:false`. Картинка ≠ ожидание — сначала `render_state`. `pgg_status` с `kind=need_build` — собрать PggServe командами из ответа и retry.
 
-Перед «готово»: `pgg_contact_sheet(views="*")` и рендер всех потребителей изменённого общего def (grep имени в `resources/pgg` и `resources/AmberEstate`).
+Перед «готово»: `pgg_contact_sheet(views="*")` и рендер всех потребителей изменённого общего def (grep имени в `content/pgg` и `content/pgg/AmberEstate`).
 
 Аргументы в одну строку: `pgg_render(node, view, target, orbit, zoom, ortho, chrome, size, compare, png)`; `pgg_probe(spec)`; `pgg_measure(node, a, b, axis)`.
 

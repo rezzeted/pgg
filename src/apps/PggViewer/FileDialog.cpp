@@ -83,12 +83,8 @@ fs::path findPggCorpusDir(const fs::path& from) {
     return findAncestorSubdir(from, fs::path("tests") / "pgg" / "corpus");
 }
 
-fs::path findPggResourcesDir(const fs::path& from) {
-    return findAncestorSubdir(from, fs::path("resources") / "pgg");
-}
-
-fs::path findPggResourcesParent(const fs::path& from) {
-    return findAncestorSubdir(from, fs::path("resources"));
+fs::path findPggContentDir(const fs::path& from) {
+    return findAncestorSubdir(from, fs::path("content") / "pgg");
 }
 
 namespace {
@@ -111,12 +107,12 @@ void fileDialogOpen(FileDialogState& st, const fs::path& startDir) {
     gotoDir(st, dir);
 
     st.bookmarks.clear();
-    const fs::path resources = findPggResourcesParent(fs::current_path(ec));
-    addBookmark(st.bookmarks, resources);
-    const fs::path examples = findPggResourcesDir(fs::current_path(ec));
-    addBookmark(st.bookmarks, examples);
-    if (!resources.empty()) {
-        const fs::path amber = resources / "AmberEstate";
+    const fs::path contentPgg = findPggContentDir(fs::current_path(ec));
+    addBookmark(st.bookmarks, contentPgg);
+    if (!contentPgg.empty()) {
+        const fs::path scenes = contentPgg / "scenes";
+        if (fs::is_directory(scenes, ec)) addBookmark(st.bookmarks, scenes);
+        const fs::path amber = contentPgg / "AmberEstate";
         if (fs::is_directory(amber, ec)) addBookmark(st.bookmarks, amber);
     }
     const fs::path corpus = findPggCorpusDir(fs::current_path(ec));

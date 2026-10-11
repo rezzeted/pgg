@@ -199,7 +199,7 @@ target?, orbit?, zoom?)` · `pgg_probe(file?, spec?, specs?)` ·
 ассета + `<dungeon_geometry_generator>/assets` (покрывает `import codes` / `import patterns` —
 единственные импорты dungeon-geometry-generator-ассетов); при загруженном dungeon-geometry-generator-проекте добавляются
 `project.dir` и его `asset_roots`. Сверху PggServe дописывает свой
-`resources/pgg`.
+`content/pgg`.
 
 Биндинги `pgg_params` переживают перечитывание файла (явный `pgg_load` и F4
 auto-reload по mtime) — PggServe восстанавливает значение по имени параметра;

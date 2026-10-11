@@ -1110,8 +1110,11 @@ std::string find_pgg_lib_root(const std::string& dungeon_geometry_generatorAsset
     fs::path cur = fs::weakly_canonical(dungeon_geometry_generatorAssets, ec);
     if (ec || cur.empty()) return {};
     for (int depth = 0; depth < 8; ++depth) {
-        const fs::path mono = cur / "resources" / "pgg";
+        const fs::path mono = cur / "content" / "pgg";
         if (fs::is_directory(mono / "lib", ec)) return mono.string();
+        // Legacy monorepo layout: the product lib lived under resources/pgg.
+        const fs::path old = cur / "resources" / "pgg";
+        if (fs::is_directory(old / "lib", ec)) return old.string();
         // Legacy standalone-dungeon_geometry_generator layout: pgg vendored as a submodule.
         const fs::path legacy = cur / "thirdparty" / "pgg" / "resources" / "pgg";
         if (fs::is_directory(legacy / "lib", ec)) return legacy.string();

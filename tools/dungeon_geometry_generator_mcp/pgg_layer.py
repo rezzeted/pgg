@@ -13,7 +13,7 @@ derived from the dungeon_geometry_generator side: the asset's own directory plus
 (covers the real ``import codes as c`` / ``import patterns as z`` of the dungeon_geometry_generator
 assets — both modules sit in ``assets/``), plus ``project.dir`` and the
 project's ``asset_roots`` once a dungeon_geometry_generator project is loaded. PggServe itself
-always appends its shipped ``resources/pgg`` on top (serve_rpc.md).
+always appends its shipped ``content/pgg`` on top (serve_rpc.md).
 """
 
 from __future__ import annotations

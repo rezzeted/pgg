@@ -278,8 +278,8 @@ bool loadFile(const std::string& path) {
     g_allDiags = g_doc.diagnostics;
     if (g_doc.file && pgg::hasImports(*g_doc.file)) {
         // Extra roots: last RPC lib_roots (sticky until the next RPC load),
-        // then the shipped product lib (resources/pgg), then the file's
-        // directory. Files outside resources/pgg can still `import lib.parts`.
+        // then the shipped product lib (content/pgg), then the file's
+        // directory. Files outside content/pgg can still `import lib.parts`.
         const std::vector<std::string> roots = importRootsForFile(resolved);
         std::vector<pgg::Diagnostic> diags;
         g_closure = std::make_unique<pgg::ModuleClosure>(pgg::loadModuleClosure(*g_doc.file, roots, diags));
@@ -721,15 +721,14 @@ void runPreview(const std::string& target) {
 }
 
 // Open... starts next to the current file; with nothing loaded — at
-// resources/ (AmberEstate sits next to the pgg examples), else corpus, else cwd.
+// content/pgg (lib, scenes and the art projects), else corpus, else cwd.
 void openFileDialog() {
     std::filesystem::path start;
     if (!g_filePath.empty()) {
         start = std::filesystem::path(g_filePath).parent_path();
     } else {
         std::error_code ec;
-        start = findPggResourcesParent(std::filesystem::current_path(ec));
-        if (start.empty()) start = findPggResourcesDir(std::filesystem::current_path(ec));
+        start = findPggContentDir(std::filesystem::current_path(ec));
         if (start.empty()) start = findPggCorpusDir(std::filesystem::current_path(ec));
     }
     fileDialogOpen(g_fileDialog, start);
@@ -1328,7 +1327,7 @@ void init() {
     if (!g_noUi) {
         simgui_desc_t imgui_desc = {};
         // The canvas draws every node box and bezier wire of the graph each
-        // frame; a ~370-node example file (resources/AmberEstate/cottage.pgg) already
+        // frame; a ~370-node example file (content/pgg/AmberEstate/cottage.pgg) already
         // exceeds the simgui default of 65536 vertices — on overflow simgui
         // silently drops the remaining ImGui command lists (side panel and
         // graph vanished, only the preview pane survived). 1M vertices = 20 MB

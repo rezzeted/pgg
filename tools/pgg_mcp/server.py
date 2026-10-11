@@ -89,8 +89,8 @@ def pgg_load(path: Optional[str] = None, source: Optional[str] = None,
     path — путь до .pgg (относительно cwd демона = корня репо, или абсолютный);
     source — текст файла целиком (пишется в tmp/pgg_rpc_source/src_N.pgg, его
     каталог становится неявным import root); lib_roots — доп. корни импортов
-    (к ним всегда дописывается resources/pgg, поэтому import lib.* работает
-    и из resources/AmberEstate без явного lib_roots).
+    (к ним всегда дописывается content/pgg, поэтому import lib.* работает
+    и из content/pgg/AmberEstate без явного lib_roots).
     snapshot=true дополнительно прогоняет outputs и записывает их фингерпринты
     как baseline для pgg_diff (в ответе snapshot=true; при ошибках файла
     baseline не пишется, snapshot=false). Без snapshot=true снимок pgg_diff
@@ -105,7 +105,7 @@ def pgg_load(path: Optional[str] = None, source: Optional[str] = None,
     pgg_load нужен только для source, смены файла или немедленной статической
     проверки. Исключение: файл, загруженный через source (temp-файл), не
     отслеживается — новый текст передаётся новым pgg_load(source=...).
-    Пример: pgg_load(path="resources/AmberEstate/cottage.pgg") → has_errors=false.
+    Пример: pgg_load(path="content/pgg/AmberEstate/cottage.pgg") → has_errors=false.
     """
     return _call("load", {"path": path, "source": source,
                           "lib_roots": with_product_lib_roots(_session.repo_root, lib_roots),
@@ -299,7 +299,7 @@ def pgg_views(file: Optional[str] = None) -> dict:
 
     file — слот. Ответ data: {file, views:[{name, node, target?, orbit?, zoom?, ...}],
     session:{file}}.
-    Пример: pgg_views() после pgg_load(path="resources/AmberEstate/spire_house.pgg").
+    Пример: pgg_views() после pgg_load(path="content/pgg/AmberEstate/spire_house.pgg").
     """
     return _call("views", _with_file({}, file))
 

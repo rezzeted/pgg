@@ -165,10 +165,14 @@ std::string walkProductLib(std::filesystem::path cur) {
     if (std::filesystem::is_regular_file(cur, ec)) cur = cur.parent_path();
     cur = std::filesystem::weakly_canonical(cur, ec);
     for (int depth = 0; depth < 16 && !cur.empty(); ++depth) {
-        const std::filesystem::path candidate = cur / "resources" / "pgg";
-        if (std::filesystem::is_directory(candidate / "lib", ec)) {
-            const std::filesystem::path canon = std::filesystem::weakly_canonical(candidate, ec);
-            return (ec ? candidate : canon).string();
+        // content/pgg is the monorepo home; resources/pgg is the legacy layout.
+        for (const std::filesystem::path rel :
+             {std::filesystem::path("content") / "pgg", std::filesystem::path("resources") / "pgg"}) {
+            const std::filesystem::path candidate = cur / rel;
+            if (std::filesystem::is_directory(candidate / "lib", ec)) {
+                const std::filesystem::path canon = std::filesystem::weakly_canonical(candidate, ec);
+                return (ec ? candidate : canon).string();
+            }
         }
         const std::filesystem::path parent = cur.parent_path();
         if (parent == cur) break;

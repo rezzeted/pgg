@@ -58,7 +58,7 @@ bool lint_asset(const std::string& slot, const std::string& asset_path,
                 const std::vector<std::string>& import_roots,
                 std::vector<SlotDiag>& diags);
 
-// R-A5 last-resort root: the PGG product lib (resources/pgg), located by
+// R-A5 last-resort root: the PGG product lib (content/pgg), located by
 // walking up from the dungeon_geometry_generator assets dir. Empty when the layout is not the repo
 // one. Callers append it after the dungeon_geometry_generator assets dir so slot assets can import
 // lib.* (N3, §9.2).

@@ -232,10 +232,12 @@ def default_repo_root(environ: Optional[Mapping[str, str]] = None) -> str:
 
 
 def product_lib_root(repo_root: str) -> Optional[str]:
-    """Shipped ``resources/pgg`` library, or None if this checkout has no lib/."""
-    lib = os.path.join(repo_root, "resources", "pgg")
-    if os.path.isdir(os.path.join(lib, "lib")):
-        return lib
+    """Shipped ``content/pgg`` library (legacy: ``resources/pgg``), or None if
+    this checkout has no lib/."""
+    for rel in (("content", "pgg"), ("resources", "pgg")):
+        lib = os.path.join(repo_root, *rel)
+        if os.path.isdir(os.path.join(lib, "lib")):
+            return lib
     return None
 
 

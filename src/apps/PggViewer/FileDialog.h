@@ -31,10 +31,6 @@ std::optional<std::filesystem::path> fileDialogDraw(FileDialogState& st, const c
 // Walks up from `from` looking for `<ancestor>/tests/pgg/corpus`; empty if not found.
 std::filesystem::path findPggCorpusDir(const std::filesystem::path& from);
 
-// Walks up from `from` looking for `<ancestor>/resources/pgg` (product/art
-// examples); empty if not found.
-std::filesystem::path findPggResourcesDir(const std::filesystem::path& from);
-
-// Walks up from `from` looking for `<ancestor>/resources` (sibling of
-// AmberEstate and `pgg/`); empty if not found.
-std::filesystem::path findPggResourcesParent(const std::filesystem::path& from);
+// Walks up from `from` looking for `<ancestor>/content/pgg` (the product lib,
+// scenes and art projects); empty if not found.
+std::filesystem::path findPggContentDir(const std::filesystem::path& from);

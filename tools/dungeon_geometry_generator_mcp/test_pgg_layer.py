@@ -383,9 +383,9 @@ class PggLayerLibRootsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             calls: list[dict] = []
             layer = self._layer(root, calls)
-            layer.load("resources/AmberEstate/cottage.pgg")  # pgg-native relative path
+            layer.load("content/pgg/AmberEstate/cottage.pgg")  # pgg-native relative path
             args = calls[0]["args"]
-            self.assertEqual(args["path"], "resources/AmberEstate/cottage.pgg")
+            self.assertEqual(args["path"], "content/pgg/AmberEstate/cottage.pgg")
             # No asset dir for an unresolved path; the dungeon_geometry_generator assets root stays.
             self.assertEqual(args["lib_roots"], [str(Path(root) / "assets")])
 

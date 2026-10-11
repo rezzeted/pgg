@@ -24,7 +24,7 @@
 
 ## Симптом
 
-В мансардном варианте коттеджа (`resources/AmberEstate/cottage_mansard.pgg`, крыша `roof.multi_gable` из `resources/AmberEstate/cottage/roof.pgg`) на торце поперечного щипца из-под ветровой доски свисала «бахрома» — 10–15 тонких вертикальных пластин ~0.12 шириной и до ~1.2 м высотой, идущих вдоль косача торца. Видна только под некоторыми углами (торец заподлицо смотрит на камеру, `yaw ≈ 255°`), на одном торце из двух.
+В мансардном варианте коттеджа (`content/pgg/AmberEstate/cottage_mansard.pgg`, крыша `roof.multi_gable` из `content/pgg/AmberEstate/cottage/roof.pgg`) на торце поперечного щипца из-под ветровой доски свисала «бахрома» — 10–15 тонких вертикальных пластин ~0.12 шириной и до ~1.2 м высотой, идущих вдоль косача торца. Видна только под некоторыми углами (торец заподлицо смотрит на камеру, `yaw ≈ 255°`), на одном торце из двух.
 
 ## Факты (установлено бисектом, 2026-09-07)
 
@@ -37,7 +37,7 @@
 
 ## Минимальный репрокейс (подтверждён — бахрома на обоих торцах)
 
-Файл (положить в `resources/pgg/_probe_mcbug.pgg` — вьюверу нужны импорты `lib.*`, `--lib` у PggViewer нет; в PggTool можно из любого места с `--lib resources/pgg`):
+Файл (положить в `content/pgg/_probe_mcbug.pgg` — вьюверу нужны импорты `lib.*`, `--lib` у PggViewer нет; в PggTool можно из любого места с `--lib content/pgg`):
 
 ```
 import lib.shapes
@@ -52,12 +52,12 @@ output mesh
 Смотреть снизу-сбоку на торцевые треугольники оболочки:
 
 ```
-caffeinate -u -t 5; _int_clion/src/apps/PggViewer/Debug/PggViewer resources/pgg/_probe_mcbug.pgg --preview=mesh --preview-orbit=245,-25,0.9 --shot=/tmp/mcbug.png
+caffeinate -u -t 5; _int_clion/src/apps/PggViewer/Debug/PggViewer content/pgg/_probe_mcbug.pgg --preview=mesh --preview-orbit=245,-25,0.9 --shot=/tmp/mcbug.png
 ```
 
 Ожидаемая картина: по нижней кромке/косачам торцевых рамок висят вертикальные плавни-полосы. Контроль (без совпадающих плоскостей): `w = 6.86 → 6.90` у внешней `gable_prism_z` и `6.84 → 6.88` у внутренней — плавни исчезают.
 
-Диагностика по биндингам: `_int_clion/src/apps/PggTool/Debug/PggTool run <file> --lib resources/pgg --probe '<binding>:table[limit=200]'` дампит @P по точкам; `--obj <dir>` — OBJ с цветами (`v x y z r g b`).
+Диагностика по биндингам: `_int_clion/src/apps/PggTool/Debug/PggTool run <file> --lib content/pgg --probe '<binding>:table[limit=200]'` дампит @P по точкам; `--obj <dir>` — OBJ с цветами (`v x y z r g b`).
 
 ## Куда смотреть в движке
 

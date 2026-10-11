@@ -5,10 +5,10 @@
 - **DungeonGeometryGenerator** — a dungeon orchestrator on top of PGG (slot assets) and dungeon_topology_generator (layout generation): project files, IR, fill, checks, OBJ export, viewer, CLI and RPC daemon. Docs: [`docs/dungeon_geometry_generator`](docs/dungeon_geometry_generator/requirements.md), demo projects under `content/dgg/`.
 - **level-synth / dungeon_topology_generator** — a C++20 port of [Edgar-DotNet](https://github.com/OndrejNepozitek/Edgar-DotNet) graph-based 2D layout generation (`src/libs/dungeon_topology_generator`), with an SDL3 + ImGui viewer (`src/apps/DungeonTopologyGeneratorViewer`). Docs: [`docs/level-synth`](docs/level-synth/README.md).
 
-| [Spire House](resources/AmberEstate/spire_house.pgg) | [Cottage](resources/AmberEstate/cottage.pgg) |
+| [Spire House](content/pgg/AmberEstate/spire_house.pgg) | [Cottage](content/pgg/AmberEstate/cottage.pgg) |
 |---|---|
 | ![Victorian house with a clock tower and tiled spire](docs/gallery/spire_house.png) | ![Timber-framed cottage with a stone ground floor](docs/gallery/cottage.png) |
-| [Inn Hotel](resources/pgg/inn_hotel.pgg) | [Stone Arch](resources/AmberEstate/stone_arch.pgg) |
+| [Inn Hotel](content/pgg/scenes/inn_hotel.pgg) | [Stone Arch](content/pgg/AmberEstate/stone_arch.pgg) |
 | ![Streamline-moderne corner hotel](docs/gallery/inn_hotel.png) | ![Ashlar arch with voussoirs](docs/gallery/stone_arch.png) |
 
 How the shots were framed and how to regenerate them: [`docs/gallery/README.md`](docs/gallery/README.md).
@@ -79,9 +79,8 @@ Generation runs in the background with stage timings and Cancel; the Log dock na
 | `src/apps/DungeonGeometryGeneratorServe` | DungeonGeometryGenerator RPC daemon: warm project slots |
 | `src/apps/DungeonTopologyGeneratorViewer` | level-synth SDL3 + ImGui viewer |
 | `tests` | gtest suites (`pgg/`, `dungeon_geometry_generator_*`, dungeon_topology_generator), test data (`data/`, `test_data/`), C# parity runner |
-| `resources/pgg` | PGG shared `lib/` and art examples (inn_hotel, clocktower, …) |
-| `resources/AmberEstate` | Estate mini-project: cottages, spire house, church, stone arch, props |
-| `resources/Mansion` | Brick-style mansion built from photo references (`reference/`, `analysis.md`) |
+| `content/pgg` | PGG content: shared `lib/`, demo `scenes/`, art projects (`AmberEstate/`, `ManorHouse/`, `Mansion/`, `Roads/`) |
+| `resources/fonts` | App fonts (Font Awesome), copied next to the viewers by CMake |
 | `resources/dungeon_topology_generator_gui` | level-synth viewer data (MapDescriptions, Images, …) |
 | `content/dgg` | DungeonGeometryGenerator: slot asset pack (`assets/`) and demo projects (`demo/`, `iso/`) |
 | `docs/pgg` | PGG language spec, implementation notes, cheatsheet, RPC contract |
@@ -112,9 +111,9 @@ After changing `src/libs/pgg/grammar/Pgg.g4`, run `tools/pgg/regen_parser.sh` (t
 ## Tools
 
 ```sh
-PggTool check resources/AmberEstate/cottage.pgg
+PggTool check content/pgg/AmberEstate/cottage.pgg
 PggTool docs builtins
-PggViewer resources/AmberEstate/spire_house.pgg
+PggViewer content/pgg/AmberEstate/spire_house.pgg
 PggServe                                  # RPC 127.0.0.1:9878
 DungeonGeometryGeneratorCli validate content/dgg/demo/project.json
 DungeonGeometryGeneratorCli export content/dgg/iso/project.json -o tmp/iso_export

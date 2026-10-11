@@ -22,4 +22,4 @@ alwaysApply: true
 Write git commit messages in English so history stays consistent.
 ```
 
-`.pgg` comments follow the surrounding file (art examples in `resources/pgg` are Russian).
+`.pgg` comments follow the surrounding file (art examples in `content/pgg` are Russian).

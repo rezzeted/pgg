@@ -191,7 +191,7 @@ bool runPggServeSmokeTest() {
               "rpc render fails headless with no_gpu");
 
         const nlohmann::json spire =
-            call({{"op", "load"}, {"args", {{"path", findRepoRoot() + "/resources/AmberEstate/spire_house.pgg"}}}});
+            call({{"op", "load"}, {"args", {{"path", findRepoRoot() + "/content/pgg/AmberEstate/spire_house.pgg"}}}});
         check(spire.value("ok", false) && !spire["data"].value("has_errors", true),
               "rpc load of spire_house.pgg");
         const nlohmann::json views = call({{"op", "views"}, {"args", nlohmann::json::object()}});
@@ -208,7 +208,7 @@ bool runPggServeSmokeTest() {
         const nlohmann::json amber = call(
             {{"op", "load"},
              {"args",
-              {{"path", findRepoRoot() + "/resources/AmberEstate/environment/umbrella_table.pgg"}}}});
+              {{"path", findRepoRoot() + "/content/pgg/AmberEstate/environment/umbrella_table.pgg"}}}});
         check(amber.value("ok", false) && !amber["data"].value("has_errors", true),
               "rpc load of AmberEstate/umbrella_table.pgg without lib_roots");
 
