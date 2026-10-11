@@ -122,6 +122,7 @@ Linux-флоу — Ninja (single-config) + CMake Presets, триплет `x64-li
 - **dungeon_topology_generator:** `dungeon_topology_generator_tests`, `dungeon_topology_generator_parity_tests`, `preset_loader_tests`,
   `generation_diagnostic_test`, `parity_golden_test` (данные — `tests/test_data/`),
   `benchmark_layout` (smoke-гейт).
+- **village_topology_generator:** `village_topology_generator_test` (секунды).
 - Продуктовые/арт-примеры pgg — `content/pgg/`: общая библиотека `lib/`,
   свободные сцены `scenes/`, минипроекты `AmberEstate/`, `ManorHouse/`,
   `Mansion/`, `Roads/`; не путать с тестовым корпусом.
@@ -189,6 +190,17 @@ Linux-флоу — Ninja (single-config) + CMake Presets, триплет `x64-li
 - Паритет с оригинальным C# — `docs/level-synth/`, данные `tests/test_data/parity`
   (регенерируемые `actual/*.cpp.json` в .gitignore), раннер `tests/parity_runner_cs`.
 
+## VillageTopologyGenerator
+
+- Генератор топологии малых поселений (10–50 построек, эстетика
+  Stardew Valley / Graveyard Keeper): терраин → анализ рельефа → дорожный
+  скелет (least-cost по cost field) → burgage-участки → размещение ростера
+  построек. Геометрия построек — PGG поверх его IR (по образцу DGG).
+- Библиотека `src/libs/village_topology_generator` (конвейер V1–V6, этапы S1–S6).
+- Нормативный документ — `docs/village_topology_generator/requirements.md`;
+  справочник технологий — `docs/village_topology_generator/references.md`.
+- Тесты: `village_topology_generator_test`.
+
 ## MCP
 
 Два сервера в `.mcp.json` / `.cursor/mcp.json`:
@@ -216,3 +228,6 @@ Linux-флоу — Ninja (single-config) + CMake Presets, триплет `x64-li
 - `docs/mcp_servers.md` — MCP-серверы репозитория.
 - `docs/dungeon_geometry_generator/requirements.md` — нормативный документ dungeon_geometry_generator.
 - `docs/level-synth/README.md` — level-synth: что это и история порта.
+- `docs/village_topology_generator/requirements.md` — нормативный документ
+  village_topology_generator; `docs/village_topology_generator/references.md` —
+  справочник технологий генерации поселений.

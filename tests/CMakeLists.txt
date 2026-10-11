@@ -150,3 +150,10 @@ target_link_libraries(benchmark_layout PRIVATE dungeon_topology_generator yaml-c
 # NOTE: dense maps (9/17/41vertices, corridors) do not converge in reasonable time yet —
 # tracked as a separate performance investigation; see docs/level-synth/parity_next_steps_plan.md (этап H).
 add_test(NAME BenchmarkLayout.Smoke COMMAND benchmark_layout --map tutorial_basic.yml --iterations 5 --threshold-ms 30000)
+
+# --- village_topology_generator tests ---
+add_executable(village_topology_generator_test village_topology_generator_test.cpp)
+target_link_libraries(village_topology_generator_test PRIVATE village_topology_generator GTest::gtest_main)
+target_compile_features(village_topology_generator_test PRIVATE cxx_std_20)
+set_property(TARGET village_topology_generator_test PROPERTY FOLDER tests)
+gtest_discover_tests(village_topology_generator_test)

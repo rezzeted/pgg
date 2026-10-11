@@ -1,0 +1,17 @@
+# village_topology_generator: settlement topology pipeline V1-V6
+# (docs/village_topology_generator/requirements.md).
+add_library(village_topology_generator STATIC
+    pch.h
+    terrain.h
+    terrain.cpp
+    analysis.h
+    analysis.cpp
+    anchors.h
+    anchors.cpp
+    roads.h
+    roads.cpp
+)
+target_include_directories(village_topology_generator PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+target_precompile_headers(village_topology_generator PRIVATE pch.h)
+target_compile_features(village_topology_generator PUBLIC cxx_std_20)
+set_property(TARGET village_topology_generator PROPERTY FOLDER libs)
