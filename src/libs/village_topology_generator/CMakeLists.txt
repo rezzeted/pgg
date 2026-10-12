@@ -10,6 +10,8 @@ add_library(village_topology_generator STATIC
     anchors.cpp
     roads.h
     roads.cpp
+    parcels.h
+    parcels.cpp
 )
 target_include_directories(village_topology_generator PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_precompile_headers(village_topology_generator PRIVATE pch.h)

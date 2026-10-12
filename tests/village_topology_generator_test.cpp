@@ -11,6 +11,7 @@
 
 #include "analysis.h"
 #include "anchors.h"
+#include "parcels.h"
 #include "roads.h"
 #include "terrain.h"
 
@@ -493,6 +494,120 @@ TEST(VillageSkeleton, TrunkDeterministic) {
     ASSERT_EQ(n1.roads.size(), n2.roads.size());
     for (size_t i = 0; i < n1.roads.size(); ++i) {
         EXPECT_EQ(n1.roads[i].cells, n2.roads[i].cells);
+    }
+}
+
+RoadNetwork make_straight_road_network(int y = 16, int x0 = 2, int x1 = 28) {
+    RoadNetwork net;
+    RoadPath road;
+    for (int x = x0; x <= x1; ++x) {
+        road.cells.emplace_back(x, y);
+    }
+    net.roads.push_back(std::move(road));
+    return net;
+}
+
+TEST(VillageParcels, StraightRoadBothSides) {
+    const Terrain t = make_flat_terrain(32, 32);
+    const Analysis a = analyze_terrain(t);
+    const auto net = make_straight_road_network();  // 27 cells at y=16
+    ParcelParams params;
+    params.front_width = 5;
+    params.max_depth = 5;
+    params.min_depth = 2;
+    const auto parcels = grow_parcels(a, net, params);
+    // 27 front cells / 5 per lot = 5 lots per side; leftover 2 < min_front 3.
+    ASSERT_EQ(parcels.size(), 10u);
+    for (const auto& p : parcels) {
+        EXPECT_EQ(p.road_index, 0);
+        EXPECT_EQ(p.front.size(), 5u);
+        EXPECT_EQ(p.cells.size(), 25u);
+        const int front_y = p.side == 1 ? 17 : 15;
+        for (const auto& [x, y] : p.front) {
+            EXPECT_EQ(y, front_y);
+        }
+    }
+    // Side +1 fronts come first, in path order: x chunks 2..6, 7..11, ...
+    EXPECT_EQ(parcels[0].side, 1);
+    EXPECT_EQ(parcels[0].front.front(), std::make_pair(2, 17));
+    EXPECT_EQ(parcels[0].front.back(), std::make_pair(6, 17));
+    EXPECT_EQ(parcels[4].front.front(), std::make_pair(22, 17));
+    EXPECT_EQ(parcels[5].side, -1);
+    EXPECT_EQ(parcels[5].front.front(), std::make_pair(2, 15));
+}
+
+TEST(VillageParcels, DepthStopsAtWater) {
+    Terrain t = make_flat_terrain(32, 32);
+    for (int x = 0; x < 32; ++x) {
+        t.heights[static_cast<size_t>(20) * 32 + x] = 0.0;  // water row y=20
+    }
+    const Analysis a = analyze_terrain(t);
+    const auto net = make_straight_road_network();
+    ParcelParams params;
+    params.front_width = 5;
+    params.max_depth = 5;
+    params.min_depth = 2;
+    params.max_slope = 1000.0;  // isolate water blocking from shore slope
+    const auto parcels = grow_parcels(a, net, params);
+    ASSERT_EQ(parcels.size(), 10u);
+    int shallow = 0;
+    int deep = 0;
+    for (const auto& p : parcels) {
+        if (p.side == 1) {
+            // Towards water: y=17..19 buildable, y=20 blocks -> depth 3.
+            EXPECT_EQ(p.cells.size(), 15u);
+            ++shallow;
+            for (const auto& [x, y] : p.cells) {
+                EXPECT_LT(y, 20);
+            }
+        } else {
+            EXPECT_EQ(p.cells.size(), 25u);
+            ++deep;
+        }
+    }
+    EXPECT_EQ(shallow, 5);
+    EXPECT_EQ(deep, 5);
+}
+
+TEST(VillageParcels, NoOverlapAndDeterministic) {
+    TerrainParams p;
+    p.width = 64;
+    p.height = 64;
+    p.seed = 7;
+    p.water_level = 9.0;
+    const Terrain t = generate_terrain(p);
+    const Analysis a = analyze_terrain(t);
+    const auto center = pick_center(a);
+    std::vector<std::pair<int, int>> anchors;
+    for (const auto& an : pick_edge_anchors(t, a)) {
+        anchors.push_back(an.cell);
+    }
+    const auto net = grow_skeleton(a, center, anchors);
+
+    const auto run = [&]() { return grow_parcels(a, net); };
+    const auto parcels1 = run();
+    const auto parcels2 = run();
+    ASSERT_EQ(parcels1.size(), parcels2.size());
+    ASSERT_FALSE(parcels1.empty());
+    for (size_t i = 0; i < parcels1.size(); ++i) {
+        EXPECT_EQ(parcels1[i].road_index, parcels2[i].road_index);
+        EXPECT_EQ(parcels1[i].side, parcels2[i].side);
+        EXPECT_EQ(parcels1[i].cells, parcels2[i].cells);
+    }
+
+    // No cell is claimed by two lots; no lot cell is water or road.
+    std::set<std::pair<int, int>> road_cells;
+    for (const auto& r : net.roads) {
+        road_cells.insert(r.cells.begin(), r.cells.end());
+    }
+    std::set<std::pair<int, int>> seen;
+    for (const auto& parcel : parcels1) {
+        ASSERT_FALSE(parcel.cells.empty());
+        for (const auto& c : parcel.cells) {
+            EXPECT_TRUE(seen.insert(c).second) << "overlap at " << c.first << "," << c.second;
+            EXPECT_FALSE(t.is_water(c.first, c.second));
+            EXPECT_EQ(road_cells.count(c), 0u);
+        }
     }
 }
 
