@@ -164,8 +164,17 @@ JSON, `format: "village-topology-generator-layout/0"`:
 - **S3 (сделано):** V5 (парцелы: burgage-участки вдоль обеих сторон каждой
   дороги, фронт-чанки заданной ширины, глубина лучами до препятствия,
   прямоугольные участки без пересечений).
-- **S4:** V6 (ростер, размещение, проверки) + IR JSON + fingerprint-голдены.
+- **S4 (сделано):** V6 (ростер как структура в коде: тип + предикаты места
+  `near_water`/`near_forest`/`near_center`/`on_hill` + связи `requires_types`;
+  размещение бэктрекингом «наиболее constrained первым», недоступные
+  кандидаты — в `unplaced`; проверки `validate_roster`/`validate_placement`)
+  + Layout IR JSON (`village-topology-generator-layout/0`, метрические
+  координаты; класс дороги в v1 всегда `"street"`; `zones` — пустой
+  placeholder; неразмещённые постройки в IR не попадают) + fingerprint
+  (FNV-1a64 канонического dump) голдены `tests/village_topology_generator_goldens/seed*.fp`
+  (перезапись: `VTG_UPDATE_GOLDENS=1`).
 - **S5:** SDL3/ImGui-вьюер по образцу DungeonTopologyGeneratorViewer.
+
 - **S6:** мост в геометрию: оркестратор + PGG-ассеты построек
   (по образцу dungeon_geometry_generator fill).
 

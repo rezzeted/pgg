@@ -5,13 +5,17 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
+#include <fstream>
 #include <limits>
 #include <set>
 #include <utility>
 
 #include "analysis.h"
 #include "anchors.h"
+#include "layout_ir.h"
 #include "parcels.h"
+#include "placement.h"
 #include "roads.h"
 #include "terrain.h"
 
@@ -608,6 +612,200 @@ TEST(VillageParcels, NoOverlapAndDeterministic) {
             EXPECT_FALSE(t.is_water(c.first, c.second));
             EXPECT_EQ(road_cells.count(c), 0u);
         }
+    }
+}
+
+TEST(VillagePlacement, ValidateRosterCatchesMissingLink) {
+    Roster roster;
+    roster.push_back({"bakery", {}, {"mill"}});
+    auto violations = validate_roster(roster);
+    ASSERT_EQ(violations.size(), 1u);
+    EXPECT_NE(violations[0].find("mill"), std::string::npos);
+
+    roster.push_back({"mill", {SiteReq::near_water}, {}});
+    EXPECT_TRUE(validate_roster(roster).empty());
+}
+
+TEST(VillagePlacement, CandidatesRespectSiteReqs) {
+    Terrain t = make_flat_terrain(32, 32);
+    for (int x = 0; x < 32; ++x) {
+        t.heights[static_cast<size_t>(20) * 32 + x] = 0.0;  // water row y=20
+    }
+    const Analysis a = analyze_terrain(t);
+    const auto net = make_straight_road_network();  // y=16
+    ParcelParams pp;
+    pp.front_width = 5;
+    pp.max_depth = 5;
+    pp.min_depth = 2;
+    pp.max_slope = 1000.0;
+    const auto parcels = grow_parcels(a, net, pp);
+    ASSERT_EQ(parcels.size(), 10u);
+
+    PlacementParams params;
+    params.water_near = 2.0;  // only the side facing the water qualifies
+
+    RosterItem house;
+    house.type = "house";
+    EXPECT_EQ(candidate_parcels(t, a, parcels, house, {16, 16}, params).size(), 10u);
+
+    RosterItem mill;
+    mill.type = "mill";
+    mill.site = {SiteReq::near_water};
+    const auto cand = candidate_parcels(t, a, parcels, mill, {16, 16}, params);
+    ASSERT_EQ(cand.size(), 5u);
+    for (const int ci : cand) {
+        EXPECT_EQ(parcels[ci].side, 1);  // y=17..19 side, 1 cell from water
+    }
+}
+
+TEST(VillagePlacement, PlaceRosterAssignsDistinctParcels) {
+    Terrain t = make_flat_terrain(32, 32);
+    for (int x = 0; x < 32; ++x) {
+        t.heights[static_cast<size_t>(20) * 32 + x] = 0.0;
+    }
+    const Analysis a = analyze_terrain(t);
+    const auto net = make_straight_road_network();
+    ParcelParams pp;
+    pp.front_width = 5;
+    pp.max_depth = 5;
+    pp.min_depth = 2;
+    pp.max_slope = 1000.0;
+    const auto parcels = grow_parcels(a, net, pp);
+
+    Roster roster;
+    roster.push_back({"mill", {SiteReq::near_water}, {}});
+    roster.push_back({"bakery", {}, {"mill"}});
+    roster.push_back({"house", {}, {}});
+    roster.push_back({"house", {}, {}});
+
+    PlacementParams params;
+    params.water_near = 2.0;
+    const auto r1 = place_roster(t, a, parcels, roster, {16, 16}, params);
+    const auto r2 = place_roster(t, a, parcels, roster, {16, 16}, params);
+    ASSERT_TRUE(r1.complete);
+    ASSERT_EQ(r1.buildings.size(), 4u);
+    EXPECT_TRUE(validate_placement(roster, r1).empty());
+    // Mill on a water-side parcel, all parcels distinct.
+    EXPECT_EQ(parcels[r1.buildings[0].parcel_index].side, 1);
+    std::set<int> used;
+    for (const auto& b : r1.buildings) {
+        EXPECT_TRUE(used.insert(b.parcel_index).second);
+        EXPECT_EQ(parcels[b.parcel_index].front[parcels[b.parcel_index].front.size() / 2], b.cell);
+    }
+    // Deterministic: identical assignment on a second run.
+    for (size_t i = 0; i < r1.buildings.size(); ++i) {
+        EXPECT_EQ(r1.buildings[i].parcel_index, r2.buildings[i].parcel_index);
+        EXPECT_EQ(r1.buildings[i].cell, r2.buildings[i].cell);
+        EXPECT_EQ(r1.buildings[i].facing, r2.buildings[i].facing);
+    }
+}
+
+TEST(VillagePlacement, UnplacedWhenNoCandidates) {
+    const Terrain t = make_flat_terrain(32, 32);  // no water at all
+    const Analysis a = analyze_terrain(t);
+    const auto net = make_straight_road_network();
+    ParcelParams pp;
+    pp.front_width = 5;
+    pp.max_depth = 5;
+    pp.min_depth = 2;
+    const auto parcels = grow_parcels(a, net, pp);
+    ASSERT_FALSE(parcels.empty());
+
+    Roster roster;
+    roster.push_back({"mill", {SiteReq::near_water}, {}});
+    roster.push_back({"bakery", {}, {"mill"}});
+    const auto res = place_roster(t, a, parcels, roster, {16, 16});
+    EXPECT_FALSE(res.complete);
+    ASSERT_EQ(res.unplaced.size(), 1u);
+    EXPECT_EQ(res.unplaced[0], 0);  // the mill
+    EXPECT_GE(res.buildings[1].parcel_index, 0);  // bakery still placed
+
+    const auto violations = validate_placement(roster, res);
+    ASSERT_EQ(violations.size(), 1u);
+    EXPECT_NE(violations[0].find("unplaced"), std::string::npos);
+}
+
+// Full pipeline on a fixed seed -> Layout IR (golden fingerprint input).
+struct PipelineResult {
+    TerrainParams terrain_params;
+    std::vector<Anchor> anchors;
+    RoadNetwork network;
+    std::vector<Parcel> parcels;
+    PlacementResult placement;
+    nlohmann::json ir;
+};
+
+PipelineResult run_pipeline(uint64_t seed) {
+    PipelineResult out;
+    TerrainParams& tp = out.terrain_params;
+    tp.width = 64;
+    tp.height = 64;
+    tp.seed = seed;
+    tp.water_level = 9.0;
+    const Terrain t = generate_terrain(tp);
+    const Analysis a = analyze_terrain(t);
+
+    const auto center = pick_center(a);
+    out.anchors.push_back({AnchorKind::center, center, a.attractiveness_at(center.first, center.second)});
+    if (const auto ws = pick_water_site(t, a, center)) {
+        out.anchors.push_back({AnchorKind::water_site, *ws, a.attractiveness_at(ws->first, ws->second)});
+    }
+    std::vector<std::pair<int, int>> edge;
+    for (const auto& an : pick_edge_anchors(t, a)) {
+        out.anchors.push_back(an);
+        edge.push_back(an.cell);
+    }
+    if (const auto ws = pick_water_site(t, a, center)) {
+        edge.push_back(*ws);  // the mill site also gets a road
+    }
+    out.network = grow_skeleton(a, center, edge);
+    out.parcels = grow_parcels(a, out.network);
+
+    Roster roster;
+    roster.push_back({"mill", {SiteReq::near_water}, {}});
+    roster.push_back({"bakery", {}, {"mill"}});
+    roster.push_back({"tavern", {SiteReq::near_center}, {}});
+    roster.push_back({"well", {SiteReq::near_center}, {}});
+    for (int i = 0; i < 6; ++i) roster.push_back({"house", {}, {}});
+    out.placement = place_roster(t, a, out.parcels, roster, center);
+    out.ir = build_layout_ir(tp, out.network, out.parcels, out.placement, out.anchors);
+    return out;
+}
+
+TEST(VillageLayoutIR, FormatAndDeterminism) {
+    const auto p1 = run_pipeline(11);
+    const auto p2 = run_pipeline(11);
+    EXPECT_EQ(p1.ir["format"], kLayoutFormat);
+    EXPECT_FALSE(p1.ir["roads"].empty());
+    EXPECT_FALSE(p1.ir["parcels"].empty());
+    EXPECT_FALSE(p1.ir["buildings"].empty());
+    EXPECT_EQ(canonical_layout_json(p1.ir), canonical_layout_json(p2.ir));
+    EXPECT_EQ(layout_fingerprint(p1.ir), layout_fingerprint(p2.ir));
+    // Every emitted building references a valid parcel and keeps its roster id.
+    for (const auto& b : p1.ir["buildings"]) {
+        const int parcel = b["parcel"].get<int>();
+        EXPECT_GE(parcel, 0);
+        EXPECT_LT(parcel, static_cast<int>(p1.parcels.size()));
+        EXPECT_EQ(b["parcel"].get<int>(), p1.placement.buildings[b["id"].get<int>()].parcel_index);
+    }
+}
+
+TEST(VillageLayoutIR, GoldenFingerprints) {
+#ifndef VTG_GOLDENS_DIR
+#define VTG_GOLDENS_DIR "tests/village_topology_generator_goldens"
+#endif
+    const bool update = std::getenv("VTG_UPDATE_GOLDENS") != nullptr;
+    for (const uint64_t seed : {11ull, 22ull}) {
+        const auto p = run_pipeline(seed);
+        const std::string name = std::string(VTG_GOLDENS_DIR) + "/seed" + std::to_string(seed) + ".fp";
+        const std::string actual = fingerprint_hex(layout_fingerprint(p.ir)) + "\n";
+        if (update) {
+            std::ofstream(name) << actual;
+        }
+        std::ifstream in(name);
+        ASSERT_TRUE(in.good()) << "missing golden " << name << " (run with VTG_UPDATE_GOLDENS=1)";
+        std::string expected((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        EXPECT_EQ(actual, expected) << "fingerprint drift at seed " << seed;
     }
 }
 
