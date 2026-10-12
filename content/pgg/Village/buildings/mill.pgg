@@ -1,0 +1,46 @@
+param w: f32 = 10.0
+param d: f32 = 12.0
+param rng_seed: int = 1
+
+import lib.shapes as shapes
+
+# Village building asset (village_geometry_generator S6): windmill — tapered
+# 8-gon tower, cone cap, four blades on the facade. Contract: facade +Z,
+# base y=0, centered in XZ; w/d — parcel front/depth in meters.
+# Groups (faces): wall, roof, wood.
+# Output: mesh (geo<mesh>).
+
+root_rng = rng_from_seed(rng_seed)
+probe = mesh_line(count = 1, length = 0.0)
+
+tower_h = 7.5 + value(random(lo = 0.0, hi = 1.5, rng = split_rng(root_rng, key = "h"), counter = 0), on = probe)
+r0 = min(w, d) * 0.16 + 0.8
+r1 = r0 * 0.62
+
+tower = shapes.ngon_frustum(y0 = 0.0, y1 = tower_h, r0 = r0, r1 = r1, sides = 8, grp = "wall")
+cap = shapes.ngon_frustum(y0 = tower_h - 0.05, y1 = tower_h + 1.6, r0 = r1 + 0.35, r1 = 0.12, sides = 8, grp = "roof")
+
+# Blades: four planks on a hub over the facade (+Z), angle from the seed.
+blade_len = r0 * 2.2
+hub_h = tower_h + 0.6
+hub_z = r1 + 0.55
+angle0 = value(random(lo = 0.0, hi = 45.0, rng = split_rng(root_rng, key = "blades"), counter = 0), on = probe)
+
+def blade(angle_deg: f32, len: f32, hh: f32, hz: f32) -> (out: geo<mesh>) {
+    """Одно крыло мельницы: планка от хаба вверх, повёрнутая вокруг Z."""
+    b0 = box(size = vec3(0.22, len, 0.08))
+    b1 = transform(b0, translate = vec3(0, len * 0.5 + 0.3, 0))
+    b2 = transform(b1, rotate = vec3(0, 0, angle_deg))
+    out = mark(transform(b2, translate = vec3(0, hh, hz)), "wood", where = true, domain = faces)
+}
+
+b0 = blade(angle_deg = angle0, len = blade_len, hh = hub_h, hz = hub_z)
+b1 = blade(angle_deg = angle0 + 90.0, len = blade_len, hh = hub_h, hz = hub_z)
+b2 = blade(angle_deg = angle0 + 180.0, len = blade_len, hh = hub_h, hz = hub_z)
+b3 = blade(angle_deg = angle0 + 270.0, len = blade_len, hh = hub_h, hz = hub_z)
+hub = mark(transform(box(size = vec3(0.4, 0.4, 0.9)), translate = vec3(0, hub_h, hub_z - 0.3)), "wood", where = true, domain = faces)
+
+door = mark(transform(box(size = vec3(0.9, 1.9, 0.1)), translate = vec3(0, 0.95, r0 * 0.95)), "wood", where = true, domain = faces)
+
+mesh = merge(merge(merge(tower, cap), merge(merge(b0, b1), merge(b2, b3))), merge(hub, door))
+output mesh

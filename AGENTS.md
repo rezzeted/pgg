@@ -201,7 +201,12 @@ Linux-флоу — Ninja (single-config) + CMake Presets, триплет `x64-li
   справочник технологий — `docs/village_topology_generator/references.md`.
 - Вьюер `src/apps/VillageTopologyGeneratorViewer` (SDL3 + ImGui по образцу
   DungeonTopologyGeneratorViewer; headless-прогон `--smoke`).
-- Тесты: `village_topology_generator_test` + `VillageTopologyGeneratorViewer_smoke`.
+- Мост в геометрию: `src/libs/village_geometry_generator` (Layout IR → PGG →
+  общий меш), ассеты построек `content/pgg/Village/buildings/` (контракт:
+  фасад +Z, база y=0, output `mesh`), `src/apps/VillageGeometryGeneratorCli`
+  (IR JSON → OBJ, `--selftest`).
+- Тесты: `village_topology_generator_test`, `village_geometry_generator_test`,
+  `VillageTopologyGeneratorViewer_smoke`, `VillageGeometryGeneratorCli_smoke`.
 
 ## MCP
 

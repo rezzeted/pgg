@@ -64,6 +64,22 @@ Generation runs in the background with stage timings and Cancel; the Log dock na
 
 ![Progress strip with spinner, fill unit counter and Cancel; stage log with timings](docs/dungeon_geometry_generator/images/viewer_generating.png)
 
+## VillageTopologyGenerator
+
+**village_topology_generator** builds the topology of a small settlement (10–50 buildings,
+Stardew Valley / Graveyard Keeper scale): seeded terrain (V1) → relief analysis with a road
+cost field (V2) → anchors (V3) → least-cost road skeleton with Y-junctions (V4) → burgage
+parcels along the frontages (V5) → constraint-based roster placement (V6). The output is a
+versioned Layout IR JSON (`village-topology-generator-layout/0`); building geometry is PGG
+(`content/pgg/Village/buildings/`, one asset per type) assembled by **village_geometry_generator**
+into a merged world mesh. Docs: [`docs/village_topology_generator`](docs/village_topology_generator/requirements.md).
+
+**VillageTopologyGeneratorViewer** (`src/apps/VillageTopologyGeneratorViewer`, SDL3 + ImGui)
+renders the whole pipeline on a pannable map — terrain texture, roads, parcels, building
+markers with facade arrows, anchors — with per-stage timings in the log and IR JSON export;
+`--smoke` runs headless. **VillageGeometryGeneratorCli** turns an IR file into an OBJ
+(`--selftest` runs topology + geometry end to end).
+
 | Path | What it is |
 |---|---|
 | `src/libs/pgg` | PGG library: parser (ANTLR4 4.13.2), AST, execution core |
@@ -78,8 +94,12 @@ Generation runs in the background with stage timings and Cancel; the Log dock na
 | `src/apps/DungeonGeometryGeneratorCli` | DungeonGeometryGenerator machine loop: `validate` / `layout` / `fill` / `export` / `check` |
 | `src/apps/DungeonGeometryGeneratorServe` | DungeonGeometryGenerator RPC daemon: warm project slots |
 | `src/apps/DungeonTopologyGeneratorViewer` | level-synth SDL3 + ImGui viewer |
+| `src/libs/village_topology_generator` | Settlement topology pipeline: terrain, analysis, anchors, road skeleton, parcels, placement → Layout IR |
+| `src/libs/village_geometry_generator` | Layout IR → PGG building assets → merged world mesh |
+| `src/apps/VillageTopologyGeneratorViewer` | Settlement map viewer (SDL3 + ImGui, `--smoke` headless) |
+| `src/apps/VillageGeometryGeneratorCli` | Layout IR JSON → OBJ (`--selftest` runs the whole chain) |
 | `tests` | gtest suites (`pgg/`, `dungeon_geometry_generator_*`, dungeon_topology_generator), test data (`data/`, `test_data/`), C# parity runner |
-| `content/pgg` | PGG content: shared `lib/`, demo `scenes/`, art projects (`AmberEstate/`, `ManorHouse/`, `Mansion/`, `Roads/`) |
+| `content/pgg` | PGG content: shared `lib/`, demo `scenes/`, art projects (`AmberEstate/`, `ManorHouse/`, `Mansion/`, `Roads/`), village building assets (`Village/buildings/`) |
 | `resources/fonts` | App fonts (Font Awesome), copied next to the viewers by CMake |
 | `resources/dungeon_topology_generator_gui` | level-synth viewer data (MapDescriptions, Images, …) |
 | `content/dgg` | DungeonGeometryGenerator: slot asset pack (`assets/`) and demo projects (`demo/`, `iso/`) |

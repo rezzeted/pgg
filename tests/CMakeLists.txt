@@ -159,3 +159,13 @@ target_compile_definitions(village_topology_generator_test PRIVATE
     VTG_GOLDENS_DIR="${CMAKE_SOURCE_DIR}/tests/village_topology_generator_goldens")
 set_property(TARGET village_topology_generator_test PROPERTY FOLDER tests)
 gtest_discover_tests(village_topology_generator_test)
+
+# --- village_geometry_generator tests ---
+add_executable(village_geometry_generator_test village_geometry_generator_test.cpp)
+target_link_libraries(village_geometry_generator_test PRIVATE
+    village_geometry_generator village_topology_generator GTest::gtest_main)
+target_compile_features(village_geometry_generator_test PRIVATE cxx_std_20)
+target_compile_definitions(village_geometry_generator_test PRIVATE
+    VILLAGE_CONTENT_PGG="${CMAKE_SOURCE_DIR}/content/pgg")
+set_property(TARGET village_geometry_generator_test PROPERTY FOLDER tests)
+gtest_discover_tests(village_geometry_generator_test)

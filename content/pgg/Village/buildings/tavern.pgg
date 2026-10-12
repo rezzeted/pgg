@@ -1,0 +1,34 @@
+param w: f32 = 10.0
+param d: f32 = 12.0
+param rng_seed: int = 1
+
+# Village building asset (village_geometry_generator S6): tavern — wide
+# two-storey massing + gable roof + door + hanging sign. Contract: facade +Z,
+# base y=0, centered in XZ; w/d — parcel front/depth in meters.
+# Groups (faces): wall, roof, wood.
+# Output: mesh (geo<mesh>).
+
+root_rng = rng_from_seed(rng_seed)
+probe = mesh_line(count = 1, length = 0.0)
+
+bw = min(w * 0.62, 9.0)
+bd = min(d * 0.5, 7.0)
+bh = 5.2 + value(random(lo = 0.0, hi = 0.4, rng = split_rng(root_rng, key = "h"), counter = 0), on = probe)
+ov = 0.4
+
+body = mark(transform(box(size = vec3(bw, bh, bd)), translate = vec3(0, bh * 0.5, 0)), "wall", where = true, domain = faces)
+
+rise = bd * 0.45
+hd = bd * 0.5 + ov
+prof = set_position(mesh_line(count = 3, length = 0.0), pos = @index == 0 ? vec3(0.0 - hd, 0.0 - 0.12, 0) : (@index == 1 ? vec3(hd, 0.0 - 0.12, 0) : vec3(0, rise, 0)))
+path = transform(mesh_line(count = 2, length = bw + 2.0 * ov, dir = (1, 0, 0)), translate = vec3(0.0 - (bw * 0.5 + ov), bh, 0))
+roof = mark(compute_normals(sweep(path, profile = prof), mode = flat), "roof", where = true, domain = faces)
+
+door = mark(transform(box(size = vec3(1.2, 2.3, 0.12)), translate = vec3(0, 1.15, bd * 0.5)), "wood", where = true, domain = faces)
+
+# Hanging sign: bracket bar over the door + plank.
+bracket = mark(transform(box(size = vec3(0.08, 0.08, 0.9)), translate = vec3(bw * 0.28, 3.1, bd * 0.5 + 0.4)), "wood", where = true, domain = faces)
+sign = mark(transform(box(size = vec3(0.7, 0.5, 0.06)), translate = vec3(bw * 0.28, 2.7, bd * 0.5 + 0.75)), "wood", where = true, domain = faces)
+
+mesh = merge(merge(merge(body, roof), door), merge(bracket, sign))
+output mesh

@@ -178,8 +178,16 @@ JSON, `format: "village-topology-generator-layout/0"`:
   (терраин/скелет/парцелы/ростер), центр — карта (терраин текстурой,
   дороги/парцелы/постройки/якоря векторными слоями, pan/zoom), лог со
   стадиями V1–V6 и их временем, экспорт IR JSON, headless `--smoke`.
-- **S6:** мост в геометрию: оркестратор + PGG-ассеты построек
-  (по образцу dungeon_geometry_generator fill).
+- **S6 (сделано):** мост в геометрию: `village_geometry_generator` (для каждой
+  постройки IR запускает PGG-ассет `<тип>.pgg` с биндингами `w`/`d` (габариты
+  участка, метры) и `rng_seed`; фасад разворачивается по `facing`, меш
+  переносится в мировую рамку (map x,y-down → world x,0,z), всё мёржится в
+  один меш; нет ассета под тип — fallback на `house.pgg` + диагностика) +
+  ассеты `content/pgg/Village/buildings/` (house, bakery, tavern, mill, well;
+  контракт: фасад +Z, база y=0, выход `mesh: geo<mesh>`, группы на faces) +
+  `VillageGeometryGeneratorCli` (IR JSON → OBJ; `--selftest` — вся цепочка
+  без IO). Ограничение v1: земля плоская (y=0), высота рельефа постройкам
+  не передаётся.
 
 ## 11. Открытые вопросы
 
