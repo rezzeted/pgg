@@ -199,7 +199,9 @@ Linux-флоу — Ninja (single-config) + CMake Presets, триплет `x64-li
 - Библиотека `src/libs/village_topology_generator` (конвейер V1–V6, этапы S1–S6).
 - Нормативный документ — `docs/village_topology_generator/requirements.md`;
   справочник технологий — `docs/village_topology_generator/references.md`.
-- Тесты: `village_topology_generator_test`.
+- Вьюер `src/apps/VillageTopologyGeneratorViewer` (SDL3 + ImGui по образцу
+  DungeonTopologyGeneratorViewer; headless-прогон `--smoke`).
+- Тесты: `village_topology_generator_test` + `VillageTopologyGeneratorViewer_smoke`.
 
 ## MCP
 

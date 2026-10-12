@@ -173,8 +173,11 @@ JSON, `format: "village-topology-generator-layout/0"`:
   placeholder; неразмещённые постройки в IR не попадают) + fingerprint
   (FNV-1a64 канонического dump) голдены `tests/village_topology_generator_goldens/seed*.fp`
   (перезапись: `VTG_UPDATE_GOLDENS=1`).
-- **S5:** SDL3/ImGui-вьюер по образцу DungeonTopologyGeneratorViewer.
-
+- **S5 (сделано):** SDL3/ImGui-вьюер `VillageTopologyGeneratorViewer`
+  (по образцу DungeonTopologyGeneratorViewer): левая панель параметров
+  (терраин/скелет/парцелы/ростер), центр — карта (терраин текстурой,
+  дороги/парцелы/постройки/якоря векторными слоями, pan/zoom), лог со
+  стадиями V1–V6 и их временем, экспорт IR JSON, headless `--smoke`.
 - **S6:** мост в геометрию: оркестратор + PGG-ассеты построек
   (по образцу dungeon_geometry_generator fill).
 
