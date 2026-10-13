@@ -50,11 +50,14 @@ go_left = value(random_int(2, rng = bond_rng), on = mesh_line(count = 1, length 
 rows = int(floor((h - 0.24) / module)) - 1
 elem_len = module * 2.0
 depth = 0.07
-cols = int(floor(L / elem_len)) + 1
+cols = int(floor(L / elem_len)) + 2
 
-# Anchor cloud: one point per whole fitting element, styled by the zone rule;
-# @tint carries the final block color (palette + per-block shade + mottle at
-# the element center), @scale opens the mortar joints between neighbours.
+# Anchor cloud: courses extend past [0, L] by one element on each side and are
+# clipped at the facing ends (x = 0 and x = L, as in lib/blockwork.stone_wall)
+# so running-bond half-bricks at corners meet the corner pillar flush without
+# leaving a staggered gap; @tint carries the final block color (palette +
+# per-block shade + mottle at the element center), @scale opens the mortar
+# joints between neighbours.
 cloud = repeat (empty_points(), iterations = rows * cols) |acc| {
     e = @iteration
     r = e / cols
@@ -63,11 +66,13 @@ cloud = repeat (empty_points(), iterations = rows * cols) |acc| {
     y1 = y0 + module
     odd = r % 2 == 1
     sh0 = odd ? elem_len * 0.5 : 0.0
-    sh = go_left == 1 ? 0.0 - sh0 : sh0
+    sh = go_left == 1 ? (0.0 - sh0) : (sh0 - elem_len * 0.5)
     x0 = f32(cc) * elem_len + sh
     x1 = x0 + elem_len
-    fits = (x0 >= 0.0 - 0.001) & (x1 <= L + 0.001)
-    code = z.elem_zone(own = style, x0 = x0, x1 = x1, y0 = y0, y1 = y1, zones = zones)
+    cx0 = max(x0, 0.0)
+    cx1 = min(x1, L)
+    fits = (cx1 - cx0) > 0.02
+    code = z.elem_zone(own = style, x0 = cx0, x1 = cx1, y0 = y0, y1 = y1, zones = zones)
     keep = fits & (code >= 0)
     pt0 = transform(mesh_line(count = 1, length = 0.0),
                     translate = vec3((x0 + x1) * 0.5, (y0 + y1) * 0.5, 0.0 - depth * 0.5))
@@ -112,7 +117,11 @@ coursed_p = repeat (empty_mesh(), iterations = 5) |acc| {
     cls = realize(instance_on_points(sub, source = block_deep))
     acc = merge(acc, set(cls, "style", k, domain = points))
 }
-all_blocks = merge(coursed, coursed_p)
+all_blocks0 = merge(coursed, coursed_p)
+# Clamp/clip the running-bond courses at the facing ends (x = 0 and x = L,
+# inset by 2 mm for the mortar joint against the corner pillar).
+all_blocks1 = clip(all_blocks0, origin = vec3(0.002, 0.0, 0.0), normal = vec3(1.0, 0.0, 0.0))
+all_blocks = clip(all_blocks1, origin = vec3(L - 0.002, 0.0, 0.0), normal = vec3(-1.0, 0.0, 0.0))
 
 # Cornice (галтель): two stepped ledge rows between the courses and the body
 # cap band (the band owns [h - 0.24, h]). The courses STOP below the cornice
