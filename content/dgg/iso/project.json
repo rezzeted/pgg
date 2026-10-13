@@ -274,20 +274,7 @@
       "width": 1.0,
       "place": "corner"
     },
-    "side_rules": [
-      {
-        "match": {
-          "adjacent_role": "corridor"
-        },
-        "style": "brick"
-      },
-      {
-        "match": {
-          "side": "outer"
-        },
-        "style": "sandstone"
-      }
-    ],
+    "side_rules": [],
     "decor": [
       {
         "tag": "drain",

@@ -33,10 +33,6 @@ param rng_seed: int = 7
 
 root = rng_from_seed(rng_seed)
 
-pillar_bare = transform(box(size = vec3(thick, h_pillar - 0.22, thick), res = 1), translate = vec3(0.0, (h_pillar - 0.22) * 0.5, 0.0))
-pillar_s = set(pillar_bare, "style", style, domain = points)
-pillar = set(pillar_s, "tint", a.mortar_color(style = style, mot = 0.45), domain = points)
-
 def face_rows(center: vec3, normal: vec3, face_h: f32, face_style: int, p_thick: f32, p_module: f32, p_zones: geo<points>, p_face: int, p_rng: rng) -> (out: geo<mesh>) {
     """Beveled-block courses of one open face (local: face plane through center,
     out = normal; blocks embed 0.01 into the pillar). Local +x = right of the
@@ -126,7 +122,19 @@ dressed = foreach f in faces {
 
 # Corner cap stone: one big block per pillar, sized 4 mm wider than the
 # wall_body cap band so their side faces never share a plane; bottom embeds
-# 0.02 into the shortened pillar.
+# 0.02 into the shortened pillar. Prefer a non-brick open face style (stone/
+# sandstone) when present so corner pillars bordering a brick corridor match
+# the stone/sandstone room walls.
+pref_s = repeat (0, iterations = count(faces)) |acc_s| {
+    fi = @iteration
+    fp = delete(faces, where = @index != fi)
+    fs = value(@style, on = fp)
+    acc_s = (acc_s > 0) & (acc_s != c.ST_BRICK()) ? acc_s : fs
+}
+cap_style = pref_s > 0 ? pref_s : style
+pillar_bare = transform(box(size = vec3(thick, h_pillar - 0.22, thick), res = 1), translate = vec3(0.0, (h_pillar - 0.22) * 0.5, 0.0))
+pillar_s = set(pillar_bare, "style", cap_style, domain = points)
+pillar = set(pillar_s, "tint", a.mortar_color(style = cap_style, mot = 0.45), domain = points)
 cap_h = 0.24
 erng = split_rng(root, key = 900)
 hj = value(random(0.92, 1.0, rng = split_rng(erng, key = "sy")), on = mesh_line(count = 1, length = 0.0))
@@ -134,8 +142,8 @@ shade = value(random(0.84, 1.15, rng = split_rng(erng, key = "shade")), on = mes
 mot = value(0.5 + 0.5 * fbm(scale = 1.6, octaves = 2, rng = split_rng(erng, key = "mot")), on = mesh_line(count = 1, length = 0.0))
 cap0 = parts.cbox(size = vec3(thick + 0.184, cap_h * hj, thick + 0.184), k = 0.0, k_abs = 0.024)
 cap1 = transform(cap0, translate = vec3(0.0, h_pillar - cap_h + cap_h * hj * 0.5, 0.0))
-cap2 = set(cap1, "tint", a.trim_color(style = style, shade = shade, mot = mot), domain = points)
-cap = set(cap2, "style", style, domain = points)
+cap2 = set(cap1, "tint", a.trim_color(style = cap_style, shade = shade, mot = mot), domain = points)
+cap = set(cap2, "style", cap_style, domain = points)
 
 raw = unmark(merge(pillar, dressed, cap), "edge")
 flat0 = compute_normals(remove_attr(raw, "N"), mode = flat)

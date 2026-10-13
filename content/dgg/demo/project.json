@@ -53,10 +53,7 @@
       "stairs": {"h": 3.4, "style": "brick", "floor": "brick", "ceil": "plain"}
     },
     "transitions": {"pattern": "chase", "width": 1.0, "place": "corner"},
-    "side_rules": [
-      {"match": {"adjacent_role": "corridor"}, "style": "brick"},
-      {"match": {"side": "outer"}, "style": "stone"}
-    ]
+    "side_rules": []
   },
   "slots": {
     "room_fill": "rooms/fill_v1.pgg",

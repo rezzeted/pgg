@@ -168,7 +168,7 @@ bool expandRoom(const IrRoom& r, double cell, int fill_seed, const std::string& 
 
 bool expandBody(const IrWall& w, const IrV2& ir, double cell, int fill_seed,
                 const std::string& asset, const std::map<std::string, const IrDoor*>& doors,
-                Unit& u, std::string& err) {
+                const std::map<std::string, DeclaredParam>* decl, Unit& u, std::string& err) {
     u.id = w.id;
     u.slot = "wall_body";
     u.asset = asset;
@@ -185,6 +185,33 @@ bool expandBody(const IrWall& w, const IrV2& ir, double cell, int fill_seed,
               std::to_string(w.thick);
         return false;
     }
+    const IrRoom* owner = roomById(ir, w.owner);
+    if (!owner) {
+        err = "dungeon_geometry_generator/run [" + u.id + "]: owner room " + w.owner + " missing";
+        return false;
+    }
+    const int style = needStyle(owner->style, u.id, err);
+    if (!err.empty()) return false;
+    // Per-side facing styles (left = -Z in local frame, right = +Z in local
+    // frame) so wall_body assets can dress each side's mortar/cap in that
+    // room's style; void sides fall back to the other side's style.
+    int style_a = style, style_b = style;
+    const double mx = (ax + bx) * 0.5, mz = (az + bz) * 0.5;
+    for (const auto& f : ir.facings) {
+        if (f.wall != w.id) continue;
+        const int fs = needStyle(f.style, u.id, err);
+        if (!err.empty()) return false;
+        const double fmx = (f.from.first + f.to.first) * 0.5;
+        const double fmz = (f.from.second + f.to.second) * 0.5;
+        // Local +Z maps to (-dz, dx) under yawOf(dx, dz).
+        const double z_local = -(fmx - mx) * dz + (fmz - mz) * dx;
+        if (z_local < 0.0)
+            style_a = fs;
+        else
+            style_b = fs;
+    }
+    if (w.room_left.empty()) style_a = style_b;
+    if (w.room_right.empty()) style_b = style_a;
     PointsBuilder seg;
     seg.pt(0, 0, 0);
     seg.pt(len, 0, 0);
@@ -203,13 +230,6 @@ bool expandBody(const IrWall& w, const IrV2& ir, double cell, int fill_seed,
     if (!segGeo) return false;
     pgg::GeoPtr cutGeo = cuts.build(err);
     if (!cutGeo) return false;
-    const IrRoom* owner = roomById(ir, w.owner);
-    if (!owner) {
-        err = "dungeon_geometry_generator/run [" + u.id + "]: owner room " + w.owner + " missing";
-        return false;
-    }
-    const int style = needStyle(owner->style, u.id, err);
-    if (!err.empty()) return false;
     u.bindings = {{"seg", pgg::Value(segGeo)},
                   {"thick", pgg::Value((float)w.thick)},
                   {"h_a", pgg::Value((float)w.h_left)},
@@ -217,6 +237,10 @@ bool expandBody(const IrWall& w, const IrV2& ir, double cell, int fill_seed,
                   {"style", pgg::Value(style)},
                   {"cuts", pgg::Value(cutGeo)},
                   {"rng_seed", pgg::Value(unit_seed(fill_seed, u.id))}};
+    if (decl && decl->count("style_a") != 0 && decl->count("style_b") != 0) {
+        u.bindings.emplace_back("style_a", pgg::Value(style_a));
+        u.bindings.emplace_back("style_b", pgg::Value(style_b));
+    }
     u.yawDeg = yawOf(dx, dz);
     u.tx = fx;
     u.tz = fz;
@@ -392,6 +416,12 @@ bool expandLampsWall(const IrRoom& r, const IrV2& ir, double step, int fill_seed
     const double y = std::min(1.9, r.h - 0.5);
     for (const auto& f : ir.facings) {
         if (f.room != r.id) continue;
+        bool fok = false;
+        const int f_style = style_code(f.style, fok);
+        if (!fok) {
+            err = "dungeon_geometry_generator/run [" + f.id + "]: unknown style '" + f.style + "'";
+            return false;
+        }
         const double dx = f.to.first - f.from.first, dz = f.to.second - f.from.second;
         const double len = std::hypot(dx, dz);
         if (!(len > 1.0)) continue;  // corner sliver: no lamp
@@ -421,7 +451,7 @@ bool expandLampsWall(const IrRoom& r, const IrV2& ir, double step, int fill_seed
             pgg::GeoPtr pGeo = p.build(err);
             if (!pGeo) return false;
             u.bindings = {{"p", pgg::Value(pGeo)},
-                          {"style", pgg::Value(style)},
+                          {"style", pgg::Value(f_style)},
                           {"tag", pgg::Value(1)},
                           {"rng_seed", pgg::Value(unit_seed(fill_seed, u.id))}};
             u.tx = f.from.first + ux * s + f.n.first * 0.08;
@@ -639,12 +669,19 @@ bool expandDecorWall(const IrRoom& r, const IrV2& ir, const DecorRule& rule, int
     }
     struct Cand {
         double x, y, z, nx, nz;
+        int style;
     };
     std::vector<Cand> cands;
     const double y = std::min(1.9, r.h - 0.5);
     const double step = std::max(2.0 * rule.radius, 0.6);
     for (const auto& f : ir.facings) {
         if (f.room != r.id) continue;
+        bool fok = false;
+        const int f_style = style_code(f.style, fok);
+        if (!fok) {
+            err = "dungeon_geometry_generator/run [" + f.id + "]: unknown style '" + f.style + "'";
+            return false;
+        }
         const double dx = f.to.first - f.from.first, dz = f.to.second - f.from.second;
         const double len = std::hypot(dx, dz);
         if (!(len > 1.0)) continue;  // corner sliver: no mount
@@ -668,7 +705,7 @@ bool expandDecorWall(const IrRoom& r, const IrV2& ir, const DecorRule& rule, int
             if (blocked) continue;
             cands.push_back({f.from.first + ux * s + f.n.first * 0.08, y,
                              f.from.second + uz * s + f.n.second * 0.08, f.n.first,
-                             f.n.second});
+                             f.n.second, f_style});
         }
     }
     if (cands.empty()) return true;
@@ -695,7 +732,7 @@ bool expandDecorWall(const IrRoom& r, const IrV2& ir, const DecorRule& rule, int
         pgg::GeoPtr pGeo = p.build(err);
         if (!pGeo) return false;
         u.bindings = {{"p", pgg::Value(pGeo)},
-                      {"style", pgg::Value(style)},
+                      {"style", pgg::Value(cnd.style)},
                       {"tag", pgg::Value(tag)},
                       {"rng_seed", pgg::Value(unit_seed(fill_seed, u.id))}};
         u.tx = cnd.x;
@@ -1309,8 +1346,8 @@ bool fill_level(const IrV2& ir, const Project& project, const FillOpts& opts, Fi
 
     for (const auto& w : ir.walls) {
         Unit u;
-        if (!expandBody(w, ir, project.fill.cell, fseed, assets["wall_body"], doors, u,
-                        err))
+        if (!expandBody(w, ir, project.fill.cell, fseed, assets["wall_body"], doors,
+                        &declared["wall_body"], u, err))
             return false;
         units.push_back(std::move(u));
     }

@@ -30,12 +30,16 @@ param thick: f32 = 0.6
 param h_a: f32 = 3.0
 param h_b: f32 = 3.0
 param style: int = 1
+param style_a: int = 0
+param style_b: int = 0
 param cuts: geo<points>
 param rng_seed: int = 7
 
 
 p0 = value(@P, on = delete(seg, where = @index != 0))
 p1 = value(@P, on = delete(seg, where = @index != 1))
+side_a = style_a > 0 ? style_a : style
+side_b = style_b > 0 ? style_b : style
 dir = p1 - p0
 L = length(dir)
 u = dir / L
@@ -44,7 +48,13 @@ cap_h = 0.24
 beam_h = H - cap_h + 0.02
 mid = (p0 + p1) * 0.5
 yaw = degrees(atan2(0.0 - dot(dir, (0, 0, 1)), dot(dir, (1, 0, 0))))
-beam = transform(box(size = vec3(L, beam_h, thick), res = 1), rotate = vec3(0.0, yaw, 0.0), translate = vec3(dot(mid, (1, 0, 0)), beam_h * 0.5, dot(mid, (0, 0, 1))))
+# Split the mortar-core beam longitudinally into two halves (-Z = side_a,
+# +Z = side_b) with a 2 mm gap at z=0 so each side's open mortar joints reveal
+# its own room's mortar color and F11/elements sees two distinct styled elements.
+half_t = (thick - 0.002) * 0.5
+beam_a = set(set(transform(box(size = vec3(L, beam_h, half_t), res = 1), translate = vec3(L * 0.5, beam_h * 0.5, 0.0 - (half_t * 0.5 + 0.001))), "style", side_a, domain = points), "Cd", a.mortar_color(style = side_a, mot = 0.45), domain = points)
+beam_b = set(set(transform(box(size = vec3(L, beam_h, half_t), res = 1), translate = vec3(L * 0.5, beam_h * 0.5, half_t * 0.5 + 0.001)), "style", side_b, domain = points), "Cd", a.mortar_color(style = side_b, mot = 0.45), domain = points)
+beam = transform(merge(beam_a, beam_b), rotate = vec3(0.0, yaw, 0.0), translate = vec3(dot(p0, (1, 0, 0)), 0.0, dot(p0, (0, 0, 1))))
 
 carved = repeat (beam, iterations = count(cuts) / 2) |acc| {
     i = @iteration
@@ -63,6 +73,8 @@ carved = repeat (beam, iterations = count(cuts) / 2) |acc| {
 # Cap band: hewn stones ~1.1 m long (much bigger than the 0.5 m facing
 # blocks), tops uneven by jitter; bottoms embed 0.02 into the beam. First
 # stone starts 2+ cm into the node cap volume — intersecting, not coplanar.
+# When the wall separates two rooms with different styles (side_a != side_b),
+# each cap course is split longitudinally into two side-styled coping stones.
 probe = mesh_line(count = 1, length = 0.0)
 root = rng_from_seed(rng_seed)
 ncap = max(1, int(L / 1.1))
@@ -76,16 +88,17 @@ caps_l = repeat (empty_mesh(), iterations = ncap) |acc| {
     shade = value(random(0.82, 1.15, rng = split_rng(erng, key = "shade")), on = probe)
     mot = value(0.5 + 0.5 * fbm(scale = 1.6, octaves = 2, rng = split_rng(erng, key = "mot")), on = probe)
     hh = cap_h * hj
-    stone0 = parts.cbox(size = vec3(cw * sj, hh, thick + 0.18 + dj), k = 0.0, k_abs = 0.022)
-    stone = set(stone0, "Cd", a.trim_color(style = style, shade = shade, mot = mot), domain = points)
-    stp = transform(stone, translate = vec3(cw * (f32(i) + 0.5), H - cap_h + hh * 0.5, 0.0))
-    acc = merge(acc, set(stp, "style", style, domain = points))
+    full_d = thick + 0.18 + dj
+    stone_single = set(set(transform(parts.cbox(size = vec3(cw * sj, hh, full_d), k = 0.0, k_abs = 0.022), translate = vec3(cw * (f32(i) + 0.5), H - cap_h + hh * 0.5, 0.0)), "Cd", a.trim_color(style = side_a, shade = shade, mot = mot), domain = points), "style", side_a, domain = points)
+    half_d = (full_d - 0.012) * 0.5
+    stone_a = set(set(transform(parts.cbox(size = vec3(cw * sj, hh, half_d), k = 0.0, k_abs = 0.018), translate = vec3(cw * (f32(i) + 0.5), H - cap_h + hh * 0.5, 0.0 - (half_d * 0.5 + 0.006))), "Cd", a.trim_color(style = side_a, shade = shade, mot = mot), domain = points), "style", side_a, domain = points)
+    stone_b = set(set(transform(parts.cbox(size = vec3(cw * sj, hh, half_d), k = 0.0, k_abs = 0.018), translate = vec3(cw * (f32(i) + 0.5), H - cap_h + hh * 0.5, half_d * 0.5 + 0.006)), "Cd", a.trim_color(style = side_b, shade = shade, mot = mot), domain = points), "style", side_b, domain = points)
+    stp = select(side_a == side_b, a = stone_single, b = merge(stone_a, stone_b))
+    acc = merge(acc, stp)
 }
 caps = transform(caps_l, rotate = vec3(0.0, yaw, 0.0), translate = vec3(dot(p0, (1, 0, 0)), 0.0, dot(p0, (0, 0, 1))))
 
-mesh_s = set(carved, "style", style, domain = points)
-core = set(mesh_s, "Cd", a.mortar_color(style = style, mot = 0.45), domain = points)
-joint = unmark(merge(core, caps), "edge")
+joint = unmark(merge(carved, caps), "edge")
 flat0 = compute_normals(remove_attr(joint, "N"), mode = flat)
 ao0 = bake_ao(flat0, rays = 8, distance = 0.35, rng = split_rng(root, key = "ao"), domain = corners)
 ao1 = set(ao0, "ao_f", mix(0.36, 1.0, @ao * @ao), domain = faces)
