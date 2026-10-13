@@ -45,7 +45,6 @@ base = vec3(dot(p0, (1, 0, 0)), 0.0, dot(p0, (0, 0, 1)))
 
 root = rng_from_seed(rng_seed)
 bond_rng = split_rng(root, key = "bond")
-fbm_rng = split_rng(root, key = "fbm")
 go_left = value(random_int(2, rng = bond_rng), on = mesh_line(count = 1, length = 0.0))
 
 rows = int(floor((h - 0.24) / module)) - 1
@@ -74,27 +73,31 @@ cloud = repeat (empty_points(), iterations = rows * cols) |acc| {
                     translate = vec3((x0 + x1) * 0.5, (y0 + y1) * 0.5, 0.0 - depth * 0.5))
     pt1 = set(pt0, "style", code, domain = points)
     erng = split_rng(root, key = e)
-    # Rare relief: ~3% of blocks recessed into the wall (darker, in shadow),
-    # ~4% proud (bossage — instanced from the deeper source block below so the
-    # back stays anchored in the core); the rest keep the micro jitter only.
+    # Rare relief: ~6% of blocks recessed into the wall (darker, in shadow),
+    # ~9% proud (bossage — instanced from the deeper source block below so the
+    # back stays anchored in the core); the bottom plinth row (r == 0) stands
+    # slightly proud and weathered at the floor line.
     rel = value(random(0.0, 1.0, rng = split_rng(erng, key = "relief")), on = pt0)
-    rcls = rel < 0.03 ? 1 : (rel < 0.07 ? 2 : 0)
-    shade = value(random(0.80, 1.18, rng = split_rng(erng, key = "shade")), on = pt0) * (rcls == 1 ? 0.80 : (rcls == 2 ? 1.05 : 1.0))
-    mot = value(fbm(scale = 1.6, octaves = 2, rng = split_rng(erng, key = "mot")), on = pt0)
+    rcls = rel < 0.06 ? 1 : (rel < 0.15 ? 2 : 0)
+    plinth = r == 0 ? 0.86 : 1.0
+    wy_b = clamp(((y0 + y1) * 0.5) / 0.85, 0.0, 1.0)
+    damp_b = mix(0.68, 1.0, wy_b * wy_b)
+    shade = value(random(0.78, 1.20, rng = split_rng(erng, key = "shade")), on = pt0) * (rcls == 1 ? 0.70 : (rcls == 2 ? 1.10 : 1.0)) * plinth * damp_b
+    mot = value(0.5 + 0.5 * fbm(scale = 1.6, octaves = 2, rng = split_rng(erng, key = "mot")), on = pt0)
     pt2 = set(pt1, "tint", a.ashlar_color(style = code, shade = shade, mot = mot), domain = points)
-    pt3 = set(pt2, "scale", value(random(0.94, 1.0, rng = split_rng(erng, key = "scale")), on = pt0), domain = points)
+    pt3 = set(pt2, "scale", value(random(0.93, 0.985, rng = split_rng(erng, key = "scale")), on = pt0), domain = points)
     pt3b = set(pt3, "relief", rcls, domain = points)
-    dzj = value(random(0.0, 0.012, rng = split_rng(erng, key = "z")), on = pt0)
-    dzz = rcls == 1 ? value(random(0.025, 0.045, rng = split_rng(erng, key = "rec")), on = pt0) : (rcls == 2 ? 0.0 - value(random(0.03, 0.05, rng = split_rng(erng, key = "pro")), on = pt0) : 0.0 - dzj)
+    dzj = value(random(0.0, 0.015, rng = split_rng(erng, key = "z")), on = pt0) + (r == 0 ? 0.010 : 0.0)
+    dzz = rcls == 1 ? value(random(0.025, 0.045, rng = split_rng(erng, key = "rec")), on = pt0) : (rcls == 2 ? 0.0 - value(random(0.032, 0.052, rng = split_rng(erng, key = "pro")), on = pt0) : 0.0 - dzj)
     pt4 = set_position(pt3b, offset = vec3(0.0, 0.0, dzz))
     acc = merge(acc, select(keep, a = pt4, b = empty_points()))
 }
 
-block = parts.cbox(size = vec3(elem_len, module, depth), k = 0.0, k_abs = 0.012)
+block = parts.cbox(size = vec3(elem_len, module, depth), k = 0.0, k_abs = 0.022)
 # Deep variant for the rare proud blocks (@relief == 2): same front plane as
 # the regular block at the same anchor, but the back reaches ~8 cm into the
 # wall core — a proud stone reads as bossage, not a floating tile.
-block_deep = transform(parts.cbox(size = vec3(elem_len, module, 0.15), k = 0.0, k_abs = 0.012), translate = vec3(0.0, 0.0, 0.04))
+block_deep = transform(parts.cbox(size = vec3(elem_len, module, 0.15), k = 0.0, k_abs = 0.024), translate = vec3(0.0, 0.0, 0.04))
 # realize() materializes only @tint (builtin contract), so @style would be
 # lost: instance per style class and paint each realized mesh instead.
 coursed = repeat (empty_mesh(), iterations = 5) |acc| {
@@ -134,12 +137,12 @@ cornice = repeat (empty_mesh(), iterations = ncr * 2) |acc| {
     x1 = x0 + crw
     code = z.elem_zone(own = style, x0 = x0, x1 = x1, y0 = y0c, y1 = y1c, zones = zones)
     erng = split_rng(root, key = 700 + e)
-    sj = value(random(0.95, 1.0, rng = split_rng(erng, key = "sx")), on = mesh_line(count = 1, length = 0.0))
-    shade = value(random(0.75, 1.08, rng = split_rng(erng, key = "shade")), on = mesh_line(count = 1, length = 0.0))
-    mot = value(fbm(scale = 1.6, octaves = 2, rng = split_rng(erng, key = "mot")), on = mesh_line(count = 1, length = 0.0))
-    slab = parts.cbox(size = vec3(crw * sj, y1c - y0c, dp + 0.01), k = 0.0, k_abs = 0.008)
+    sj = value(random(0.94, 0.99, rng = split_rng(erng, key = "sx")), on = mesh_line(count = 1, length = 0.0))
+    shade = value(random(0.82, 1.12, rng = split_rng(erng, key = "shade")), on = mesh_line(count = 1, length = 0.0))
+    mot = value(0.5 + 0.5 * fbm(scale = 1.6, octaves = 2, rng = split_rng(erng, key = "mot")), on = mesh_line(count = 1, length = 0.0))
+    slab = parts.cbox(size = vec3(crw * sj, y1c - y0c, dp + 0.01), k = 0.0, k_abs = 0.016)
     slp = transform(slab, translate = vec3((x0 + x1) * 0.5, (y0c + y1c) * 0.5, 0.01 - (dp + 0.01) * 0.5))
-    slt = set(slp, "tint", a.ashlar_color(style = code, shade = shade * 0.90, mot = mot), domain = points)
+    slt = set(slp, "tint", a.trim_color(style = code, shade = shade * (row == 0 ? 0.88 : 1.04), mot = mot), domain = points)
     sls = set(slt, "style", code, domain = points)
     acc = merge(acc, select(code >= 0, a = sls, b = empty_mesh()))
 }
@@ -167,11 +170,15 @@ carved = repeat (placed, iterations = count(cuts) / 2) |acc| {
 }
 
 # Assembly merge (F6) needs: no groups (D500), no vec2/vec4 columns, uniform
-# point-N presence across units — so corner-N from cbox goes away and fresh
-# point normals are computed (cbox points are per-face: smooth == flat here).
-mesh0 = unmark(set(carved, "Cd", @tint * (0.92 + 0.16 * fbm(scale = 2.3, octaves = 2, rng = fbm_rng)), domain = points), "edge")
-mesh1 = remove_attr(remove_attr(mesh0, "tint"), "N")
-mesh = compute_normals(mesh1, mode = smooth)
+# point-N presence across units, plus flat corner-N for crisp faceted bevels.
+# Bake AO into @Cd via a face-domain factor so @Cd stays flat per face and no
+# @ao column leaks into mergeDomain (where units without @ao get 0.0 = black!).
+flat0 = compute_normals(remove_attr(carved, "N"), mode = flat)
+ao0 = bake_ao(flat0, rays = 10, distance = 0.40, rng = split_rng(root, key = "ao"), domain = corners)
+ao1 = set(ao0, "ao_f", mix(0.32, 1.0, @ao * @ao), domain = faces)
+mesh0 = unmark(set(ao1, "Cd", clamp(@tint * @ao_f, vec3(0.02), vec3(1.0)), domain = points), "edge")
+mesh1 = remove_attr(remove_attr(remove_attr(mesh0, "ao_f"), "ao"), "tint")
+mesh = compute_normals(compute_normals(mesh1, mode = smooth), mode = flat)
 anchors = empty_points()
 
 output mesh

@@ -25,9 +25,6 @@ param tag: int = 1
 param rng_seed: int = 7
 
 
-root = rng_from_seed(rng_seed)
-fbm_rng = split_rng(root, key = "fbm")
-
 at = value(@P, on = p)
 mn = normalize(value(@n, on = p))
 wall = abs(dot(mn, (0, 1, 0))) < 0.5
@@ -82,24 +79,27 @@ def lantern_wall() -> (out: geo<mesh>) {
 wall_m = transform(lantern_wall(), rotate = vec3(0.0, yaw, 0.0), translate = at - mn * 0.02)
 ceil_m = iron.hanging_lantern(top = at, s = 0.8)
 
-iron_c = vec3(0.12, 0.10, 0.085)
-glass_c = vec3(1.0, 0.60, 0.24)
+iron_c = vec3(0.11, 0.115, 0.128)
+glass_lo = vec3(1.0, 0.55, 0.12)
+glass_hi = vec3(1.0, 0.90, 0.42)
 
 # Color on points (E609): glass = points of the lib "lamp" group, the rest is
-# iron with an fbm mottle. The wall lantern's glass planes are staggered by
+# iron. The wall lantern's glass planes are staggered by
 # construction (see lantern_wall), no positional fixup needed. The "bulb" core
 # (ceiling variant) sits inside the capped glass spool — invisible, colored
 # with the iron. Lib groups are stripped before the assembly merge (D500).
 w_s = set(wall_m, "style", style, domain = points)
-w_c = set(w_s, "Cd", ingroup("lamp") ? glass_c : iron_c * (0.85 + 0.30 * fbm(scale = 6.0, octaves = 2, rng = split_rng(fbm_rng, key = "wall"))), domain = points)
+w_c = set(w_s, "Cd", ingroup("lamp") ? mix(glass_lo, glass_hi, 0.65) : iron_c, domain = points)
 wall_norm = unmark(unmark(unmark(w_c, "edge"), "iron"), "lamp")
-wall_clean = compute_normals(remove_attr(remove_attr(remove_attr(wall_norm, "uv"), "t"), "N"), mode = smooth)
+wall_s = compute_normals(remove_attr(remove_attr(remove_attr(wall_norm, "uv"), "t"), "N"), mode = smooth)
+wall_clean = compute_normals(wall_s, mode = auto, angle = 35.0)
 
 c_s = set(ceil_m, "style", style, domain = points)
 c_g = set_position(c_s, offset = @N * (ingroup("lamp") ? 0.0 - 0.0007 : 0.0))
-c_c = set(c_g, "Cd", ingroup("lamp") ? glass_c : iron_c * (0.85 + 0.30 * fbm(scale = 6.0, octaves = 2, rng = split_rng(fbm_rng, key = "ceil"))), domain = points)
+c_c = set(c_g, "Cd", ingroup("lamp") ? mix(glass_lo, glass_hi, 0.65) : iron_c, domain = points)
 ceil_norm = unmark(unmark(unmark(c_c, "iron"), "lamp"), "bulb")
-ceil_clean = compute_normals(remove_attr(remove_attr(remove_attr(ceil_norm, "uv"), "t"), "N"), mode = smooth)
+ceil_s = compute_normals(remove_attr(remove_attr(remove_attr(ceil_norm, "uv"), "t"), "N"), mode = smooth)
+ceil_clean = compute_normals(ceil_s, mode = auto, angle = 35.0)
 
 mesh = select(wall, a = wall_clean, b = ceil_clean)
 

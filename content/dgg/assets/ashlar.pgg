@@ -8,21 +8,29 @@ import codes as c
 
 def ashlar_lo(style: int) -> (out: vec3) {
     """Dark end of the style ramp (recessed, sooty side)."""
-    out = style == c.ST_STONE() ? vec3(0.30, 0.29, 0.28) : (style == c.ST_BRICK() ? vec3(0.40, 0.19, 0.12) : (style == c.ST_PLAIN() ? vec3(0.55, 0.52, 0.47) : (style == c.ST_MORTAR() ? vec3(0.33, 0.31, 0.29) : (style == c.ST_SANDSTONE() ? vec3(0.50, 0.42, 0.29) : vec3(1.0, 0.0, 1.0)))))
+    out = style == c.ST_STONE() ? vec3(0.14, 0.145, 0.155) : (style == c.ST_BRICK() ? vec3(0.18, 0.068, 0.045) : (style == c.ST_PLAIN() ? vec3(0.22, 0.23, 0.24) : (style == c.ST_MORTAR() ? vec3(0.11, 0.095, 0.085) : (style == c.ST_SANDSTONE() ? vec3(0.24, 0.18, 0.11) : vec3(1.0, 0.0, 1.0)))))
 }
 
 def ashlar_hi(style: int) -> (out: vec3) {
     """Light end of the style ramp (fresh face)."""
-    out = style == c.ST_STONE() ? vec3(0.46, 0.45, 0.43) : (style == c.ST_BRICK() ? vec3(0.66, 0.34, 0.21) : (style == c.ST_PLAIN() ? vec3(0.74, 0.71, 0.65) : (style == c.ST_MORTAR() ? vec3(0.42, 0.40, 0.37) : (style == c.ST_SANDSTONE() ? vec3(0.72, 0.62, 0.44) : vec3(1.0, 0.0, 1.0)))))
+    out = style == c.ST_STONE() ? vec3(0.32, 0.31, 0.29) : (style == c.ST_BRICK() ? vec3(0.44, 0.17, 0.10) : (style == c.ST_PLAIN() ? vec3(0.44, 0.43, 0.40) : (style == c.ST_MORTAR() ? vec3(0.25, 0.21, 0.18) : (style == c.ST_SANDSTONE() ? vec3(0.50, 0.39, 0.25) : vec3(1.0, 0.0, 1.0)))))
 }
 
 def ashlar_color(style: int, shade: f32, mot: f32) -> (out: vec3) {
-    """Block color: ramp by mottle mot in [0,1], then per-block shade jitter."""
-    base = mix(ashlar_lo(style = style), ashlar_hi(style = style), mot)
-    out = base * vec3(shade * 1.04, shade, shade * 0.96)
+    """Block color: ramp by mottle mot in [0,1] (or fbm in [-1,1]), then per-block shade jitter."""
+    t = clamp(mot < 0.0 ? 0.5 + 0.5 * mot : mot, 0.0, 1.0)
+    base = mix(ashlar_lo(style = style), ashlar_hi(style = style), t)
+    out = clamp(base * vec3(shade * 1.05, shade, shade * 0.95), vec3(0.02), vec3(1.0))
+}
+
+def trim_color(style: int, shade: f32, mot: f32) -> (out: vec3) {
+    """Dressed architectural trim (cornices, coping stones, pillar caps): warmer and brighter."""
+    base = ashlar_color(style = style, shade = shade, mot = mot)
+    out = clamp(base * vec3(1.22, 1.18, 1.12) + vec3(0.022, 0.018, 0.012), vec3(0.03), vec3(1.0))
 }
 
 def mortar_color(style: int, mot: f32) -> (out: vec3) {
-    """Recessed joint / wall-core color behind the blocks (grayed dark style)."""
-    out = mix(ashlar_lo(style = style), ashlar_hi(style = style), mot) * vec3(0.55, 0.54, 0.52)
+    """Recessed joint / wall-core color behind the blocks (deep dark crevice tone)."""
+    t = clamp(mot < 0.0 ? 0.5 + 0.5 * mot : mot, 0.0, 1.0)
+    out = mix(ashlar_lo(style = style), ashlar_hi(style = style), t) * vec3(0.28, 0.27, 0.26)
 }

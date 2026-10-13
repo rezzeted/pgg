@@ -38,72 +38,89 @@ trim_style = c.ST_SANDSTONE()
 jdepth = thick + 0.20
 jw = 0.17
 
-# Jamb columns: one block per course, exact division of h.
+# Jamb columns: alternating toothed quoins with open mortar joints and dark
+# mortar core behind the blocks (non-coincident planes: y in [0.02, h - 0.14]
+# for jamb cores, y in [h - 0.13, h + 0.008] and z = jdepth * 0.91 for lintel).
+core_jamb_l = set(transform(box(size = vec3(jw * 0.78, h - 0.16, jdepth * 0.88), res = 1), translate = vec3(0.0 - jw * 0.48, 0.02 + (h - 0.16) * 0.5, 0.0)), "Cd", a.mortar_color(style = trim_style, mot = 0.4), domain = points)
+core_jamb_r = set(transform(box(size = vec3(jw * 0.78, h - 0.16, jdepth * 0.88), res = 1), translate = vec3(L + jw * 0.48, 0.02 + (h - 0.16) * 0.5, 0.0)), "Cd", a.mortar_color(style = trim_style, mot = 0.4), domain = points)
+core_lintel = set(transform(box(size = vec3(L + 0.34, 0.14, jdepth * 0.91), res = 1), translate = vec3(L * 0.5, h - 0.06, 0.0)), "Cd", a.mortar_color(style = trim_style, mot = 0.4), domain = points)
+portal_core = merge(core_jamb_l, core_jamb_r, core_lintel)
 rows = 8
 bh = h / f32(rows)
 jambs = repeat (empty_mesh(), iterations = rows * 2) |acc| {
     e = @iteration
     r = e / 2
     side = e % 2
-    xc = side == 0 ? 0.0 - jw * 0.5 : L + jw * 0.5
+    tooth = r % 2 == 1 ? 0.036 : 0.0
+    jwr = jw + tooth
+    jdr = jdepth + (r % 2 == 1 ? 0.014 : 0.0)
+    xc = side == 0 ? 0.0 - jwr * 0.5 : L + jwr * 0.5
     erng = split_rng(root, key = 100 + e)
-    shade = value(random(0.80, 1.12, rng = split_rng(erng, key = "shade")), on = probe)
-    mot = value(fbm(scale = 1.6, octaves = 2, rng = split_rng(erng, key = "mot")), on = probe)
-    col = a.ashlar_color(style = trim_style, shade = shade * 0.92, mot = mot)
-    bl = parts.cbox(size = vec3(jw, bh, jdepth), k = 0.0, k_abs = 0.012)
+    wy_j = clamp((bh * (f32(r) + 0.5)) / 0.85, 0.0, 1.0)
+    damp_j = mix(0.68, 1.0, wy_j * wy_j)
+    shade = value(random(0.76, 1.22, rng = split_rng(erng, key = "shade")), on = probe) * (r == 0 ? 0.84 : 1.0) * damp_j
+    mot = value(0.5 + 0.5 * fbm(scale = 1.6, octaves = 2, rng = split_rng(erng, key = "mot")), on = probe)
+    col = a.ashlar_color(style = trim_style, shade = shade * 0.90, mot = mot)
+    bl0 = parts.cbox(size = vec3(jwr, bh * 0.94, jdr), k = 0.0, k_abs = 0.020)
+    bl = set(bl0, "Cd", col, domain = points)
     bp = transform(bl, translate = vec3(xc, bh * (f32(r) + 0.5), 0.0))
-    acc = merge(acc, set(bp, "Cd", col, domain = points))
+    acc = merge(acc, bp)
 }
 
 # Joggled flat arch across the opening: alternating tilt, dropped keystone at
 # the center, top edge embedded 0.02 into the wall lintel (no coplanarity).
 # Longer and deeper than the jambs so no face shares a plane with them
 # (F11/elements rejects coincident pairs).
-lw = L + 0.40
+lw = L + 0.44
 nl = max(5, int(lw / 0.26))
 bw = lw / f32(nl)
 lintel = repeat (empty_mesh(), iterations = nl) |acc| {
     i = @iteration
-    xc = 0.0 - 0.20 + bw * (f32(i) + 0.5)
+    xc = 0.0 - 0.22 + bw * (f32(i) + 0.5)
     jog = i % 2 == 0 ? 2.5 : 0.0 - 2.5
     key = i == nl / 2
-    bhh = key ? 0.27 : 0.24
-    yc = h + 0.02 - bhh * 0.5 + (key ? 0.0 - 0.02 : 0.0)
+    bhh = key ? 0.29 : 0.24
+    yc = h + 0.02 - bhh * 0.5 + (key ? 0.0 - 0.025 : 0.0)
     erng = split_rng(root, key = 300 + i)
-    shade = value(random(0.80, 1.12, rng = split_rng(erng, key = "shade")), on = probe)
-    mot = value(fbm(scale = 1.6, octaves = 2, rng = split_rng(erng, key = "mot")), on = probe)
-    col = a.ashlar_color(style = trim_style, shade = shade * 0.98, mot = mot)
-    bl = parts.cbox(size = vec3(key ? bw * 1.15 : bw, bhh, jdepth + 0.02 + 0.004 * f32(i % 2)), k = 0.0, k_abs = 0.012)
+    shade = value(random(0.84, 1.16, rng = split_rng(erng, key = "shade")), on = probe)
+    mot = value(0.5 + 0.5 * fbm(scale = 1.6, octaves = 2, rng = split_rng(erng, key = "mot")), on = probe)
+    col = key ? a.trim_color(style = trim_style, shade = 1.10, mot = mot) : a.trim_color(style = trim_style, shade = shade * 0.96, mot = mot)
+    bl0 = parts.cbox(size = vec3((key ? bw * 1.16 : bw * 0.95), bhh, jdepth + 0.032 + 0.006 * f32(i % 2)), k = 0.0, k_abs = 0.018)
+    bl = set(bl0, "Cd", col, domain = points)
     bp = transform(bl, rotate = vec3(0.0, 0.0, jog), translate = vec3(xc, yc, 0.0))
-    acc = merge(acc, set(bp, "Cd", col, domain = points))
+    acc = merge(acc, bp)
 }
 
 # Threshold step: proud of the floor by 0.03, ends beyond the jambs (again no
 # shared face planes).
-sill0 = parts.cbox(size = vec3(L + 0.42, 0.08, thick + 0.16), k = 0.0, k_abs = 0.015)
+sill0 = parts.cbox(size = vec3(L + 0.46, 0.08, thick + 0.16), k = 0.0, k_abs = 0.016)
 sill1 = transform(sill0, translate = vec3(L * 0.5, 0.0 - 0.01, 0.0))
-sill = set(sill1, "Cd", a.ashlar_color(style = trim_style, shade = 0.78, mot = 0.4), domain = points)
+sill = set(sill1, "Cd", a.ashlar_color(style = trim_style, shade = 0.72, mot = 0.4), domain = points)
 
 # Gate: forged bars (pointed tops) + two rails, mid-thickness of the wall.
 # Bar tops embed 3 mm into the tip bases: stacked faces must not be coplanar.
-iron_c = vec3(0.10, 0.095, 0.09)
+iron_c = vec3(0.085, 0.088, 0.095)
 nb = max(2, int(L / 0.22))
 bars = repeat (empty_mesh(), iterations = nb) |acc| {
     i = @iteration
     xc = L * (f32(i) + 0.5) / f32(nb)
-    bar = transform(box(size = vec3(0.05, h - 0.31, 0.05), res = 1), translate = vec3(xc, 0.03 + (h - 0.31) * 0.5, 0.0))
-    tip = remove_attr(fx.pyramid_cap(base = vec3(xc, h - 0.283, 0.0), half = 0.035, h = 0.05, tip = 0.005), "uv")
+    bar = transform(box(size = vec3(0.046, h - 0.31, 0.046), res = 1), translate = vec3(xc, 0.03 + (h - 0.31) * 0.5, 0.0))
+    tip = remove_attr(fx.pyramid_cap(base = vec3(xc, h - 0.283, 0.0), half = 0.034, h = 0.055, tip = 0.005), "uv")
     acc = merge(acc, bar, tip)
 }
-rail_a = transform(box(size = vec3(L - 0.06, 0.06, 0.06), res = 1), translate = vec3(L * 0.5, 0.7, 0.05))
-rail_b = transform(box(size = vec3(L - 0.06, 0.06, 0.06), res = 1), translate = vec3(L * 0.5, 1.5, 0.05))
+rail_a = transform(box(size = vec3(L - 0.06, 0.065, 0.064), res = 1), translate = vec3(L * 0.5, 0.68, 0.0))
+rail_b = transform(box(size = vec3(L - 0.06, 0.065, 0.064), res = 1), translate = vec3(L * 0.5, 1.52, 0.0))
 grate0 = merge(bars, rail_a, rail_b)
 grate = unmark(set(grate0, "Cd", iron_c, domain = points), "iron")
 
-portal = unmark(merge(jambs, lintel, sill), "edge")
+portal = unmark(merge(portal_core, jambs, lintel, sill), "edge")
 local_mesh = merge(portal, select(dtype == c.DR_GATE(), a = grate, b = empty_mesh()))
 placed = transform(local_mesh, rotate = vec3(0.0, yaw, 0.0), translate = base)
-mesh = compute_normals(remove_attr(placed, "N"), mode = smooth)
+flat0 = compute_normals(remove_attr(placed, "N"), mode = flat)
+ao0 = bake_ao(flat0, rays = 12, distance = 0.40, rng = split_rng(root, key = "ao"), domain = corners)
+ao1 = set(ao0, "ao_f", mix(0.32, 1.0, @ao * @ao), domain = faces)
+ao2 = remove_attr(remove_attr(set(ao1, "Cd", clamp(@Cd * @ao_f, vec3(0.02), vec3(1.0)), domain = points), "ao_f"), "ao")
+mesh = compute_normals(compute_normals(ao2, mode = smooth), mode = flat)
 anchors = empty_points()
 
 output mesh

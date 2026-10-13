@@ -32,7 +32,6 @@ param rng_seed: int = 7
 
 
 root = rng_from_seed(rng_seed)
-fbm_rng = split_rng(root, key = "fbm")
 
 pillar_bare = transform(box(size = vec3(thick, h_pillar - 0.22, thick), res = 1), translate = vec3(0.0, (h_pillar - 0.22) * 0.5, 0.0))
 pillar_s = set(pillar_bare, "style", style, domain = points)
@@ -60,24 +59,27 @@ def face_rows(center: vec3, normal: vec3, face_h: f32, face_style: int, p_thick:
         pt0 = transform(mesh_line(count = 1, length = 0.0), translate = vec3((x0 + x1) * 0.5, (y0 + y1) * 0.5, depth * 0.5 - 0.01))
         pt1 = set(pt0, "style", code, domain = points)
         erng = split_rng(p_rng, key = e)
-        # Same rare relief as the facing: ~3% recessed (darker), ~4% proud
+        # Same rare relief as the facing: ~6% recessed (darker), ~9% proud
         # (deep block below keeps the back anchored in the pillar).
         rel = value(random(0.0, 1.0, rng = split_rng(erng, key = "relief")), on = pt0)
-        rcls = rel < 0.03 ? 1 : (rel < 0.07 ? 2 : 0)
-        shade = value(random(0.80, 1.18, rng = split_rng(erng, key = "shade")), on = pt0) * (rcls == 1 ? 0.80 : (rcls == 2 ? 1.05 : 1.0))
-        mot = value(fbm(scale = 1.6, octaves = 2, rng = split_rng(erng, key = "mot")), on = pt0)
+        rcls = rel < 0.06 ? 1 : (rel < 0.15 ? 2 : 0)
+        plinth = r == 0 ? 0.86 : 1.0
+        wy_b = clamp(((y0 + y1) * 0.5) / 0.85, 0.0, 1.0)
+        damp_b = mix(0.68, 1.0, wy_b * wy_b)
+        shade = value(random(0.78, 1.20, rng = split_rng(erng, key = "shade")), on = pt0) * (rcls == 1 ? 0.70 : (rcls == 2 ? 1.10 : 1.0)) * plinth * damp_b
+        mot = value(0.5 + 0.5 * fbm(scale = 1.6, octaves = 2, rng = split_rng(erng, key = "mot")), on = pt0)
         pt2 = set(pt1, "tint", a.ashlar_color(style = code, shade = shade, mot = mot), domain = points)
-        pt3 = set(pt2, "scale", value(random(0.94, 1.0, rng = split_rng(erng, key = "scale")), on = pt0), domain = points)
+        pt3 = set(pt2, "scale", value(random(0.93, 0.985, rng = split_rng(erng, key = "scale")), on = pt0), domain = points)
         pt3b = set(pt3, "relief", rcls, domain = points)
-        dzj = value(random(0.0, 0.010, rng = split_rng(erng, key = "z")), on = pt0)
+        dzj = value(random(0.0, 0.012, rng = split_rng(erng, key = "z")), on = pt0) + (r == 0 ? 0.008 : 0.0)
         dz = rcls == 1 ? 0.0 - value(random(0.02, 0.035, rng = split_rng(erng, key = "rec")), on = pt0) : (rcls == 2 ? value(random(0.04, 0.06, rng = split_rng(erng, key = "pro")), on = pt0) : dzj)
         pt4 = set_position(pt3b, offset = vec3(0.0, 0.0, dz))
         acc = merge(acc, select(code >= 0, a = pt4, b = empty_points()))
     }
-    block = parts.cbox(size = vec3(half, p_module, depth), k = 0.0, k_abs = 0.012)
+    block = parts.cbox(size = vec3(half, p_module, depth), k = 0.0, k_abs = 0.020)
     # Deep variant for proud blocks: same front plane, back anchored ~6 cm
     # into the pillar (bossage, not a floating tile).
-    block_deep = transform(parts.cbox(size = vec3(half, p_module, 0.16), k = 0.0, k_abs = 0.012), translate = vec3(0.0, 0.0, 0.0 - 0.05))
+    block_deep = transform(parts.cbox(size = vec3(half, p_module, 0.16), k = 0.0, k_abs = 0.022), translate = vec3(0.0, 0.0, 0.0 - 0.05))
     # realize() materializes only @tint (builtin contract), so @style would be
     # lost: instance per style class and paint each realized mesh instead.
     cours = repeat (empty_mesh(), iterations = 5) |acc2| {
@@ -106,12 +108,12 @@ def face_rows(center: vec3, normal: vec3, face_h: f32, face_style: int, p_thick:
         y0c = (row == 0 ? cb : cm + 0.0015) + dy
         y1c = (row == 0 ? cm - 0.0015 : ct) + dy
         code2 = z.elem_zone_face(own = face_style, x0 = 0.0 - half - 0.01, x1 = half + 0.01, y0 = y0c, y1 = y1c, zones = p_zones, face = p_face)
-        sj = value(random(0.96, 1.0, rng = split_rng(erng, key = "sx")), on = mesh_line(count = 1, length = 0.0))
-        shade = value(random(0.75, 1.08, rng = split_rng(erng, key = "shade")), on = mesh_line(count = 1, length = 0.0))
-        mot = value(fbm(scale = 1.6, octaves = 2, rng = split_rng(erng, key = "mot")), on = mesh_line(count = 1, length = 0.0))
-        slab = parts.cbox(size = vec3((p_thick + 0.02) * sj, y1c - y0c, dp + 0.01), k = 0.0, k_abs = 0.008)
+        sj = value(random(0.95, 0.99, rng = split_rng(erng, key = "sx")), on = mesh_line(count = 1, length = 0.0))
+        shade = value(random(0.82, 1.12, rng = split_rng(erng, key = "shade")), on = mesh_line(count = 1, length = 0.0))
+        mot = value(0.5 + 0.5 * fbm(scale = 1.6, octaves = 2, rng = split_rng(erng, key = "mot")), on = mesh_line(count = 1, length = 0.0))
+        slab = parts.cbox(size = vec3((p_thick + 0.02) * sj, y1c - y0c, dp + 0.01), k = 0.0, k_abs = 0.016)
         slp = transform(slab, translate = vec3(0.0, (y0c + y1c) * 0.5, (dp + 0.01) * 0.5 - 0.01))
-        slt = set(slp, "tint", a.ashlar_color(style = code2, shade = shade * 0.90, mot = mot), domain = points)
+        slt = set(slp, "tint", a.trim_color(style = code2, shade = shade * (row == 0 ? 0.88 : 1.04), mot = mot), domain = points)
         sls = set(slt, "style", code2, domain = points)
         acc3 = merge(acc3, select(code2 >= 0, a = sls, b = empty_mesh()))
     }
@@ -127,16 +129,20 @@ dressed = foreach f in faces {
 # 0.02 into the shortened pillar.
 cap_h = 0.24
 erng = split_rng(root, key = 900)
-hj = value(random(0.90, 1.0, rng = split_rng(erng, key = "sy")), on = mesh_line(count = 1, length = 0.0))
-shade = value(random(0.78, 1.12, rng = split_rng(erng, key = "shade")), on = mesh_line(count = 1, length = 0.0))
-mot = value(fbm(scale = 1.6, octaves = 2, rng = split_rng(erng, key = "mot")), on = mesh_line(count = 1, length = 0.0))
-cap0 = parts.cbox(size = vec3(thick + 0.184, cap_h * hj, thick + 0.184), k = 0.0, k_abs = 0.02)
+hj = value(random(0.92, 1.0, rng = split_rng(erng, key = "sy")), on = mesh_line(count = 1, length = 0.0))
+shade = value(random(0.84, 1.15, rng = split_rng(erng, key = "shade")), on = mesh_line(count = 1, length = 0.0))
+mot = value(0.5 + 0.5 * fbm(scale = 1.6, octaves = 2, rng = split_rng(erng, key = "mot")), on = mesh_line(count = 1, length = 0.0))
+cap0 = parts.cbox(size = vec3(thick + 0.184, cap_h * hj, thick + 0.184), k = 0.0, k_abs = 0.024)
 cap1 = transform(cap0, translate = vec3(0.0, h_pillar - cap_h + cap_h * hj * 0.5, 0.0))
-cap2 = set(cap1, "tint", a.ashlar_color(style = style, shade = shade * 0.95, mot = mot), domain = points)
+cap2 = set(cap1, "tint", a.trim_color(style = style, shade = shade, mot = mot), domain = points)
 cap = set(cap2, "style", style, domain = points)
 
-colored = unmark(set(merge(pillar, dressed, cap), "Cd", @tint * (0.92 + 0.16 * fbm(scale = 2.3, octaves = 2, rng = fbm_rng)), domain = points), "edge")
-mesh = compute_normals(remove_attr(remove_attr(colored, "tint"), "N"), mode = smooth)
+raw = unmark(merge(pillar, dressed, cap), "edge")
+flat0 = compute_normals(remove_attr(raw, "N"), mode = flat)
+ao0 = bake_ao(flat0, rays = 10, distance = 0.40, rng = split_rng(root, key = "ao"), domain = corners)
+ao1 = set(ao0, "ao_f", mix(0.32, 1.0, @ao * @ao), domain = faces)
+ao2 = remove_attr(remove_attr(remove_attr(set(ao1, "Cd", clamp(@tint * @ao_f, vec3(0.02), vec3(1.0)), domain = points), "ao_f"), "ao"), "tint")
+mesh = compute_normals(compute_normals(ao2, mode = smooth), mode = flat)
 anchors = empty_points()
 
 output mesh
