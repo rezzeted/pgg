@@ -652,7 +652,8 @@ bool expandDecorFloor(const IrRoom& r, const IrV2& ir, double cell, const DecorR
 // without replacement in a deterministic rng order (Fisher-Yates over the
 // candidate list). Style = the room's wall style.
 bool expandDecorWall(const IrRoom& r, const IrV2& ir, const DecorRule& rule, int fill_seed,
-                     const std::string& asset, std::vector<Unit>& units, std::string& err) {
+                     const std::string& asset, std::vector<FillResult::Occupied>& occupied,
+                     std::vector<Unit>& units, std::string& err) {
     if (!rule.roles.empty() &&
         std::find(rule.roles.begin(), rule.roles.end(), r.role) == rule.roles.end())
         return true;
@@ -722,6 +723,14 @@ bool expandDecorWall(const IrRoom& r, const IrV2& ir, const DecorRule& rule, int
     for (size_t oi = 0; oi < order.size() && placed < rule.count; ++oi) {
         if (u01(rng) >= rule.chance) continue;  // per-item roll
         const Cand& cnd = cands[order[oi]];
+        bool hitsOccupied = false;
+        for (const auto& o : occupied) {
+            if (std::hypot(cnd.x - o.x, cnd.z - o.z) < rule.radius + o.r) {
+                hitsOccupied = true;
+                break;
+            }
+        }
+        if (hitsOccupied) continue;
         Unit u;
         u.id = base_id + ":" + std::to_string(placed);
         u.slot = "decor:" + rule.tag;
@@ -738,7 +747,9 @@ bool expandDecorWall(const IrRoom& r, const IrV2& ir, const DecorRule& rule, int
         u.tx = cnd.x;
         u.ty = cnd.y;
         u.tz = cnd.z;
+        const std::string uid = u.id;
         units.push_back(std::move(u));
+        occupied.push_back({cnd.x, cnd.z, rule.radius, uid});
         ++placed;
     }
     return true;
@@ -1380,7 +1391,8 @@ bool fill_level(const IrV2& ir, const Project& project, const FillOpts& opts, Fi
         for (const auto& r : ir.rooms) {
             const std::string& asset = assets["decor:" + rule.tag];
             if (rule.place == "wall") {
-                if (!expandDecorWall(r, ir, rule, fseed, asset, units, err)) return false;
+                if (!expandDecorWall(r, ir, rule, fseed, asset, out.occupied, units, err))
+                    return false;
             } else {
                 const bool pit = rule.cut_r > 0.0 && rfCuts &&
                                  declared["decor:" + rule.tag].count("pit") != 0;

@@ -72,6 +72,31 @@ def DT_DRAIN() -> (out: int) {
     out = 2
 }
 
+def DT_PIPES() -> (out: int) {
+    """wall pipes with valves decor tag (codes.pgg)."""
+    out = 3
+}
+
+def DT_CRYSTALS() -> (out: int) {
+    """glowing crystals/mushrooms cluster decor tag (codes.pgg)."""
+    out = 4
+}
+
+def DT_CHEST() -> (out: int) {
+    """treasure chest decor tag (codes.pgg)."""
+    out = 5
+}
+
+def DT_RUNE() -> (out: int) {
+    """magic rune circle decor tag (codes.pgg)."""
+    out = 6
+}
+
+def DT_BOOKSHELF() -> (out: int) {
+    """wall bookshelf/cabinet decor tag (codes.pgg)."""
+    out = 7
+}
+
 def AK_LIGHT() -> (out: int) {
     """light anchor (codes.pgg)."""
     out = 1

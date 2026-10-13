@@ -1,0 +1,95 @@
+# DungeonGeometryGenerator slot asset: decor chest v2 (slots §2.6) — iron-bound oak treasure
+# chest with a vaulted lid, heavy forged straps, brass lockplate, side carry
+# rings, and a small pile of gold ingots/coins on the stone plinth beside it.
+# Every part plane is staggered by >= 1.5 mm or buried in neighbour volumes
+# (F11/elements); @style = 0 (prop, F11/opening_voids).
+
+import codes as c
+import ashlar as a
+import lib.parts as parts
+import lib.fixtures as fixtures
+import lib.ironwork as iron
+
+def slot_version() -> (out: int) {
+    out = 1
+}
+
+param p: geo<points>
+param style: int = 1
+param tag: int = 5
+param rng_seed: int = 7
+
+
+at = value(@P, on = p)
+root = rng_from_seed(rng_seed)
+probe = mesh_line(count = 1, length = 0.0)
+yaw = value(random(0.0, 360.0, rng = split_rng(root, key = "yaw")), on = probe)
+
+wood_dark = vec3(0.22, 0.13, 0.068)
+wood_mid = vec3(0.28, 0.17, 0.088)
+iron_col = vec3(0.10, 0.105, 0.118)
+gold_col = vec3(0.85, 0.66, 0.18)
+plinth_col = a.trim_color(style = style > 0 ? style : 1, shade = 0.78, mot = 0.45)
+
+# Stone plinth base (0.86 x 0.048 x 0.56; y: -0.004 .. 0.044)
+plinth = set(transform(parts.cbox(size = vec3(0.86, 0.048, 0.56), k = 0.0, k_abs = 0.008), translate = vec3(0.0, 0.020, 0.0)), "Cd", plinth_col, domain = points)
+
+# Main wooden chest box (0.72 x 0.32 x 0.44), raised on 2 runner skids
+# Every part has a strictly distinct top/bottom y (>= 2 mm apart) so F11/elements
+# sees zero coplanar faces.
+skid_l = set(transform(parts.cbox(size = vec3(0.10, 0.032, 0.46), k = 0.0, k_abs = 0.004), translate = vec3(0.0 - 0.28, 0.052, 0.0)), "Cd", iron_col, domain = points)
+skid_r = set(transform(parts.cbox(size = vec3(0.10, 0.032, 0.46), k = 0.0, k_abs = 0.004), translate = vec3(0.28, 0.056, 0.0)), "Cd", iron_col, domain = points)
+body = set(transform(parts.cbox(size = vec3(0.72, 0.32, 0.44), k = 0.0, k_abs = 0.012), translate = vec3(0.0, 0.220, 0.0)), "Cd", wood_mid, domain = points)
+
+# Vaulted lid: stepped timber planks forming an arched top
+lid_lo = set(transform(parts.cbox(size = vec3(0.74, 0.075, 0.46), k = 0.0, k_abs = 0.010), translate = vec3(0.0, 0.410, 0.0)), "Cd", wood_dark, domain = points)
+lid_mid = set(transform(parts.cbox(size = vec3(0.73, 0.068, 0.36), k = 0.0, k_abs = 0.010), translate = vec3(0.0, 0.478, 0.0)), "Cd", wood_mid, domain = points)
+lid_top = set(transform(parts.cbox(size = vec3(0.72, 0.052, 0.22), k = 0.0, k_abs = 0.008), translate = vec3(0.0, 0.534, 0.0)), "Cd", wood_dark, domain = points)
+
+# Heavy iron straps wrapping the chest at x = -0.24, 0.0, +0.24
+# Each strap uses a single full-height band for the body+lid_lo and a single
+# crown strap at the top, with >= 3 mm stagger between the three x-bands.
+strap_b1 = set(transform(parts.cbox(size = vec3(0.048, 0.390, 0.482), k = 0.0, k_abs = 0.004), translate = vec3(0.0 - 0.24, 0.258, 0.0)), "Cd", iron_col, domain = points)
+strap_b2 = set(transform(parts.cbox(size = vec3(0.054, 0.396, 0.486), k = 0.0, k_abs = 0.004), translate = vec3(0.0, 0.263, 0.0)), "Cd", iron_col, domain = points)
+strap_b3 = set(transform(parts.cbox(size = vec3(0.048, 0.390, 0.482), k = 0.0, k_abs = 0.004), translate = vec3(0.24, 0.268, 0.0)), "Cd", iron_col, domain = points)
+
+strap_t1 = set(transform(parts.cbox(size = vec3(0.050, 0.066, 0.382), k = 0.0, k_abs = 0.004), translate = vec3(0.0 - 0.24, 0.484, 0.0)), "Cd", iron_col, domain = points)
+strap_t2 = set(transform(parts.cbox(size = vec3(0.056, 0.070, 0.386), k = 0.0, k_abs = 0.004), translate = vec3(0.0, 0.490, 0.0)), "Cd", iron_col, domain = points)
+strap_t3 = set(transform(parts.cbox(size = vec3(0.050, 0.066, 0.382), k = 0.0, k_abs = 0.004), translate = vec3(0.24, 0.496, 0.0)), "Cd", iron_col, domain = points)
+
+strap_c1 = set(transform(parts.cbox(size = vec3(0.050, 0.050, 0.242), k = 0.0, k_abs = 0.004), translate = vec3(0.0 - 0.24, 0.542, 0.0)), "Cd", iron_col, domain = points)
+strap_c2 = set(transform(parts.cbox(size = vec3(0.056, 0.054, 0.246), k = 0.0, k_abs = 0.004), translate = vec3(0.0, 0.548, 0.0)), "Cd", iron_col, domain = points)
+strap_c3 = set(transform(parts.cbox(size = vec3(0.050, 0.050, 0.242), k = 0.0, k_abs = 0.004), translate = vec3(0.24, 0.554, 0.0)), "Cd", iron_col, domain = points)
+
+# Brass lockplate and padlock on the front (+Z)
+lock_plate = set(transform(parts.cbox(size = vec3(0.13, 0.16, 0.028), k = 0.0, k_abs = 0.004), translate = vec3(0.0, 0.355, 0.242)), "Cd", gold_col, domain = points)
+hasp = set(transform(parts.cbox(size = vec3(0.044, 0.11, 0.026), k = 0.0, k_abs = 0.003), translate = vec3(0.0, 0.398, 0.256)), "Cd", gold_col * 1.1, domain = points)
+padlock = set(iron.spool(p0 = vec3(0.0, 0.305, 0.250), p1 = vec3(0.0, 0.305, 0.278), r0 = 0.036, r1 = 0.036, sides = 10), "Cd", gold_col * 0.9, domain = points)
+
+# Side carry rings
+ring_l = set(fixtures.ring(center = vec3(0.0 - 0.375, 0.25, 0.0), radius = 0.052, r = 0.010, yaw_deg = 90.0), "Cd", iron_col, domain = points)
+ring_r = set(fixtures.ring(center = vec3(0.375, 0.255, 0.0), radius = 0.052, r = 0.010, yaw_deg = 90.0), "Cd", iron_col, domain = points)
+
+# Gold ingots stacked on the plinth corner (distinct y levels >= 3 mm apart)
+ing1 = set(transform(parts.cbox(size = vec3(0.11, 0.028, 0.052), k = 0.0, k_abs = 0.005), rotate = vec3(0.0, 18.0, 0.0), translate = vec3(0.32, 0.055, 0.18)), "Cd", gold_col * 1.08, domain = points)
+ing2 = set(transform(parts.cbox(size = vec3(0.11, 0.028, 0.052), k = 0.0, k_abs = 0.005), rotate = vec3(0.0, -24.0, 0.0), translate = vec3(0.22, 0.062, 0.21)), "Cd", gold_col * 0.96, domain = points)
+ing3 = set(transform(parts.cbox(size = vec3(0.10, 0.028, 0.048), k = 0.0, k_abs = 0.005), rotate = vec3(0.0, 5.0, 0.0), translate = vec3(0.27, 0.088, 0.195)), "Cd", gold_col * 1.15, domain = points)
+
+raw0 = merge(plinth, skid_l, skid_r, body, lid_lo, lid_mid, lid_top, strap_b1, strap_b2, strap_b3, strap_t1, strap_t2, strap_t3, strap_c1, strap_c2, strap_c3, lock_plate, hasp, padlock, ring_l, ring_r, ing1, ing2, ing3)
+placed = transform(raw0, rotate = vec3(0.0, yaw, 0.0), translate = at)
+styled = set(placed, "style", 0, domain = points)
+norm = unmark(unmark(styled, "iron"), "edge")
+clean0 = remove_attr(remove_attr(remove_attr(norm, "uv"), "t"), "N")
+flat0 = compute_normals(clean0, mode = flat)
+ao0 = bake_ao(flat0, rays = 8, distance = 0.22, rng = split_rng(root, key = "ao"), domain = corners)
+ao1 = set(ao0, "ao_f", mix(0.36, 1.0, @ao * @ao), domain = faces)
+ao2 = remove_attr(remove_attr(set(ao1, "Cd", clamp(@Cd * @ao_f, vec3(0.02), vec3(1.0)), domain = points), "ao_f"), "ao")
+mesh = compute_normals(compute_normals(ao2, mode = smooth), mode = flat)
+
+a0 = transform(mesh_line(count = 1, length = 0.0), translate = at)
+a1 = set(a0, "kind", c.AK_POI(), domain = points)
+a2 = set(a1, "dir", vec3(0.0, 1.0, 0.0), domain = points, typeinfo = vector)
+anchors = set(a2, "range", 1.0, domain = points)
+
+output mesh
+output anchors

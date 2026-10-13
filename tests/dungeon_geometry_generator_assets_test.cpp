@@ -195,6 +195,11 @@ TEST(DungeonGeometryGeneratorAssets, CodesParity) {
         {"DR", "gate", 2, dungeon_geometry_generator::door_code},
         {"DT", "lamp", 1, dungeon_geometry_generator::decor_code},
         {"DT", "drain", 2, dungeon_geometry_generator::decor_code},
+        {"DT", "pipes", 3, dungeon_geometry_generator::decor_code},
+        {"DT", "crystals", 4, dungeon_geometry_generator::decor_code},
+        {"DT", "chest", 5, dungeon_geometry_generator::decor_code},
+        {"DT", "rune", 6, dungeon_geometry_generator::decor_code},
+        {"DT", "bookshelf", 7, dungeon_geometry_generator::decor_code},
         {"AK", "light", 1, dungeon_geometry_generator::anchor_code},
         {"AK", "spawn", 2, dungeon_geometry_generator::anchor_code},
         {"AK", "poi", 3, dungeon_geometry_generator::anchor_code},
@@ -242,6 +247,11 @@ TEST(DungeonGeometryGeneratorAssets, ContractLintA2) {
     for (const auto& [slot, asset] : std::vector<std::pair<std::string, std::string>>{
              {"door", "doors/opening_v1.pgg"},
              {"decor:lamp", "decor/lamp_v1.pgg"},
+             {"decor:pipes", "decor/pipes_v2.pgg"},
+             {"decor:crystals", "decor/crystals_v2.pgg"},
+             {"decor:chest", "decor/chest_v2.pgg"},
+             {"decor:rune", "decor/rune_v2.pgg"},
+             {"decor:bookshelf", "decor/bookshelf_v2.pgg"},
              {"room_fill", "rooms/fill_v1.pgg"}}) {
         SCOPED_TRACE(asset);
         std::vector<dungeon_geometry_generator::SlotDiag> ds;

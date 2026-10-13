@@ -903,3 +903,50 @@ TEST(DungeonGeometryGeneratorCheck, ElementsCachedVerdicts) {
         EXPECT_EQ(keyless.size(), plain.size());
     }
 }
+
+TEST(DungeonGeometryGeneratorCheck, DecorV2ElementsClean) {
+    const std::string assets = DUNGEON_GEOMETRY_GENERATOR_ASSETS_DIR;
+    pgg::GeoPtr pGeo;
+    {
+        auto g = std::make_shared<pgg::Geo>(*pgg::makePoints({{0.0f, 0.0f, 0.0f}}));
+        auto nCol = std::make_shared<const std::vector<glm::vec3>>(std::vector<glm::vec3>{{0.0f, 0.0f, 1.0f}});
+        auto attrs = std::make_shared<pgg::AttrSet>();
+        attrs->columns["n"] = pgg::AttrColumn{nCol, pgg::AttrTypeInfo::Vector};
+        g->pointAttrs = std::move(attrs);
+        pGeo = g;
+    }
+    for (const auto& [tag, rel] : std::vector<std::pair<int, std::string>>{
+             {3, "decor/pipes_v2.pgg"},
+             {4, "decor/crystals_v2.pgg"},
+             {5, "decor/chest_v2.pgg"},
+             {6, "decor/rune_v2.pgg"},
+             {7, "decor/bookshelf_v2.pgg"}}) {
+        SCOPED_TRACE(rel);
+        for (int64_t seed : {1, 2, 7, 13, 42}) {
+            pgg::RunParams rp;
+            rp.importRoots = {assets, dungeon_geometry_generator::find_pgg_lib_root(assets)};
+            rp.values = {{"p", pgg::Value(pGeo)},
+                         {"style", pgg::Value(int64_t(1))},
+                         {"tag", pgg::Value(int64_t(tag))},
+                         {"rng_seed", pgg::Value(seed)}};
+            const pgg::RunResult r = pgg::runFile(assets + "/" + rel, rp);
+            ASSERT_FALSE(r.hasErrors());
+            pgg::GeoPtr mesh;
+            for (const auto& o : r.outputs)
+                if (o.name == "mesh") mesh = pgg::asGeo(o.value);
+            ASSERT_NE(mesh, nullptr);
+            dungeon_geometry_generator::FillResult fill;
+            fill.mesh = mesh;
+            dungeon_geometry_generator::FillResult::UnitSpan sp;
+            sp.id = "deco:" + rel;
+            sp.slot = "decor";
+            sp.meshBegin = 0;
+            sp.meshEnd = mesh->pointCount();
+            fill.units = {sp};
+            std::vector<dungeon_geometry_generator::CheckDiag> ds;
+            EXPECT_TRUE(dungeon_geometry_generator::check_elements(fill, ds))
+                << "seed=" << seed << " " << diagText(ds);
+        }
+    }
+}
+

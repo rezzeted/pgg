@@ -1,0 +1,88 @@
+# DungeonGeometryGenerator slot asset: decor bookshelf v2 (slots §2.6) — heavy dark-wood
+# library cabinet mounted against the dungeon wall, filled with rows of
+# colorful leather-bound tomes, tilted books, rolled scrolls and an alchemical
+# potion flask on the top shelf.
+# Mounted on wall candidates (at y ~= 1.9 m, 0.08 m off the wall face, @n =
+# inward room normal). Every plank and book is staggered so zero faces share
+# a plane (F11/elements); @style = 0 (F11/opening_voids).
+
+import codes as c
+import lib.parts as parts
+import lib.ironwork as iron
+
+def slot_version() -> (out: int) {
+    out = 1
+}
+
+param p: geo<points>
+param style: int = 1
+param tag: int = 7
+param rng_seed: int = 7
+
+
+at = value(@P, on = p)
+mn = normalize(value(@n, on = p))
+yaw = degrees(atan2(dot(mn, (1, 0, 0)), dot(mn, (0, 0, 1))))
+root = rng_from_seed(rng_seed)
+probe = mesh_line(count = 1, length = 0.0)
+
+wood_dark = vec3(0.18, 0.105, 0.055)
+wood_mid = vec3(0.24, 0.145, 0.078)
+wood_trim = vec3(0.30, 0.18, 0.095)
+
+# Cabinet frame in local space: floor is at y = -1.90, top crown at y = 0.22
+# (total height 2.12 m, width 1.16 m, depth 0.34 m).
+# Uprights (x = +-0.55), back panel (z = 0.015), 5 horizontal shelves.
+post_l = set(transform(parts.cbox(size = vec3(0.065, 2.08, 0.34), k = 0.0, k_abs = 0.008), translate = vec3(0.0 - 0.55, 0.0 - 0.85, 0.17)), "Cd", wood_dark, domain = points)
+post_r = set(transform(parts.cbox(size = vec3(0.065, 2.08, 0.34), k = 0.0, k_abs = 0.008), translate = vec3(0.55, 0.0 - 0.85, 0.17)), "Cd", wood_dark, domain = points)
+back_p = set(transform(parts.cbox(size = vec3(1.06, 2.04, 0.028), k = 0.0, k_abs = 0.004), translate = vec3(0.0, 0.0 - 0.85, 0.018)), "Cd", wood_dark * 0.82, domain = points)
+plinth = set(transform(parts.cbox(size = vec3(1.22, 0.085, 0.38), k = 0.0, k_abs = 0.008), translate = vec3(0.0, 0.0 - 1.855, 0.18)), "Cd", wood_dark, domain = points)
+crown = set(transform(parts.cbox(size = vec3(1.24, 0.075, 0.39), k = 0.0, k_abs = 0.010), translate = vec3(0.0, 0.21, 0.185)), "Cd", wood_trim, domain = points)
+
+sh0 = set(transform(parts.cbox(size = vec3(1.05, 0.036, 0.31), k = 0.0, k_abs = 0.005), translate = vec3(0.0, 0.0 - 1.78, 0.175)), "Cd", wood_mid, domain = points)
+sh1 = set(transform(parts.cbox(size = vec3(1.05, 0.036, 0.31), k = 0.0, k_abs = 0.005), translate = vec3(0.0, 0.0 - 1.30, 0.175)), "Cd", wood_mid, domain = points)
+sh2 = set(transform(parts.cbox(size = vec3(1.05, 0.036, 0.31), k = 0.0, k_abs = 0.005), translate = vec3(0.0, 0.0 - 0.82, 0.175)), "Cd", wood_mid, domain = points)
+sh3 = set(transform(parts.cbox(size = vec3(1.05, 0.036, 0.31), k = 0.0, k_abs = 0.005), translate = vec3(0.0, 0.0 - 0.34, 0.175)), "Cd", wood_mid, domain = points)
+
+# Books on the 4 shelves (3 shelves of 9 books each = 27 books, plus top shelf items)
+books = repeat (empty_mesh(), iterations = 27) |acc| {
+    e = @iteration
+    row = e / 9
+    col = e % 9
+    erng = split_rng(root, key = 100 + e)
+    y_base = (row == 0 ? 0.0 - 1.76 : (row == 1 ? 0.0 - 1.28 : 0.0 - 0.80))
+    bw = value(random(0.052, 0.078, rng = split_rng(erng, key = "bw")), on = probe)
+    bh = value(random(0.24, 0.36, rng = split_rng(erng, key = "bh")), on = probe)
+    bd = value(random(0.20, 0.25, rng = split_rng(erng, key = "bd")), on = probe)
+    bx = 0.0 - 0.44 + f32(col) * 0.108 + value(random(0.0 - 0.008, 0.008, rng = split_rng(erng, key = "bx")), on = probe)
+    bz = 0.18 + value(random(0.0 - 0.018, 0.018, rng = split_rng(erng, key = "bz")), on = probe)
+    tilt = col == 8 ? -11.0 : value(random(0.0 - 1.8, 1.8, rng = split_rng(erng, key = "t")), on = probe)
+    c_idx = (e * 3 + row * 5) % 5
+    b_col = c_idx == 0 ? vec3(0.62, 0.16, 0.14) : (c_idx == 1 ? vec3(0.16, 0.42, 0.24) : (c_idx == 2 ? vec3(0.18, 0.28, 0.56) : (c_idx == 3 ? vec3(0.68, 0.52, 0.20) : vec3(0.46, 0.22, 0.48))))
+    shade = value(random(0.80, 1.15, rng = split_rng(erng, key = "sh")), on = probe)
+    bk0 = parts.cbox(size = vec3(bw, bh, bd), k = 0.0, k_abs = 0.005)
+    bk1 = transform(bk0, rotate = vec3(0.0, 0.0, tilt), translate = vec3(bx, y_base + bh * 0.5 + 0.002 * f32(col % 3), bz))
+    bk = set(bk1, "Cd", b_col * shade, domain = points)
+    acc = merge(acc, bk)
+}
+
+# Top shelf (y = -0.32): glowing potion flask + stacked ancient tomes
+flask_body = set(iron.spool(p0 = vec3(0.26, 0.0 - 0.32, 0.18), p1 = vec3(0.26, 0.0 - 0.14, 0.18), r0 = 0.055, r1 = 0.082, sides = 10), "Cd", vec3(0.18, 0.78, 0.86), domain = points)
+flask_neck = set(iron.spool(p0 = vec3(0.26, 0.0 - 0.145, 0.18), p1 = vec3(0.26, 0.0 - 0.04, 0.18), r0 = 0.032, r1 = 0.028, sides = 10), "Cd", vec3(0.55, 0.92, 0.96), domain = points)
+tome_flat1 = set(transform(parts.cbox(size = vec3(0.28, 0.065, 0.22), k = 0.0, k_abs = 0.006), rotate = vec3(0.0, 8.0, 0.0), translate = vec3(0.0 - 0.22, 0.0 - 0.285, 0.18)), "Cd", vec3(0.58, 0.14, 0.16), domain = points)
+tome_flat2 = set(transform(parts.cbox(size = vec3(0.24, 0.058, 0.20), k = 0.0, k_abs = 0.006), rotate = vec3(0.0, -14.0, 0.0), translate = vec3(0.0 - 0.21, 0.0 - 0.220, 0.18)), "Cd", vec3(0.72, 0.56, 0.22), domain = points)
+
+raw0 = merge(post_l, post_r, back_p, plinth, crown, sh0, sh1, sh2, sh3, books, flask_body, flask_neck, tome_flat1, tome_flat2)
+placed = transform(raw0, rotate = vec3(0.0, yaw, 0.0), translate = at - mn * 0.07)
+styled = set(placed, "style", 0, domain = points)
+norm = unmark(unmark(styled, "iron"), "edge")
+clean0 = remove_attr(remove_attr(remove_attr(norm, "uv"), "t"), "N")
+flat0 = compute_normals(clean0, mode = flat)
+ao0 = bake_ao(flat0, rays = 8, distance = 0.24, rng = split_rng(root, key = "ao"), domain = corners)
+ao1 = set(ao0, "ao_f", mix(0.38, 1.0, @ao * @ao), domain = faces)
+ao2 = remove_attr(remove_attr(set(ao1, "Cd", clamp(@Cd * @ao_f, vec3(0.02), vec3(1.0)), domain = points), "ao_f"), "ao")
+mesh = compute_normals(compute_normals(ao2, mode = smooth), mode = flat)
+anchors = empty_points()
+
+output mesh
+output anchors

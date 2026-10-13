@@ -1,0 +1,86 @@
+# DungeonGeometryGenerator slot asset: decor rune v2 (slots §2.6) — inlaid arcane rune circle
+# on the dungeon floor: concentric brass/stone rings, an 8-point mystic star
+# of intersecting chords, and glowing sigil nodes at the cardinal points.
+# Sits 2..14 mm proud of the floor setts so characters walk right over it;
+# every tier sits at its own distinct y-range so zero faces share a plane
+# (F11/elements). @style = 0 (F11/opening_voids).
+
+import codes as c
+import ashlar as a
+import lib.parts as parts
+import lib.plan as plan
+import lib.ironwork as iron
+
+def slot_version() -> (out: int) {
+    out = 1
+}
+
+param p: geo<points>
+param style: int = 1
+param tag: int = 6
+param rng_seed: int = 7
+
+
+at = value(@P, on = p)
+root = rng_from_seed(rng_seed)
+probe = mesh_line(count = 1, length = 0.0)
+yaw = value(random(0.0, 360.0, rng = split_rng(root, key = "yaw")), on = probe)
+hue = value(random(0.0, 1.0, rng = split_rng(root, key = "hue")), on = probe)
+
+glow_hi = hue < 0.5 ? vec3(0.95, 0.62, 0.16) : vec3(0.24, 0.78, 0.96)
+glow_lo = hue < 0.5 ? vec3(0.68, 0.34, 0.08) : vec3(0.12, 0.45, 0.72)
+brass_col = vec3(0.58, 0.44, 0.20)
+slate_col = a.ashlar_color(style = style > 0 ? style : 1, shade = 0.48, mot = 0.35)
+
+# Dark carved slate bed disc (y: -0.002 .. 0.004)
+bed_disc = set(iron.spool(p0 = vec3(0.0, 0.0 - 0.002, 0.0), p1 = vec3(0.0, 0.004, 0.0), r0 = 0.88, r1 = 0.86, sides = 32), "Cd", slate_col, domain = points)
+
+# Outer and inner glowing arcane rings (slit 0.6 deg as in drain_v2)
+# Every component has a strictly unique top y and bottom y (> 1.2 mm apart) so
+# F11/elements (0.5 mm plane bucket) never bins two faces into the same plane.
+ring_out = set(plan.arc_shell(cx = 0.0, cz = 0.0, r_in = 0.78, r_out = 0.84, a0 = 0.3, a1 = 359.7, y0 = 0.0010, y1 = 0.0080, grp = "iron", n = 48), "Cd", glow_hi, domain = points)
+ring_mid = set(plan.arc_shell(cx = 0.0, cz = 0.0, r_in = 0.54, r_out = 0.58, a0 = 90.3, a1 = 449.7, y0 = 0.0022, y1 = 0.0095, grp = "iron", n = 40), "Cd", brass_col, domain = points)
+ring_in = set(plan.arc_shell(cx = 0.0, cz = 0.0, r_in = 0.26, r_out = 0.30, a0 = 180.3, a1 = 539.7, y0 = 0.0034, y1 = 0.0110, grp = "iron", n = 32), "Cd", glow_hi, domain = points)
+core_gem = set(iron.spool(p0 = vec3(0.0, 0.0028, 0.0), p1 = vec3(0.0, 0.0190, 0.0), r0 = 0.11, r1 = 0.07, sides = 8), "Cd", glow_hi, domain = points)
+
+# Two rotated squares forming an octagram star (each bar at its own distinct y)
+sq_a1 = set(transform(parts.cbox(size = vec3(1.10, 0.006, 0.028), k = 0.0, k_abs = 0.001), translate = vec3(0.0, 0.0092, 0.53)), "Cd", glow_lo, domain = points)
+sq_a2 = set(transform(parts.cbox(size = vec3(1.10, 0.006, 0.028), k = 0.0, k_abs = 0.001), translate = vec3(0.0, 0.0092, 0.0 - 0.53)), "Cd", glow_lo, domain = points)
+sq_a3 = set(transform(parts.cbox(size = vec3(0.028, 0.006, 1.02), k = 0.0, k_abs = 0.001), translate = vec3(0.53, 0.0108, 0.0)), "Cd", glow_lo, domain = points)
+sq_a4 = set(transform(parts.cbox(size = vec3(0.028, 0.006, 1.02), k = 0.0, k_abs = 0.001), translate = vec3(0.0 - 0.53, 0.0108, 0.0)), "Cd", glow_lo, domain = points)
+sq_a = merge(sq_a1, sq_a2, sq_a3, sq_a4)
+
+sq_b1 = set(transform(parts.cbox(size = vec3(1.10, 0.006, 0.028), k = 0.0, k_abs = 0.001), translate = vec3(0.0, 0.0124, 0.53)), "Cd", glow_hi, domain = points)
+sq_b2 = set(transform(parts.cbox(size = vec3(1.10, 0.006, 0.028), k = 0.0, k_abs = 0.001), translate = vec3(0.0, 0.0124, 0.0 - 0.53)), "Cd", glow_hi, domain = points)
+sq_b3 = set(transform(parts.cbox(size = vec3(0.028, 0.006, 1.02), k = 0.0, k_abs = 0.001), translate = vec3(0.53, 0.0140, 0.0)), "Cd", glow_hi, domain = points)
+sq_b4 = set(transform(parts.cbox(size = vec3(0.028, 0.006, 1.02), k = 0.0, k_abs = 0.001), translate = vec3(0.0 - 0.53, 0.0140, 0.0)), "Cd", glow_hi, domain = points)
+sq_b = transform(merge(sq_b1, sq_b2, sq_b3, sq_b4), rotate = vec3(0.0, 45.0, 0.0))
+
+# Eight rune tablets around the outer perimeter
+nodes = repeat (empty_mesh(), iterations = 8) |acc| {
+    i = @iteration
+    ang = radians(f32(i) * 45.0 + 22.5)
+    rx = cos(ang) * 0.68
+    rz = sin(ang) * 0.68
+    nd = set(iron.spool(p0 = vec3(rx, 0.0016, rz), p1 = vec3(rx, 0.0175 + f32(i % 2) * 0.0012, rz), r0 = 0.055, r1 = 0.042, sides = 6), "Cd", i % 2 == 0 ? glow_hi : brass_col, domain = points)
+    acc = merge(acc, nd)
+}
+
+raw0 = merge(bed_disc, ring_out, ring_mid, ring_in, core_gem, sq_a, sq_b, nodes)
+placed = transform(raw0, rotate = vec3(0.0, yaw, 0.0), translate = at)
+styled = set(placed, "style", 0, domain = points)
+norm = unmark(unmark(styled, "iron"), "edge")
+clean0 = remove_attr(remove_attr(remove_attr(norm, "uv"), "t"), "N")
+flat0 = compute_normals(clean0, mode = flat)
+ao0 = bake_ao(flat0, rays = 6, distance = 0.12, rng = split_rng(root, key = "ao"), domain = corners)
+ao1 = set(ao0, "ao_f", mix(0.65, 1.0, @ao * @ao), domain = faces)
+ao2 = remove_attr(remove_attr(set(ao1, "Cd", clamp(@Cd * @ao_f, vec3(0.04), vec3(1.0)), domain = points), "ao_f"), "ao")
+mesh = compute_normals(compute_normals(ao2, mode = smooth), mode = flat)
+
+a0 = transform(mesh_line(count = 1, length = 0.0), translate = at + vec3(0.0, 0.35, 0.0))
+a1 = set(a0, "kind", c.AK_LIGHT(), domain = points)
+a2 = set(a1, "dir", vec3(0.0, 1.0, 0.0), domain = points, typeinfo = vector)
+anchors = set(a2, "range", 4.0, domain = points)
+
+output mesh
+output anchors

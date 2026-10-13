@@ -823,6 +823,11 @@ int decor_code(const std::string& name, bool& ok) {
     ok = true;
     if (name == "lamp") return 1;
     if (name == "drain") return 2;
+    if (name == "pipes") return 3;
+    if (name == "crystals") return 4;
+    if (name == "chest") return 5;
+    if (name == "rune") return 6;
+    if (name == "bookshelf") return 7;
     ok = false;
     return 0;
 }

@@ -286,12 +286,79 @@
         "chance": 0.7,
         "radius": 0.85,
         "cut_r": 0.28
+      },
+      {
+        "tag": "rune",
+        "roles": [
+          "crypt",
+          "hall"
+        ],
+        "place": "floor",
+        "align": "center",
+        "chance": 0.75,
+        "count": 1,
+        "radius": 0.95,
+        "min_dist": 1.1
+      },
+      {
+        "tag": "chest",
+        "roles": [
+          "hall",
+          "crypt",
+          "stairs"
+        ],
+        "place": "floor",
+        "chance": 0.75,
+        "count": 1,
+        "radius": 0.55,
+        "min_dist": 0.8
+      },
+      {
+        "tag": "crystals",
+        "roles": [
+          "crypt",
+          "corridor",
+          "entry"
+        ],
+        "place": "floor",
+        "chance": 0.7,
+        "count": 2,
+        "radius": 0.45,
+        "min_dist": 0.7
+      },
+      {
+        "tag": "bookshelf",
+        "roles": [
+          "hall",
+          "crypt"
+        ],
+        "place": "wall",
+        "chance": 0.65,
+        "count": 2,
+        "radius": 0.85
+      },
+      {
+        "tag": "pipes",
+        "roles": [
+          "corridor",
+          "hall",
+          "entry"
+        ],
+        "place": "wall",
+        "chance": 0.55,
+        "count": 2,
+        "radius": 0.75
       }
     ]
   },
   "slots": {
+    "decor:bookshelf": "decor/bookshelf_v2.pgg",
+    "decor:chest": "decor/chest_v2.pgg",
+    "decor:crystals": "decor/crystals_v2.pgg",
     "decor:drain": "decor/drain_v2.pgg",
     "decor:lamp": "decor/lamp_v2.pgg",
+    "decor:pipes": "decor/pipes_v2.pgg",
+    "decor:rune": "decor/rune_v2.pgg",
     "door": "doors/opening_v2.pgg",
     "facing": "walls/facing_v2.pgg",
     "node": "walls/node_v2.pgg",

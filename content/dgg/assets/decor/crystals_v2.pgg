@@ -1,0 +1,83 @@
+# DungeonGeometryGenerator slot asset: decor crystals v2 (slots §2.6) — cluster of glowing
+# faceted arcane crystals and bioluminescent cave mushrooms bursting from a
+# dark stone basal mound on the dungeon floor.
+# Emits one light anchor (AK_LIGHT) above the cluster. @style = 0 so
+# F11/opening_voids treats it as a prop; every crystal prism and mushroom cap
+# sits on its own tilted axis so zero faces are coplanar.
+
+import codes as c
+import ashlar as a
+import lib.ironwork as iron
+
+def slot_version() -> (out: int) {
+    out = 1
+}
+
+param p: geo<points>
+param style: int = 1
+param tag: int = 4
+param rng_seed: int = 7
+
+
+at = value(@P, on = p)
+root = rng_from_seed(rng_seed)
+probe = mesh_line(count = 1, length = 0.0)
+yaw = value(random(0.0, 360.0, rng = split_rng(root, key = "yaw")), on = probe)
+hue_pick = value(random(0.0, 1.0, rng = split_rng(root, key = "hue")), on = probe)
+
+# Two arcane palettes: cyan-emerald or amethyst-magenta
+c_base = hue_pick < 0.55 ? vec3(0.10, 0.68, 0.78) : vec3(0.58, 0.20, 0.86)
+c_tip = hue_pick < 0.55 ? vec3(0.45, 0.96, 0.88) : vec3(0.92, 0.52, 1.00)
+c_cap = hue_pick < 0.55 ? vec3(0.18, 0.85, 0.65) : vec3(0.78, 0.28, 0.92)
+c_stem = vec3(0.68, 0.64, 0.56)
+rock_col = a.ashlar_color(style = style > 0 ? style : 1, shade = 0.62, mot = 0.45)
+
+def crystal_shard(h: f32, r: f32, tilt_x: f32, tilt_z: f32, yaw_d: f32, pos: vec3, col_lo: vec3, col_hi: vec3) -> (out: geo<mesh>) {
+    """Hexagonal crystal prism with a faceted pyramid point."""
+    shaft = set(iron.spool(p0 = vec3(0.0, 0.0, 0.0), p1 = vec3(0.0, h * 0.72, 0.0), r0 = r, r1 = r * 0.88, sides = 6), "Cd", col_lo, domain = points)
+    tip = set(iron.spool(p0 = vec3(0.0, h * 0.715, 0.0), p1 = vec3(0.0, h, 0.0), r0 = r * 0.875, r1 = 0.004, sides = 6), "Cd", col_hi, domain = points)
+    out = transform(merge(shaft, tip), rotate = vec3(tilt_x, yaw_d, tilt_z), translate = pos)
+}
+
+def glow_mushroom(h: f32, r_cap: f32, tilt_x: f32, tilt_z: f32, pos: vec3, stem_c: vec3, cap_c: vec3, spot_c: vec3) -> (out: geo<mesh>) {
+    """Cave mushroom with a tapered stalk and a tiered glowing umbrella cap."""
+    stalk = set(iron.spool(p0 = vec3(0.0, 0.0, 0.0), p1 = vec3(0.0, h, 0.0), r0 = r_cap * 0.28, r1 = r_cap * 0.18, sides = 8), "Cd", stem_c, domain = points)
+    skirt = set(iron.spool(p0 = vec3(0.0, h - 0.012, 0.0), p1 = vec3(0.0, h + r_cap * 0.34, 0.0), r0 = r_cap, r1 = r_cap * 0.62, sides = 10), "Cd", cap_c, domain = points)
+    crown = set(iron.spool(p0 = vec3(0.0, h + r_cap * 0.33, 0.0), p1 = vec3(0.0, h + r_cap * 0.56, 0.0), r0 = r_cap * 0.61, r1 = 0.008, sides = 10), "Cd", spot_c, domain = points)
+    out = transform(merge(stalk, skirt, crown), rotate = vec3(tilt_x, 0.0, tilt_z), translate = pos)
+}
+
+# Basal rock mound
+mound_a = set(iron.spool(p0 = vec3(0.0, 0.0 - 0.015, 0.0), p1 = vec3(0.0, 0.055, 0.0), r0 = 0.32, r1 = 0.22, sides = 9), "Cd", rock_col, domain = points)
+mound_b = set(transform(iron.spool(p0 = vec3(0.0, 0.0 - 0.012, 0.0), p1 = vec3(0.0, 0.042, 0.0), r0 = 0.19, r1 = 0.12, sides = 7), rotate = vec3(4.0, 35.0, -5.0), translate = vec3(0.11, 0.0, 0.08)), "Cd", rock_col * 0.86, domain = points)
+
+# Five crystal shards at distinct tilts and heights
+cr1 = crystal_shard(h = 0.56, r = 0.068, tilt_x = 8.0, tilt_z = -6.0, yaw_d = 15.0, pos = vec3(0.0 - 0.03, 0.02, 0.0 - 0.02), col_lo = c_base, col_hi = c_tip)
+cr2 = crystal_shard(h = 0.42, r = 0.054, tilt_x = -18.0, tilt_z = 14.0, yaw_d = 72.0, pos = vec3(0.08, 0.018, 0.0 - 0.06), col_lo = c_base * 0.92, col_hi = c_tip)
+cr3 = crystal_shard(h = 0.36, r = 0.048, tilt_x = 16.0, tilt_z = 22.0, yaw_d = 140.0, pos = vec3(0.0 - 0.11, 0.015, 0.05), col_lo = c_base * 0.88, col_hi = c_tip)
+cr4 = crystal_shard(h = 0.27, r = 0.040, tilt_x = -26.0, tilt_z = -19.0, yaw_d = 215.0, pos = vec3(0.04, 0.012, 0.10), col_lo = c_base, col_hi = c_tip)
+cr5 = crystal_shard(h = 0.22, r = 0.035, tilt_x = 28.0, tilt_z = -24.0, yaw_d = 305.0, pos = vec3(0.0 - 0.09, 0.010, 0.0 - 0.10), col_lo = c_base * 0.85, col_hi = c_tip)
+
+# Three glowing cave mushrooms around the base
+msh1 = glow_mushroom(h = 0.21, r_cap = 0.085, tilt_x = 12.0, tilt_z = -10.0, pos = vec3(0.14, 0.02, 0.06), stem_c = c_stem, cap_c = c_cap, spot_c = c_tip)
+msh2 = glow_mushroom(h = 0.15, r_cap = 0.065, tilt_x = -14.0, tilt_z = 16.0, pos = vec3(0.0 - 0.14, 0.015, 0.0 - 0.04), stem_c = c_stem, cap_c = c_cap, spot_c = c_tip)
+msh3 = glow_mushroom(h = 0.11, r_cap = 0.048, tilt_x = 18.0, tilt_z = 11.0, pos = vec3(0.02, 0.012, 0.0 - 0.15), stem_c = c_stem, cap_c = c_cap, spot_c = c_tip)
+
+raw0 = merge(mound_a, mound_b, cr1, cr2, cr3, cr4, cr5, msh1, msh2, msh3)
+placed = transform(raw0, rotate = vec3(0.0, yaw, 0.0), translate = at)
+styled = set(placed, "style", 0, domain = points)
+norm = unmark(styled, "iron")
+clean0 = remove_attr(remove_attr(remove_attr(norm, "uv"), "t"), "N")
+flat0 = compute_normals(clean0, mode = flat)
+ao0 = bake_ao(flat0, rays = 8, distance = 0.20, rng = split_rng(root, key = "ao"), domain = corners)
+ao1 = set(ao0, "ao_f", mix(0.55, 1.0, @ao * @ao), domain = faces)
+ao2 = remove_attr(remove_attr(set(ao1, "Cd", clamp(@Cd * @ao_f, vec3(0.04), vec3(1.0)), domain = points), "ao_f"), "ao")
+mesh = compute_normals(compute_normals(ao2, mode = smooth), mode = flat)
+
+a0 = transform(mesh_line(count = 1, length = 0.0), translate = at + vec3(0.0, 0.45, 0.0))
+a1 = set(a0, "kind", c.AK_LIGHT(), domain = points)
+a2 = set(a1, "dir", vec3(0.0, 1.0, 0.0), domain = points, typeinfo = vector)
+anchors = set(a2, "range", 3.5, domain = points)
+
+output mesh
+output anchors
