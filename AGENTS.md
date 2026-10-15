@@ -238,3 +238,6 @@ Linux-флоу — Ninja (single-config) + CMake Presets, триплет `x64-li
 - `docs/village_topology_generator/requirements.md` — нормативный документ
   village_topology_generator; `docs/village_topology_generator/references.md` —
   справочник технологий генерации поселений.
+- `docs/building_generator/requirements.md` — проект целостных зданий с
+  интерьером (building_topology_generator + building_geometry_generator);
+  `docs/building_generator/algorithms.md` — алгоритмы стадий и петли согласования.
