@@ -116,4 +116,8 @@ struct ExpandedProgram {
 
 ExpandedProgram expand_program(const Program& p);
 
+// B2 (§16): force a single ground storey — storeys range clamped, attic
+// forbidden, every room storey mask remapped to ground.
+void clamp_single_storey(Program& p);
+
 }  // namespace building_topology_generator

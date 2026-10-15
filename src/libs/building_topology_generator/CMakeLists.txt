@@ -13,12 +13,23 @@ add_library(building_topology_generator STATIC
     ir.cpp
     massing.h
     massing.cpp
+    anneal.h
+    anneal.cpp
+    cost.h
+    cost.cpp
+    emit.h
+    emit.cpp
+    openings.h
+    openings.cpp
     pin.h
     pin.cpp
+    plan.h
+    plan.cpp
     plan_svg.h
     plan_svg.cpp
     program.h
     program.cpp
+    rng.h
     roof.h
     roof.cpp
 )

@@ -213,7 +213,9 @@ Linux-флоу — Ninja (single-config) + CMake Presets, триплет `x64-li
 - Проект целостных зданий с интерьером. Нормативный документ —
   `docs/building_generator/requirements.md` (этапы B0–B6), алгоритмы —
   `docs/building_generator/algorithms.md`. Реализованы **B0** (геометрия
-  поверх вручную замороженного IR) и **B1** (G1/G2: программа → массинг → IR).
+  поверх вручную замороженного IR), **B1** (G1/G2: программа → массинг → IR)
+  и **B2** (G5/G6: план одноэтажного здания — рост комнат, отжиг L0,
+  проёмы, эмит в IR; решения и расхождения — algorithms §15).
 - `src/libs/building_topology_generator` — IR v0
   (`building-topology-generator-ir/0`: типы, JSON, валидация, коды
   FN/WALL/OP/ROOF/…), модель крыши на `geom2d::straight_skeleton`
@@ -221,7 +223,12 @@ Linux-флоу — Ninja (single-config) + CMake Presets, триплет `x64-li
   `building-program/0`, fn-дефолты, раскрытие count/optional), G2
   (`massing.*`: кандидаты ▭/Г/пристройка, score, top-M, отчёт, `no_fit` с
   числами), pins §4.5 (`pin.*`: `building-pin/0`, `--pin`/`--pin-from`;
-  cores парсятся, но действуют с B3), планы этажей в SVG (`plan_svg.*`).
+  cores парсятся, но действуют с B3), планы этажей в SVG (`plan_svg.*`);
+  B2: свой PRNG (`rng.h`, xoshiro256**), G5 (`plan.*`: поле этажа, зерно,
+  рост, гильотина-ремонт), G6 (`openings.*`: Дейкстра от улицы, двери,
+  окна по осям, липкий memo), стоимость (`cost.*`), отжиг L0 (`anneal.*`:
+  unit-сдвиги + обмен, критики, перезапуски `max_attempts`), эмит в IR
+  (`emit.*`: spaces/walls/openings/nodes/access/anchors).
 - Шаблоны программ — `content/building/programs/{house,bakery,tavern}.json`.
 - `src/libs/geom2d` — домен-нейтральная 2D-геометрия (straight skeleton,
   offsetOutline), вынесена из ядра PGG.
@@ -235,12 +242,15 @@ Linux-флоу — Ninja (single-config) + CMake Presets, триплет `x64-li
 - CLI `src/apps/BuildingGeneratorCli`: `fill <ir> -o <dir> [--emit-pgg]`,
   `check <ir>`, `--selftest` (check на замороженном доме),
   `generate --program <p.json> --w <м> --d <м> [-o dir] [--setback]
-  [--max-storeys] [--pin f.json | --pin-from ir --pin massing,cores]`
-  (B1: G1+G2 → ir.json + plans/*.svg + report.txt).
+  [--max-storeys] [--pin f.json | --pin-from ir --pin massing,cores]
+  [--single-storey] [--plan-budget N]` (B1: G1+G2 → ir.json + plans/*.svg +
+  report.txt; `--single-storey` — B2: G5/G6 для одноэтажного массинга).
 - Тесты: `building_ir_test`, `building_roof_parity_test`,
   `building_assets_test`, `building_fill_test`, `building_program_test`,
-  `building_massing_test`, `BuildingGeneratorCli_smoke`,
-  `BuildingGeneratorCli_smoke_generate`.
+  `building_massing_test`, `building_plan_test` (юниты G5–G8),
+  `building_plan_acceptance_test` (приёмка B2: 3 программы × 100 seed'ов,
+  I1/I3/I6/I7 = 100 %, ~2 мин — медленный),
+  `BuildingGeneratorCli_smoke`, `BuildingGeneratorCli_smoke_generate`.
 
 ## MCP
 

@@ -30,6 +30,9 @@ struct RoofModel {
     std::vector<IrRoofEdge> hips;
 };
 
+// Shared 2D helper (roof faces, plan cell fields): even-odd point-in-polygon.
+bool point_in_poly(const std::vector<glm::dvec2>& poly, double x, double z);
+
 // Requirements §7.2: the kernel sweeps from the overhang-offset outline, so
 // the base is lowered by overhang * tan(pitch) to make the plane pass through
 // `outline` at eave_y. v1: all non-gable edges must share one pitch.

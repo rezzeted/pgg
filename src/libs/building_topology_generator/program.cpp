@@ -642,4 +642,12 @@ int ExpandedProgram::hearth_count() const {
     return n;
 }
 
+void clamp_single_storey(Program& p) {
+    p.storeys_min = 1;
+    p.storeys_max = 1;
+    p.attic = AtticMode::Forbidden;
+    const uint32_t ground = 1u << kStoreyGround;
+    for (ProgramRoom& room : p.rooms) room.storeys_mask = ground;
+}
+
 }  // namespace building_topology_generator

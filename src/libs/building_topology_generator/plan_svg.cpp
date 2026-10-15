@@ -89,6 +89,62 @@ std::string storey_plan_svg(const Ir& ir, int storey_index, const Site& site) {
             << (attic ? " (attic)" : "") << "</text>\n";
     }
 
+    // Spaces (B2): fill by zone, label id + net area.
+    auto zone_fill = [](int zone_code) {
+        switch (zone_code) {
+            case kZonePublic: return "#f7dc6f";   // warm yellow
+            case kZoneService: return "#85c1e9";  // blue
+            case kZonePrivate: return "#82e0aa";  // green
+            default: return "#d5dbdb";
+        }
+    };
+    for (const IrSpace& sp : ir.spaces) {
+        if (sp.storey != storey_id) continue;
+        svg << "<polygon points=\"" << poly_points(sp.outline, pr) << "\" fill=\""
+            << zone_fill(sp.zone_code)
+            << "\" fill-opacity=\"0.55\" stroke=\"none\"/>\n";
+        glm::dvec2 c{0.0};
+        for (const glm::dvec2& p : sp.outline) c += p;
+        c /= static_cast<double>(sp.outline.size());
+        svg << "<text x=\"" << pr.px(c.x) << "\" y=\"" << pr.py(c.y)
+            << "\" text-anchor=\"middle\" fill=\"#222\" font-size=\"11\">" << sp.id << "</text>\n";
+        std::ostringstream area;
+        area.precision(3);
+        area << sp.area_net;
+        svg << "<text x=\"" << pr.px(c.x) << "\" y=\"" << pr.py(c.y) + 13
+            << "\" text-anchor=\"middle\" fill=\"#555\" font-size=\"9\">" << area.str()
+            << " m2</text>\n";
+    }
+
+    // Walls (B2): exterior thick dark, partitions thin gray.
+    for (const IrWall& w : ir.walls) {
+        if (w.storey != storey_id) continue;
+        const bool exterior = w.class_code == kWallExterior;
+        edge_line(svg, glm::dvec3(w.a.x, 0.0, w.a.y), glm::dvec3(w.b.x, 0.0, w.b.y), pr,
+                  exterior ? "#1b2631" : "#7f8c8d", exterior ? 5.0 : 2.0);
+        // Openings: a background gap in the wall, then the marker.
+        const glm::dvec2 d = w.b - w.a;
+        for (const IrOpening& o : w.openings) {
+            const glm::dvec2 p0 = w.a + d * o.s0;
+            const glm::dvec2 p1 = w.a + d * o.s1;
+            edge_line(svg, glm::dvec3(p0.x, 0.0, p0.y), glm::dvec3(p1.x, 0.0, p1.y), pr,
+                      "#f8f7f4", exterior ? 5.0 : 3.0);
+            if (o.kind_code == kOpeningDoor) {
+                // Leaf: a perpendicular segment into side_r (the right of
+                // a -> b), plus the gap colored.
+                const glm::dvec2 n(d.y, -d.x);
+                edge_line(svg, glm::dvec3(p0.x, 0.0, p0.y), glm::dvec3(p1.x, 0.0, p1.y), pr,
+                          "#8e44ad", 1.5);
+                edge_line(svg, glm::dvec3(p0.x, 0.0, p0.y),
+                          glm::dvec3(p0.x + n.x * (o.s1 - o.s0), 0.0, p0.y + n.y * (o.s1 - o.s0)),
+                          pr, "#8e44ad", 1.0);
+            } else {
+                edge_line(svg, glm::dvec3(p0.x, 0.0, p0.y), glm::dvec3(p1.x, 0.0, p1.y), pr,
+                          "#2e86c1", 3.0);
+            }
+        }
+    }
+
     // Roof edge projection on the topmost plan (§15: ridge/valley projection).
     const bool topmost = storey_index == static_cast<int>(ir.storeys.size()) - 1;
     if (topmost) {

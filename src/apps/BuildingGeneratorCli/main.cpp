@@ -17,11 +17,14 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <string>
 
 #include "pgg/src/eval/obj_export.h"
 
 #include "building_geometry.h"
+#include "anneal.h"
+#include "emit.h"
 #include "massing.h"
 #include "pin.h"
 #include "plan_svg.h"
@@ -93,11 +96,12 @@ int do_fill(const std::string& ir_path, const std::string& out_dir, const std::s
 }
 
 // generate: program -> G1 (validate, expand) -> G2 (massing; pinned massing
-// is validated and used as-is, §4.5) -> ir.json + report.txt + SVG plans.
+// is validated and used as-is, §4.5) -> G5+G6 (B2, single-storey massings
+// only) -> ir.json + report.txt + SVG plans.
 int do_generate(const std::string& program_path, const std::string& out_dir,
                 const building_topology_generator::Site& site, uint64_t seed,
                 const std::string& pin_path, const std::string& pin_from,
-                const std::string& pin_what) {
+                const std::string& pin_what, bool single_storey, int plan_budget) {
     namespace bt = building_topology_generator;
     std::string err;
 
@@ -105,6 +109,11 @@ int do_generate(const std::string& program_path, const std::string& out_dir,
     if (!bt::load_program_file(program_path, program, err)) {
         std::fprintf(stderr, "%s\n", err.c_str());
         return 1;
+    }
+    if (single_storey) {
+        // B2: clamp the program before the expansion (§16 stage B2): one
+        // ground storey, no attic, all rooms grounded.
+        bt::clamp_single_storey(program);
     }
     const bt::ExpandedProgram expanded = bt::expand_program(program);
 
@@ -146,6 +155,45 @@ int do_generate(const std::string& program_path, const std::string& out_dir,
         return 1;
     }
 
+    // B2 plan stage (G5+G6): only when every volume is a single full storey
+    // without an attic; otherwise the IR stays a massing skeleton (B1
+    // behavior) and the note says why.
+    bool plan_ran = false;
+    std::string plan_note;
+    {
+        bool single = true;
+        for (const bt::MassingVolume& v : massing.chosen.volumes)
+            if (v.storeys != 1 || v.attic) single = false;
+        if (single) {
+            bt::PlanParams pp;
+            if (plan_budget > 0) pp.budget = plan_budget;
+            bt::PlanResult plan = bt::plan_floor(expanded, massing.chosen, pp, seed);
+            if (!plan.ok) {
+                std::fprintf(stderr, "generate: plan: %s\n", plan.error.c_str());
+                return 1;
+            }
+            if (!bt::emit_floor_ir(plan.plan, plan.openings, expanded, pp, plan.cost,
+                                   plan.anneal, ir, err)) {
+                std::fprintf(stderr, "generate: emit: %s\n", err.c_str());
+                return 1;
+            }
+            plan_ran = true;
+            std::ostringstream rs;
+            rs << "\nplan (G5+G6, B2): seed " << seed << ", budget " << pp.budget << "\n";
+            for (const std::string& line : plan.anneal.log) rs << "  " << line << "\n";
+            rs << "  cost: hard " << plan.cost.hard << ", soft " << plan.cost.soft << "\n";
+            for (const auto& [name, v] : plan.cost.raw)
+                rs << "    " << name << " = " << v << "\n";
+            for (const auto& [name, n] : plan.cost.hard_terms)
+                rs << "    hard." << name << " = " << n << "\n";
+            plan_note = rs.str();
+        } else {
+            plan_note =
+                "\nplan (G5+G6): skipped — the chosen massing is multi-storey or has an "
+                "attic (B3 scope). Run with --single-storey for the B2 path.\n";
+        }
+    }
+
     std::error_code ec;
     std::filesystem::create_directories(out_dir, ec);
     std::filesystem::create_directories(out_dir + "/plans", ec);
@@ -154,7 +202,7 @@ int do_generate(const std::string& program_path, const std::string& out_dir,
         std::fprintf(stderr, "%s\n", err.c_str());
         return 1;
     }
-    std::ofstream(out_dir + "/report.txt") << massing.report;
+    std::ofstream(out_dir + "/report.txt") << massing.report << plan_note;
     for (size_t k = 0; k < ir.storeys.size(); ++k) {
         const std::string svg_path =
             out_dir + "/plans/storey_" + ir.storeys[k].id + ".svg";
@@ -164,6 +212,10 @@ int do_generate(const std::string& program_path, const std::string& out_dir,
     std::printf("program: %s (%zu rooms, required %.1f m2)\n", expanded.type.c_str(),
                 expanded.rooms.size(), expanded.required_area());
     std::printf("massing: %s\n", massing.chosen.shape.c_str());
+    if (plan_ran)
+        std::printf("plan: %zu spaces, %zu walls, %zu openings (access: %zu edges)\n",
+                    ir.spaces.size(), ir.walls.size(),
+                    ir.access.edges.size(), ir.access.edges.size());
     std::printf("wrote %s, report.txt, %zu plan(s)\n", ir_out.c_str(), ir.storeys.size());
     if (pin.has_cores)
         std::printf("note: pinned cores carried (%s), applied from B3 (G4)\n",
@@ -209,11 +261,17 @@ int main(int argc, char* argv[]) {
     site.w = 0.0;
     site.d = 0.0;
     uint64_t seed = 1;
+    bool single_storey = false;
+    int plan_budget = 0;
 
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         if (a == "--selftest") {
             command = "selftest";
+        } else if (a == "--single-storey") {
+            single_storey = true;
+        } else if (a == "--plan-budget" && i + 1 < argc) {
+            plan_budget = std::stoi(argv[++i]);
         } else if (a == "-o" && i + 1 < argc) {
             out_dir = argv[++i];
         } else if (a == "--emit-pgg" && i + 1 < argc) {
@@ -261,10 +319,12 @@ int main(int argc, char* argv[]) {
         if (program_path.empty() || site.w <= 0.0 || site.d <= 0.0 || out_dir.empty()) {
             std::fprintf(stderr, "usage: BuildingGeneratorCli generate --program <json> --w <m> "
                                  "--d <m> -o <dir> [--setback m] [--max-storeys n] [--seed N] "
+                                 "[--single-storey] [--plan-budget N] "
                                  "[--pin pin.json | --pin-from ir.json --pin massing,cores]\n");
             return 1;
         }
-        return do_generate(program_path, out_dir, site, seed, pin_path, pin_from, pin_what);
+        return do_generate(program_path, out_dir, site, seed, pin_path, pin_from, pin_what,
+                           single_storey, plan_budget);
     }
     if (command == "fill") {
         if (ir_path.empty() || out_dir.empty()) {

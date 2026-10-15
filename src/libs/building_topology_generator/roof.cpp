@@ -18,8 +18,11 @@ double signed_area(const std::vector<glm::dvec2>& ring) {
     return a * 0.5;
 }
 
+}  // namespace
+
+// Shared 2D helper (roof faces, plan cell fields): even-odd rule, horizontal
+// ray toward +x.
 bool point_in_poly(const std::vector<glm::dvec2>& poly, double x, double z) {
-    // Even-odd rule, horizontal ray toward +x.
     bool inside = false;
     for (size_t i = 0, j = poly.size() - 1; i < poly.size(); j = i++) {
         const double xi = poly[i].x, zi = poly[i].y;
@@ -31,6 +34,8 @@ bool point_in_poly(const std::vector<glm::dvec2>& poly, double x, double z) {
     }
     return inside;
 }
+
+namespace {
 
 glm::dvec2 face_plan_point(const geom2d::StraightSkeleton& sk, int32_t node) {
     return glm::dvec2(sk.nodes[static_cast<size_t>(node)].p);
