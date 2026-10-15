@@ -208,6 +208,30 @@ Linux-флоу — Ninja (single-config) + CMake Presets, триплет `x64-li
 - Тесты: `village_topology_generator_test`, `village_geometry_generator_test`,
   `VillageTopologyGeneratorViewer_smoke`, `VillageGeometryGeneratorCli_smoke`.
 
+## BuildingGenerator
+
+- Проект целостных зданий с интерьером. Нормативный документ —
+  `docs/building_generator/requirements.md` (этапы B0–B6), алгоритмы —
+  `docs/building_generator/algorithms.md`. Реализован **B0**: геометрия
+  поверх вручную замороженного IR.
+- `src/libs/building_topology_generator` — IR v0
+  (`building-topology-generator-ir/0`: типы, JSON, валидация, коды
+  FN/WALL/OP/ROOF/…), модель крыши на `geom2d::straight_skeleton`
+  (та же функция, что у PGG-билтина — §11.4).
+- `src/libs/geom2d` — домен-нейтральная 2D-геометрия (straight skeleton,
+  offsetOutline), вынесена из ядра PGG.
+- `src/libs/building_geometry_generator` — fill: юниты IR → PGG-слоты →
+  общий меш в мировой рамке + `anchors.json`; `check_building` (§14.2,
+  B0-подмножество); `emit_scene_pgg` (сцена с `param cut_y` для разрезов).
+- Ассеты-слоты `content/pgg/Building/` (12 слотов + `lib.pgg` + `codes.pgg`
+  + фикстуры; контракт: outputs `mesh` + `anchors`, база и рамки — §11).
+  Замороженный IR — `content/building/frozen/house_b0.ir.json` (генератор
+  `make_house_b0.py` рядом).
+- CLI `src/apps/BuildingGeneratorCli`: `fill <ir> -o <dir> [--emit-pgg]`,
+  `check <ir>`, `--selftest` (check на замороженном доме).
+- Тесты: `building_ir_test`, `building_roof_parity_test`,
+  `building_assets_test`, `building_fill_test`, `BuildingGeneratorCli_smoke`.
+
 ## MCP
 
 Два сервера в `.mcp.json` / `.cursor/mcp.json`:
