@@ -1,0 +1,20 @@
+{
+  "format": "building-program/0",
+  "type": "bakery",
+  "storeys": { "min": 1, "max": 2, "attic": "allowed" },
+  "entrance": { "facade": "front", "into": ["shop"] },
+  "back_door": { "facade": "back", "into": ["bakehouse"] },
+  "rooms": [
+    { "id": "shop",      "fn": "shop",      "area": [12, 18], "storey": ["ground"], "zone": "public" },
+    { "id": "bakehouse", "fn": "bakehouse", "area": [14, 20], "storey": ["ground"], "zone": "service", "hearth": "oven" },
+    { "id": "storage",   "fn": "storage",   "area": [4, 8],   "storey": ["ground"], "zone": "service", "optional": true },
+    { "id": "living",    "fn": "living",    "area": [10, 16], "storey": ["ground", "upper"], "zone": "private" },
+    { "id": "bed",       "fn": "bedroom",   "count": [1, 2],  "area": [8, 14], "storey": ["upper", "attic"], "zone": "private" }
+  ],
+  "links": [
+    { "a": "shop",      "b": "bakehouse", "kind": "door" },
+    { "a": "bakehouse", "b": "storage",   "kind": "door" },
+    { "a": "shop",      "b": "living",    "kind": "near" }
+  ],
+  "style": { "roof": "gable", "pitch": [40, 50], "chimney": "central", "regularity": "loose" }
+}

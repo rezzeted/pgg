@@ -11,6 +11,14 @@ add_library(building_topology_generator STATIC
     codes.cpp
     ir.h
     ir.cpp
+    massing.h
+    massing.cpp
+    pin.h
+    pin.cpp
+    plan_svg.h
+    plan_svg.cpp
+    program.h
+    program.cpp
     roof.h
     roof.cpp
 )

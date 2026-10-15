@@ -114,6 +114,26 @@ set_property(TARGET building_fill_test PROPERTY FOLDER tests)
 
 add_test(NAME building_fill_test COMMAND building_fill_test)
 
+add_executable(building_program_test building_program_test.cpp)
+target_link_libraries(building_program_test PRIVATE GTest::gtest_main building_topology_generator nlohmann_json::nlohmann_json)
+target_compile_definitions(building_program_test PRIVATE
+    BUILDING_PROGRAMS_DIR="${CMAKE_SOURCE_DIR}/content/building/programs")
+target_include_directories(building_program_test PRIVATE ${CMAKE_SOURCE_DIR}/src/libs/building_topology_generator)
+target_compile_features(building_program_test PRIVATE cxx_std_20)
+set_property(TARGET building_program_test PROPERTY FOLDER tests)
+
+add_test(NAME building_program_test COMMAND building_program_test)
+
+add_executable(building_massing_test building_massing_test.cpp)
+target_link_libraries(building_massing_test PRIVATE GTest::gtest_main building_topology_generator nlohmann_json::nlohmann_json)
+target_compile_definitions(building_massing_test PRIVATE
+    BUILDING_PROGRAMS_DIR="${CMAKE_SOURCE_DIR}/content/building/programs")
+target_include_directories(building_massing_test PRIVATE ${CMAKE_SOURCE_DIR}/src/libs/building_topology_generator)
+target_compile_features(building_massing_test PRIVATE cxx_std_20)
+set_property(TARGET building_massing_test PROPERTY FOLDER tests)
+
+add_test(NAME building_massing_test COMMAND building_massing_test)
+
 add_executable(dungeon_geometry_generator_assets_test dungeon_geometry_generator_assets_test.cpp)
 target_link_libraries(dungeon_geometry_generator_assets_test PRIVATE GTest::gtest_main dungeon_geometry_generator dungeon_geometry_generator_fill pgg nlohmann_json::nlohmann_json)
 target_compile_definitions(dungeon_geometry_generator_assets_test PRIVATE DUNGEON_GEOMETRY_GENERATOR_ASSETS_DIR="${CMAKE_SOURCE_DIR}/content/dgg/assets")

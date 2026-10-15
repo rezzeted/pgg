@@ -1,0 +1,20 @@
+{
+  "format": "building-program/0",
+  "type": "house",
+  "storeys": { "min": 1, "max": 2, "attic": "allowed" },
+  "entrance": { "facade": "front", "into": ["lobby", "hall"] },
+  "back_door": { "facade": "back", "into": ["hall"] },
+  "rooms": [
+    { "id": "lobby",   "fn": "lobby",    "area": [2, 5],   "storey": ["ground"], "zone": "public" },
+    { "id": "hall",    "fn": "kitchen",  "area": [12, 18], "storey": ["ground"], "zone": "public",  "hearth": "fireplace" },
+    { "id": "parlour", "fn": "living",   "area": [10, 16], "storey": ["ground"], "zone": "public",  "hearth": "fireplace" },
+    { "id": "pantry",  "fn": "storage",  "area": [3, 6],   "storey": ["ground"], "zone": "service", "optional": true },
+    { "id": "bed",     "fn": "bedroom",  "count": [1, 3],  "area": [8, 14], "storey": ["upper", "attic"], "zone": "private" }
+  ],
+  "links": [
+    { "a": "hall",    "b": "pantry",  "kind": "door" },
+    { "a": "lobby",   "b": "parlour", "kind": "door" },
+    { "a": "pantry",  "b": "parlour", "kind": "no_door" }
+  ],
+  "style": { "roof": "gable", "pitch": [45, 55], "chimney": "central", "regularity": "loose" }
+}

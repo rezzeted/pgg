@@ -1,0 +1,19 @@
+{
+  "format": "building-program/0",
+  "type": "tavern",
+  "h_ground": 3.2,
+  "storeys": { "min": 1, "max": 2, "attic": "allowed" },
+  "entrance": { "facade": "front", "into": ["taproom"] },
+  "back_door": { "facade": "back", "into": ["kitchen"] },
+  "rooms": [
+    { "id": "taproom", "fn": "taproom",  "area": [25, 40], "storey": ["ground"], "zone": "public",  "hearth": "fireplace" },
+    { "id": "kitchen", "fn": "kitchen",  "area": [10, 16], "storey": ["ground"], "zone": "service", "hearth": "fireplace" },
+    { "id": "cellar_stock", "fn": "storage", "area": [5, 10], "storey": ["ground"], "zone": "service", "optional": true },
+    { "id": "bed",     "fn": "bedroom",  "count": [2, 3],  "area": [8, 14], "storey": ["upper", "attic"], "zone": "private" }
+  ],
+  "links": [
+    { "a": "taproom", "b": "kitchen", "kind": "door" },
+    { "a": "kitchen", "b": "cellar_stock", "kind": "door" }
+  ],
+  "style": { "roof": "gable", "pitch": [45, 55], "chimney": "central", "regularity": "strict" }
+}

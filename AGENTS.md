@@ -212,12 +212,17 @@ Linux-флоу — Ninja (single-config) + CMake Presets, триплет `x64-li
 
 - Проект целостных зданий с интерьером. Нормативный документ —
   `docs/building_generator/requirements.md` (этапы B0–B6), алгоритмы —
-  `docs/building_generator/algorithms.md`. Реализован **B0**: геометрия
-  поверх вручную замороженного IR.
+  `docs/building_generator/algorithms.md`. Реализованы **B0** (геометрия
+  поверх вручную замороженного IR) и **B1** (G1/G2: программа → массинг → IR).
 - `src/libs/building_topology_generator` — IR v0
   (`building-topology-generator-ir/0`: типы, JSON, валидация, коды
   FN/WALL/OP/ROOF/…), модель крыши на `geom2d::straight_skeleton`
-  (та же функция, что у PGG-билтина — §11.4).
+  (та же функция, что у PGG-билтина — §11.4); G1 (`program.*`: загрузчик
+  `building-program/0`, fn-дефолты, раскрытие count/optional), G2
+  (`massing.*`: кандидаты ▭/Г/пристройка, score, top-M, отчёт, `no_fit` с
+  числами), pins §4.5 (`pin.*`: `building-pin/0`, `--pin`/`--pin-from`;
+  cores парсятся, но действуют с B3), планы этажей в SVG (`plan_svg.*`).
+- Шаблоны программ — `content/building/programs/{house,bakery,tavern}.json`.
 - `src/libs/geom2d` — домен-нейтральная 2D-геометрия (straight skeleton,
   offsetOutline), вынесена из ядра PGG.
 - `src/libs/building_geometry_generator` — fill: юниты IR → PGG-слоты →
@@ -228,9 +233,14 @@ Linux-флоу — Ninja (single-config) + CMake Presets, триплет `x64-li
   Замороженный IR — `content/building/frozen/house_b0.ir.json` (генератор
   `make_house_b0.py` рядом).
 - CLI `src/apps/BuildingGeneratorCli`: `fill <ir> -o <dir> [--emit-pgg]`,
-  `check <ir>`, `--selftest` (check на замороженном доме).
+  `check <ir>`, `--selftest` (check на замороженном доме),
+  `generate --program <p.json> --w <м> --d <м> [-o dir] [--setback]
+  [--max-storeys] [--pin f.json | --pin-from ir --pin massing,cores]`
+  (B1: G1+G2 → ir.json + plans/*.svg + report.txt).
 - Тесты: `building_ir_test`, `building_roof_parity_test`,
-  `building_assets_test`, `building_fill_test`, `BuildingGeneratorCli_smoke`.
+  `building_assets_test`, `building_fill_test`, `building_program_test`,
+  `building_massing_test`, `BuildingGeneratorCli_smoke`,
+  `BuildingGeneratorCli_smoke_generate`.
 
 ## MCP
 

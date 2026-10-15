@@ -1,8 +1,11 @@
-// BuildingGeneratorCli (B0): Building IR JSON -> PGG slot assets -> merged OBJ
-// + anchors.json + section scene + checks (docs/building_generator/
-// requirements.md sections 11, 14.2, 15).
+// BuildingGeneratorCli: BuildingGenerator machine loop (docs/building_generator/
+// requirements.md section 15).
 //
 // Usage:
+//   BuildingGeneratorCli generate --program <json> --w <m> --d <m> -o <dir>
+//       [--setback m] [--max-storeys n] [--seed N]
+//       [--pin <pin.json> | --pin-from <ir.json> --pin massing,cores]
+//       -> ir.json, report.txt, plans/storey_<k>.svg (B1: program + massing)
 //   BuildingGeneratorCli fill <ir.json> -o <dir> [--assets DIR] [--seed N]
 //       [--emit-pgg <scene.pgg>]     -> building.obj, anchors.json
 //   BuildingGeneratorCli check <ir.json> [--assets DIR] [--seed N]
@@ -19,6 +22,10 @@
 #include "pgg/src/eval/obj_export.h"
 
 #include "building_geometry.h"
+#include "massing.h"
+#include "pin.h"
+#include "plan_svg.h"
+#include "program.h"
 
 namespace {
 
@@ -85,6 +92,85 @@ int do_fill(const std::string& ir_path, const std::string& out_dir, const std::s
     return 0;
 }
 
+// generate: program -> G1 (validate, expand) -> G2 (massing; pinned massing
+// is validated and used as-is, §4.5) -> ir.json + report.txt + SVG plans.
+int do_generate(const std::string& program_path, const std::string& out_dir,
+                const building_topology_generator::Site& site, uint64_t seed,
+                const std::string& pin_path, const std::string& pin_from,
+                const std::string& pin_what) {
+    namespace bt = building_topology_generator;
+    std::string err;
+
+    bt::Program program;
+    if (!bt::load_program_file(program_path, program, err)) {
+        std::fprintf(stderr, "%s\n", err.c_str());
+        return 1;
+    }
+    const bt::ExpandedProgram expanded = bt::expand_program(program);
+
+    bt::Pin pin;
+    std::string pin_desc;
+    if (!pin_path.empty()) {
+        if (!bt::load_pin_file(pin_path, pin, err)) {
+            std::fprintf(stderr, "%s\n", err.c_str());
+            return 1;
+        }
+        pin_desc = pin_path;
+    }
+    if (!pin_from.empty()) {
+        bt::Ir pin_ir;
+        if (!bt::load_ir_file(pin_from, pin_ir, err)) {
+            std::fprintf(stderr, "%s: %s\n", pin_from.c_str(), err.c_str());
+            return 1;
+        }
+        if (!bt::pin_from_ir(pin_ir, pin_what.empty() ? "massing" : pin_what, pin, err)) {
+            std::fprintf(stderr, "--pin-from %s: %s\n", pin_from.c_str(), err.c_str());
+            return 1;
+        }
+        pin_desc = pin_from + " (" + (pin_what.empty() ? "massing" : pin_what) + ")";
+    }
+
+    bt::MassingParams mp;
+    bt::MassingResult massing =
+        pin.has_massing
+            ? bt::massing_from_pin(expanded, site, mp, seed, pin.massing_volumes, pin_desc)
+            : bt::generate_massing(expanded, site, mp, seed);
+    if (!massing.ok) {
+        std::fprintf(stderr, "generate: %s\n", massing.error.c_str());
+        return 1;
+    }
+
+    bt::Ir ir;
+    if (!bt::massing_to_ir(massing.chosen, expanded, mp, seed, ir, err)) {
+        std::fprintf(stderr, "generate: %s\n", err.c_str());
+        return 1;
+    }
+
+    std::error_code ec;
+    std::filesystem::create_directories(out_dir, ec);
+    std::filesystem::create_directories(out_dir + "/plans", ec);
+    const std::string ir_out = out_dir + "/ir.json";
+    if (!bt::save_ir_file(ir, ir_out, err)) {
+        std::fprintf(stderr, "%s\n", err.c_str());
+        return 1;
+    }
+    std::ofstream(out_dir + "/report.txt") << massing.report;
+    for (size_t k = 0; k < ir.storeys.size(); ++k) {
+        const std::string svg_path =
+            out_dir + "/plans/storey_" + ir.storeys[k].id + ".svg";
+        std::ofstream(svg_path) << bt::storey_plan_svg(ir, static_cast<int>(k), site);
+    }
+
+    std::printf("program: %s (%zu rooms, required %.1f m2)\n", expanded.type.c_str(),
+                expanded.rooms.size(), expanded.required_area());
+    std::printf("massing: %s\n", massing.chosen.shape.c_str());
+    std::printf("wrote %s, report.txt, %zu plan(s)\n", ir_out.c_str(), ir.storeys.size());
+    if (pin.has_cores)
+        std::printf("note: pinned cores carried (%s), applied from B3 (G4)\n",
+                    pin.cores_note.c_str());
+    return 0;
+}
+
 int do_check(const std::string& ir_path, const std::string& assets_dir, uint64_t seed) {
     namespace bg = building_geometry_generator;
     building_topology_generator::Ir ir;
@@ -115,6 +201,13 @@ int main(int argc, char* argv[]) {
     std::string out_dir;
     std::string scene_path;
     std::string assets_dir;
+    std::string program_path;
+    std::string pin_path;
+    std::string pin_from;
+    std::string pin_what;
+    building_topology_generator::Site site;
+    site.w = 0.0;
+    site.d = 0.0;
     uint64_t seed = 1;
 
     for (int i = 1; i < argc; ++i) {
@@ -129,7 +222,27 @@ int main(int argc, char* argv[]) {
             assets_dir = argv[++i];
         } else if (a == "--seed" && i + 1 < argc) {
             seed = std::stoull(argv[++i]);
-        } else if ((a == "fill" || a == "check") && command.empty()) {
+        } else if (a == "--program" && i + 1 < argc) {
+            program_path = argv[++i];
+        } else if (a == "--w" && i + 1 < argc) {
+            site.w = std::stod(argv[++i]);
+        } else if (a == "--d" && i + 1 < argc) {
+            site.d = std::stod(argv[++i]);
+        } else if (a == "--setback" && i + 1 < argc) {
+            site.setback = std::stod(argv[++i]);
+        } else if (a == "--max-storeys" && i + 1 < argc) {
+            site.max_storeys = std::stoi(argv[++i]);
+        } else if (a == "--pin" && i + 1 < argc) {
+            // A bare selector (massing,cores) goes with --pin-from; anything
+            // else is a pin file (section 4.5).
+            const std::string v = argv[++i];
+            if (v.find_first_not_of("abcdefghijklmnopqrstuvwxyz,") == std::string::npos)
+                pin_what = v;
+            else
+                pin_path = v;
+        } else if (a == "--pin-from" && i + 1 < argc) {
+            pin_from = argv[++i];
+        } else if ((a == "fill" || a == "check" || a == "generate") && command.empty()) {
             command = a;
         } else if (!a.empty() && a[0] != '-') {
             ir_path = a;
@@ -143,6 +256,15 @@ int main(int argc, char* argv[]) {
         const std::string frozen = content + "/building/frozen/house_b0.ir.json";
         std::printf("selftest: %s\n", frozen.c_str());
         return do_check(frozen, assets_dir, seed);
+    }
+    if (command == "generate") {
+        if (program_path.empty() || site.w <= 0.0 || site.d <= 0.0 || out_dir.empty()) {
+            std::fprintf(stderr, "usage: BuildingGeneratorCli generate --program <json> --w <m> "
+                                 "--d <m> -o <dir> [--setback m] [--max-storeys n] [--seed N] "
+                                 "[--pin pin.json | --pin-from ir.json --pin massing,cores]\n");
+            return 1;
+        }
+        return do_generate(program_path, out_dir, site, seed, pin_path, pin_from, pin_what);
     }
     if (command == "fill") {
         if (ir_path.empty() || out_dir.empty()) {
@@ -160,7 +282,8 @@ int main(int argc, char* argv[]) {
         return do_check(ir_path, assets_dir, seed);
     }
     std::fprintf(stderr,
-                 "usage: BuildingGeneratorCli fill <ir.json> -o <dir> [--emit-pgg scene.pgg]\n"
+                 "usage: BuildingGeneratorCli generate --program <json> --w <m> --d <m> -o <dir>\n"
+                 "       BuildingGeneratorCli fill <ir.json> -o <dir> [--emit-pgg scene.pgg]\n"
                  "       BuildingGeneratorCli check <ir.json>\n"
                  "       BuildingGeneratorCli --selftest\n");
     return 1;

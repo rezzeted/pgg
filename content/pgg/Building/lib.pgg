@@ -160,29 +160,17 @@ def roof_volume(outline: geo<points>, pitch: f32, y0: f32, overhang: f32, holes:
 }
 
 def ceiling_attic(outline: geo<points>, pitch: f32, y0: f32, overhang: f32, roof_t: f32, inner: geo<points>, holes: geo<points>, hole_margin: f32) -> (out: geo<mesh>) {
-    """Подшивка мансарды (§5.6, §11.2): панели скатов того же скелета, смещённые вниз на
-    roof_t по нормали панели (@N точек панели — нормаль ската), обрезанные по
-    внутреннему контуру мансарды (inner — вершины CCW сверху). Смещённые скаты
-    пересекаются под коньком: каждый обрезан вертикальной плоскостью конька на своей
-    стороне (B0 — двускатная крыша, ровно один конёк). Отверстия — как у roof_volume."""
+    """Подшивка мансарды (§5.6, §11.2): панели скатов того же скелета, опущенные на
+    roof_t/cos(pitch) по вертикали (= roof_t по нормали ската) — то есть скелет с базой
+    y0 - roof_t/cos(pitch): его панели замощают план так же, как у кровли, и не
+    пересекаются ни на коньках, ни на ендовах (любое число скатов). Обрезка по
+    внутреннему контуру мансарды (inner — вершины CCW сверху). Отверстия — как у
+    roof_volume."""
     expect roof_t > 0.0: "ceiling_attic: толщина пирога положительная"
-    panels0, edges0, _, _ = straight_skeleton(outline, pitch = pitch, cut = 0.0, y0 = y0, offset = overhang)
+    rad = pitch * 0.0174532925
+    panels0, _, _, _ = straight_skeleton(outline, pitch = pitch, cut = 0.0, y0 = y0 - roof_t / cos(rad), offset = overhang)
     slopes = delete(panels0, where = @pitch > 89.9, domain = faces)
-    shifted = set_position(slopes, pos = @P - @N * roof_t)
-    ridges = delete(edges0, where = @arc_class != 3)
-    ensure count(ridges) == 1: "ceiling_attic (B0): двускатная крыша — ровно один конёк"
-    rp0 = value(@p0, on = ridges)
-    rp1 = value(@p1, on = ridges)
-    rd = rp1 - rp0
-    rl = length(rd)
-    left_n = vec3(rd.z / rl, 0.0, 0.0 - rd.x / rl)
-    mid = (rp0 + rp1) * 0.5
-    pos_side = delete(shifted, where = dot(@N, left_n) <= 0.0, domain = faces)
-    neg_side = delete(shifted, where = dot(@N, left_n) > 0.0, domain = faces)
-    pos_kept = clip(pos_side, origin = mid, normal = left_n)
-    neg_kept = clip(neg_side, origin = mid, normal = 0.0 - left_n)
-    split = merge(pos_kept, neg_kept)
-    trimmed = repeat (split, iterations = count(inner)) |acc| {
+    trimmed = repeat (slopes, iterations = count(inner)) |acc| {
         i = @iteration
         va = value(@P, on = delete(inner, where = @index != i))
         vb = value(@P, on = delete(inner, where = @index != (i + 1) % count(inner)))

@@ -195,7 +195,11 @@ bool read_params(const nlohmann::json& j, IrParams& p, std::string& err) {
 
 void sort_ir(Ir& ir) {
     auto by_id = [](const auto& a, const auto& b) { return a.id < b.id; };
-    std::sort(ir.storeys.begin(), ir.storeys.end(), by_id);
+    // Storeys are height-ordered, not id-ordered: volume storey0/storey1
+    // index into this array, and "attic" < "ground" alphabetically would
+    // break the ranges.
+    std::sort(ir.storeys.begin(), ir.storeys.end(),
+              [](const IrStorey& a, const IrStorey& b) { return a.y < b.y; });
     std::sort(ir.volumes.begin(), ir.volumes.end(), by_id);
     std::sort(ir.spaces.begin(), ir.spaces.end(), by_id);
     std::sort(ir.walls.begin(), ir.walls.end(), by_id);
