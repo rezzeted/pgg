@@ -12,7 +12,7 @@
 
 #include <glm/glm.hpp>
 
-namespace pgg {
+namespace geom2d {
 
 struct SkeletonInput {
     // Outline vertices (x, z), CCW seen from +Y (signed area in (x, z) < 0 —
@@ -59,4 +59,4 @@ StraightSkeleton buildStraightSkeleton(const SkeletonInput& in, float tMax = 0.0
 // overhang): the polygon structure (vertex count, winding) is preserved.
 std::vector<glm::vec2> offsetOutline(const std::vector<glm::vec2>& outline, float d);
 
-}  // namespace pgg
+}  // namespace geom2d

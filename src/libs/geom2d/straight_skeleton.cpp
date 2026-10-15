@@ -1,4 +1,4 @@
-#include "../../pch.h"
+#include "pch.h"
 
 #include "straight_skeleton.h"
 
@@ -9,7 +9,7 @@
 #include <limits>
 #include <queue>
 
-namespace pgg {
+namespace geom2d {
 
 namespace {
 
@@ -603,4 +603,4 @@ StraightSkeleton buildStraightSkeleton(const SkeletonInput& in, float tMax) {
     return out;
 }
 
-}  // namespace pgg
+}  // namespace geom2d

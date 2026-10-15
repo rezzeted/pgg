@@ -23,6 +23,15 @@
 #include "straight_skeleton.h"
 
 namespace pgg {
+
+using geom2d::SkeletonArc;
+using geom2d::SkeletonFace;
+using geom2d::SkeletonInput;
+using geom2d::SkeletonNode;
+using geom2d::StraightSkeleton;
+using geom2d::buildStraightSkeleton;
+using geom2d::offsetOutline;
+
 namespace {
 
 // @arc_class of the arcs output.

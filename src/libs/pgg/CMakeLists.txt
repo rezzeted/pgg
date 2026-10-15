@@ -51,8 +51,6 @@ nw_add_lib_sources(
         src/eval/mc_tables.h
         src/eval/fracture.h
         src/eval/fracture.cpp
-        src/eval/straight_skeleton.h
-        src/eval/straight_skeleton.cpp
         src/eval/builtins.h
         src/eval/builtins.cpp
         src/eval/builtins_sources.cpp
@@ -98,6 +96,7 @@ nw_add_lib_sources(
         ${PARSER_GEN}
     LIBS
         antlr4_static
+        geom2d
         glm::glm-header-only
         Jolt::Jolt
         nlohmann_json::nlohmann_json

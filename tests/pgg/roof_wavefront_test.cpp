@@ -10,13 +10,13 @@
 #include <gtest/gtest.h>
 
 #include "goldens_utils.h"
-#include "src/eval/straight_skeleton.h"
+#include "straight_skeleton.h"
 #include "test_utils.h"
 
 namespace {
 
-using pgg::SkeletonInput;
-using pgg::StraightSkeleton;
+using geom2d::SkeletonInput;
+using geom2d::StraightSkeleton;
 
 float signedArea(const std::vector<glm::vec2>& ring) {
     float a = 0.0f;
@@ -32,7 +32,7 @@ StraightSkeleton skeletonOf(std::vector<glm::vec2> outline, float speed = 1.0f) 
     SkeletonInput in;
     in.outline = std::move(outline);
     in.speed.assign(in.outline.size(), speed);
-    return pgg::buildStraightSkeleton(in);
+    return geom2d::buildStraightSkeleton(in);
 }
 
 // Every face closed (its last node reaches back to its first outline vertex),
@@ -41,18 +41,18 @@ StraightSkeleton skeletonOf(std::vector<glm::vec2> outline, float speed = 1.0f) 
 void expectSkeletonSane(const StraightSkeleton& sk, const std::vector<glm::vec2>& outline) {
     ASSERT_EQ(sk.faces.size(), outline.size());
     float total = 0.0f;
-    for (const pgg::SkeletonFace& f : sk.faces) {
+    for (const geom2d::SkeletonFace& f : sk.faces) {
         ASSERT_GE(f.nodes.size(), 3u) << "face " << f.edge << " degenerate";
         std::vector<glm::vec2> poly;
         for (int32_t idx : f.nodes) poly.push_back(sk.nodes[static_cast<size_t>(idx)].p);
         total += signedArea(poly);
     }
     pggtest::expectF32Near(total, signedArea(outline), 1e-3f);
-    for (const pgg::SkeletonNode& n : sk.nodes) {
+    for (const geom2d::SkeletonNode& n : sk.nodes) {
         EXPECT_TRUE(std::isfinite(n.t));
         EXPECT_GE(n.t, 0.0f);
     }
-    for (const pgg::SkeletonArc& a : sk.arcs) {
+    for (const geom2d::SkeletonArc& a : sk.arcs) {
         EXPECT_NE(a.leftEdge, -1);
         EXPECT_NE(a.rightEdge, -1);
     }
@@ -89,7 +89,7 @@ TEST(RoofWavefront, SquareIsPyramidPeak) {
     pggtest::expectVec3Near(glm::vec3(sk.nodes[4].p.x, 0.0f, sk.nodes[4].p.y), glm::vec3(0.0f), 1e-4f);
     pggtest::expectF32Near(sk.nodes[4].t, 2.0f, 1e-4f);
     EXPECT_EQ(sk.arcs.size(), 4u);
-    for (const pgg::SkeletonFace& f : sk.faces) EXPECT_EQ(f.nodes.size(), 3u);
+    for (const geom2d::SkeletonFace& f : sk.faces) EXPECT_EQ(f.nodes.size(), 3u);
 }
 
 TEST(RoofWavefront, GableWallsNeverMove) {
@@ -99,7 +99,7 @@ TEST(RoofWavefront, GableWallsNeverMove) {
     SkeletonInput in;
     in.outline = outline;
     in.speed = {0.0f, 1.0f, 0.0f, 1.0f};
-    StraightSkeleton sk = pgg::buildStraightSkeleton(in);
+    StraightSkeleton sk = geom2d::buildStraightSkeleton(in);
     expectSkeletonSane(sk, outline);
     ASSERT_EQ(sk.nodes.size(), 6u);
     pggtest::expectF32Near(sk.nodes[4].t, 2.5f, 1e-4f);
@@ -121,9 +121,9 @@ TEST(RoofWavefront, LPlanValleyAndSplits) {
     expectSkeletonSane(sk, outline);
     // The reflex vertex's first arc heads (-1, -1) from (1.5, 2).
     bool foundValley = false;
-    for (const pgg::SkeletonArc& a : sk.arcs) {
-        const pgg::SkeletonNode& na = sk.nodes[static_cast<size_t>(a.a)];
-        const pgg::SkeletonNode& nb = sk.nodes[static_cast<size_t>(a.b)];
+    for (const geom2d::SkeletonArc& a : sk.arcs) {
+        const geom2d::SkeletonNode& na = sk.nodes[static_cast<size_t>(a.a)];
+        const geom2d::SkeletonNode& nb = sk.nodes[static_cast<size_t>(a.b)];
         if (std::abs(na.p.x - 1.5f) < 1e-4f && std::abs(na.p.y - 2.0f) < 1e-4f) {
             foundValley = true;
             EXPECT_LT(nb.p.x, na.p.x);
@@ -173,7 +173,7 @@ TEST(RoofWavefront, CrossPlanCrossBuilderOrder) {
     };
     StraightSkeleton sk = skeletonOf(outline);
     expectSkeletonSane(sk, outline);
-    for (const pgg::SkeletonFace& f : sk.faces) ASSERT_GE(f.nodes.size(), 3u) << "degenerate face " << f.edge;
+    for (const geom2d::SkeletonFace& f : sk.faces) ASSERT_GE(f.nodes.size(), 3u) << "degenerate face " << f.edge;
 }
 
 }  // namespace
@@ -412,13 +412,13 @@ TEST(RoofWavefront, RiseMaxCutSealsRings) {
     SkeletonInput in;
     in.outline = outline;
     in.speed.assign(outline.size(), 1.0f);
-    StraightSkeleton sk = pgg::buildStraightSkeleton(in, 1.5f);
+    StraightSkeleton sk = geom2d::buildStraightSkeleton(in, 1.5f);
     ASSERT_EQ(sk.topRings.size(), 1u);
     ASSERT_EQ(sk.topRings[0].size(), 4u);
     for (int32_t idx : sk.topRings[0]) pggtest::expectF32Near(sk.nodes[static_cast<size_t>(idx)].t, 1.5f, 1e-4f);
-    for (const pgg::SkeletonNode& nd : sk.nodes) EXPECT_LE(nd.t, 1.5f + 1e-4f);
+    for (const geom2d::SkeletonNode& nd : sk.nodes) EXPECT_LE(nd.t, 1.5f + 1e-4f);
     float total = 0.0f;
-    for (const pgg::SkeletonFace& f : sk.faces) {
+    for (const geom2d::SkeletonFace& f : sk.faces) {
         std::vector<glm::vec2> poly;
         for (int32_t idx : f.nodes) poly.push_back(sk.nodes[static_cast<size_t>(idx)].p);
         total += signedArea(poly);
@@ -437,7 +437,7 @@ TEST(RoofWavefront, ShedRoofThreeGables) {
     SkeletonInput in;
     in.outline = outline;
     in.speed = {0.0f, 0.0f, 1.0f, 0.0f};
-    StraightSkeleton sk = pgg::buildStraightSkeleton(in);
+    StraightSkeleton sk = geom2d::buildStraightSkeleton(in);
     expectSkeletonSane(sk, outline);
     // slope face (edge 2, the low edge): quad from the low edge to the high one.
     ASSERT_EQ(sk.faces.size(), 4u);
@@ -464,7 +464,7 @@ TEST(RoofWavefront, OverhangOnTwoRisalitOutlineMatchesManualOffset) {
     std::vector<float> speed(outline.size(), 1.0f / std::tan(glm::radians(60.0f)));
     speed[3] = speed[9] = 0.0f;
 
-    const std::vector<glm::vec2> off = pgg::offsetOutline(outline, 0.2f);
+    const std::vector<glm::vec2> off = geom2d::offsetOutline(outline, 0.2f);
     ASSERT_EQ(off.size(), outline.size());
     pggtest::expectF32Near(off[0].x, -7.7f, 1e-6f);
     EXPECT_EQ(off[0].x, off[1].x);    // the wall x = -7.7 stays exactly vertical
@@ -474,8 +474,8 @@ TEST(RoofWavefront, OverhangOnTwoRisalitOutlineMatchesManualOffset) {
     SkeletonInput in;
     in.outline = off;
     in.speed = speed;
-    const StraightSkeleton sk = pgg::buildStraightSkeleton(in, 4.2f);
-    for (const pgg::SkeletonNode& n : sk.nodes) {
+    const StraightSkeleton sk = geom2d::buildStraightSkeleton(in, 4.2f);
+    for (const geom2d::SkeletonNode& n : sk.nodes) {
         EXPECT_GE(n.p.x, -7.7f - 1e-3f);
         EXPECT_LE(n.p.x, 7.95f + 1e-3f);
         EXPECT_GE(n.p.y, -8.35f - 1e-3f);
@@ -490,7 +490,7 @@ TEST(RoofWavefront, OverhangOnTwoRisalitOutlineMatchesManualOffset) {
     SkeletonInput mi;
     mi.outline = manual;
     mi.speed = speed;
-    const StraightSkeleton msk = pgg::buildStraightSkeleton(mi, 4.2f);
+    const StraightSkeleton msk = geom2d::buildStraightSkeleton(mi, 4.2f);
     ASSERT_EQ(sk.faces.size(), msk.faces.size());
     for (size_t f = 0; f < sk.faces.size(); ++f) {
         float a = 0.0f, b = 0.0f;
