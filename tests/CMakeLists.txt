@@ -73,6 +73,15 @@ set_property(TARGET dungeon_geometry_generator_ir_test PROPERTY FOLDER tests)
 
 add_test(NAME dungeon_geometry_generator_ir_test COMMAND dungeon_geometry_generator_ir_test)
 
+add_executable(building_ir_test building_ir_test.cpp)
+target_link_libraries(building_ir_test PRIVATE GTest::gtest_main building_topology_generator nlohmann_json::nlohmann_json)
+target_compile_definitions(building_ir_test PRIVATE BUILDING_FROZEN_DIR="${CMAKE_SOURCE_DIR}/content/building/frozen")
+target_include_directories(building_ir_test PRIVATE ${CMAKE_SOURCE_DIR}/src/libs/building_topology_generator)
+target_compile_features(building_ir_test PRIVATE cxx_std_20)
+set_property(TARGET building_ir_test PROPERTY FOLDER tests)
+
+add_test(NAME building_ir_test COMMAND building_ir_test)
+
 add_executable(dungeon_geometry_generator_assets_test dungeon_geometry_generator_assets_test.cpp)
 target_link_libraries(dungeon_geometry_generator_assets_test PRIVATE GTest::gtest_main dungeon_geometry_generator dungeon_geometry_generator_fill pgg nlohmann_json::nlohmann_json)
 target_compile_definitions(dungeon_geometry_generator_assets_test PRIVATE DUNGEON_GEOMETRY_GENERATOR_ASSETS_DIR="${CMAKE_SOURCE_DIR}/content/dgg/assets")
