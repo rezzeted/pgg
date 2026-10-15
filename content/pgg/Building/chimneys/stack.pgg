@@ -1,0 +1,21 @@
+# BuildingGenerator slot asset: дымоход-стояк целиком (§9.2, §11.1): ствол от
+# основания (y = 0) до устья (y = h — IR top), пояс и крышка у верха. Сечение
+# целые клетки (§5.7). Обёртка над lib/arch/terminals_basic.chimney_stack.
+
+import lib.arch.terminals_basic as tb
+
+def slot_version() -> (out: int) {
+    out = 1
+}
+
+param w: f32 = 1.0
+param d: f32 = 0.5
+param h: f32 = 11.6
+param rng_seed: int = 7
+
+stack = tb.chimney_stack(w = w, d = d, h = h)
+mesh = set(stack, "Cd", ingroup("iron") ? vec3(0.12, 0.11, 0.10) : vec3(0.60, 0.35, 0.28), domain = faces)
+anchors = empty_points()
+
+output mesh
+output anchors

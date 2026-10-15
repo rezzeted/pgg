@@ -1,0 +1,1 @@
+{"params": {"outline": "@roof.outline.points.json", "pitch": 50.0, "y0": 6.2233, "overhang": 0.4, "holes": "@roof.holes.points.json", "hole_margin": 0.06, "rng_seed": 7}}

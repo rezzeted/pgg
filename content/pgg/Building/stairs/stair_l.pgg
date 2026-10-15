@@ -1,0 +1,23 @@
+# BuildingGenerator slot asset: Г-лестница с площадкой (§9.1). Локальная рамка:
+# origin — центр линии первого подъёма, y = 0 — пол нижнего этажа, марш 1 по +X,
+# марш 2 по Z·turn. rise — ТОЧНЫЙ (H / risers из IR, не квантованный).
+
+import Building.lib as bl
+
+def slot_version() -> (out: int) {
+    out = 1
+}
+
+param risers: int = 16
+param rise: f32 = 0.19
+param going: f32 = 0.25
+param w: f32 = 1.0
+param risers_low: int = 9
+param turn: int = 1
+param rng_seed: int = 7
+
+mesh = bl.stair_l(risers = risers, rise = rise, going = going, w = w, risers_low = risers_low, turn = turn)
+anchors = empty_points()
+
+output mesh
+output anchors

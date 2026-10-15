@@ -1,0 +1,25 @@
+# BuildingGenerator slot asset: подшивка мансарды (§5.6, §11.2): панели скатов,
+# смещённые вниз на roof_t по нормали, обрезанные по внутреннему контуру inner и
+# плоскости конька; отверстия трубы — holes. B0: двускатная крыша (один конёк).
+
+import Building.lib as bl
+
+def slot_version() -> (out: int) {
+    out = 1
+}
+
+param outline: geo<points>
+param pitch: f32 = 50.0
+param y0: f32 = 6.2233
+param overhang: f32 = 0.4
+param roof_t: f32 = 0.25
+param inner: geo<points>
+param holes: geo<points>
+param hole_margin: f32 = 0.03
+param rng_seed: int = 7
+
+mesh = bl.ceiling_attic(outline = outline, pitch = pitch, y0 = y0, overhang = overhang, roof_t = roof_t, inner = inner, holes = holes, hole_margin = hole_margin)
+anchors = empty_points()
+
+output mesh
+output anchors

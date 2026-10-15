@@ -1,0 +1,1 @@
+{"params": {"len": 7.45, "thick": 0.45, "h_a": 5.0, "h_b": 5.0, "class": 4, "cuts": "@body.cuts.points.json", "top_planes": "@body.gable.top.points.json", "rng_seed": 7}}

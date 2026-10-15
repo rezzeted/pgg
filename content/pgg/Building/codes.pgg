@@ -1,0 +1,188 @@
+# BuildingGenerator asset library: int codes (requirements §10). Values are
+# normative: building_topology_generator/codes.h tables MUST match (the parity
+# is enforced by building_assets_test). 0 = unset everywhere.
+
+def FN_LOBBY() -> (out: int) {
+    """lobby function (codes.pgg)."""
+    out = 1
+}
+
+def FN_HALL() -> (out: int) {
+    """hall function (codes.pgg)."""
+    out = 2
+}
+
+def FN_KITCHEN() -> (out: int) {
+    """kitchen function (codes.pgg)."""
+    out = 3
+}
+
+def FN_LIVING() -> (out: int) {
+    """living room function (codes.pgg)."""
+    out = 4
+}
+
+def FN_BEDROOM() -> (out: int) {
+    """bedroom function (codes.pgg)."""
+    out = 5
+}
+
+def FN_STORAGE() -> (out: int) {
+    """storage function (codes.pgg)."""
+    out = 6
+}
+
+def FN_SHOP() -> (out: int) {
+    """shop function (codes.pgg)."""
+    out = 7
+}
+
+def FN_WORKSHOP() -> (out: int) {
+    """workshop function (codes.pgg)."""
+    out = 8
+}
+
+def FN_BAKEHOUSE() -> (out: int) {
+    """bakehouse function (codes.pgg)."""
+    out = 9
+}
+
+def FN_TAPROOM() -> (out: int) {
+    """taproom function (codes.pgg)."""
+    out = 10
+}
+
+def FN_CORRIDOR() -> (out: int) {
+    """corridor function (codes.pgg)."""
+    out = 11
+}
+
+def ZONE_PUBLIC() -> (out: int) {
+    """public zone (codes.pgg)."""
+    out = 1
+}
+
+def ZONE_SERVICE() -> (out: int) {
+    """service zone (codes.pgg)."""
+    out = 2
+}
+
+def ZONE_PRIVATE() -> (out: int) {
+    """private zone (codes.pgg)."""
+    out = 3
+}
+
+def WALL_EXTERIOR() -> (out: int) {
+    """exterior wall class (codes.pgg)."""
+    out = 1
+}
+
+def WALL_BEARING() -> (out: int) {
+    """bearing wall class (codes.pgg)."""
+    out = 2
+}
+
+def WALL_PARTITION() -> (out: int) {
+    """partition wall class (codes.pgg)."""
+    out = 3
+}
+
+def WALL_GABLE() -> (out: int) {
+    """attic gable wall class (codes.pgg)."""
+    out = 4
+}
+
+def WALL_KNEE() -> (out: int) {
+    """knee wall class (codes.pgg)."""
+    out = 5
+}
+
+def OP_DOOR() -> (out: int) {
+    """door opening kind (codes.pgg)."""
+    out = 1
+}
+
+def OP_WINDOW() -> (out: int) {
+    """window opening kind (codes.pgg)."""
+    out = 2
+}
+
+def ROOF_GABLE() -> (out: int) {
+    """gable roof kind (codes.pgg)."""
+    out = 1
+}
+
+def ROOF_HIP() -> (out: int) {
+    """hip roof kind (codes.pgg)."""
+    out = 2
+}
+
+def ROOF_SHED() -> (out: int) {
+    """shed roof kind (codes.pgg)."""
+    out = 3
+}
+
+def HEARTH_FIREPLACE() -> (out: int) {
+    """fireplace hearth kind (codes.pgg)."""
+    out = 1
+}
+
+def HEARTH_OVEN() -> (out: int) {
+    """oven hearth kind (codes.pgg)."""
+    out = 2
+}
+
+def HEARTH_FORGE() -> (out: int) {
+    """forge hearth kind (codes.pgg)."""
+    out = 3
+}
+
+def STAIR_STRAIGHT() -> (out: int) {
+    """straight stair type (codes.pgg)."""
+    out = 1
+}
+
+def STAIR_L() -> (out: int) {
+    """L-stair with landing type (codes.pgg)."""
+    out = 2
+}
+
+def STAIR_LADDER() -> (out: int) {
+    """ladder stair type (codes.pgg)."""
+    out = 3
+}
+
+def ANCHOR_ENTRANCE() -> (out: int) {
+    """entrance anchor kind (codes.pgg)."""
+    out = 1
+}
+
+def ANCHOR_HEARTH() -> (out: int) {
+    """hearth anchor kind (codes.pgg)."""
+    out = 2
+}
+
+def ANCHOR_BED_SLOT() -> (out: int) {
+    """bed slot anchor kind (codes.pgg)."""
+    out = 3
+}
+
+def ANCHOR_LIGHT() -> (out: int) {
+    """light anchor kind (codes.pgg)."""
+    out = 4
+}
+
+def STOREY_GROUND() -> (out: int) {
+    """ground storey kind (codes.pgg)."""
+    out = 1
+}
+
+def STOREY_UPPER() -> (out: int) {
+    """upper storey kind (codes.pgg)."""
+    out = 2
+}
+
+def STOREY_ATTIC() -> (out: int) {
+    """attic storey kind (codes.pgg)."""
+    out = 3
+}

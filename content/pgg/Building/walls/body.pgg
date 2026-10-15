@@ -1,0 +1,25 @@
+# BuildingGenerator slot asset: тело стены (requirements §11.1). Ось +X от начала
+# стены, база y = 0, толщина симметрично z = 0 (§5.2); BGG ставит yaw+translate.
+# Проёмы — cuts (пары точек на оси, @y0/@y1); верх фронтона — top_planes (@o/@n,
+# конвенция IR). Облицовки — отдельный юнит (позже); B0 — тело с цветом класса.
+
+import Building.lib as bl
+
+def slot_version() -> (out: int) {
+    out = 1
+}
+
+param len: f32 = 4.0
+param thick: f32 = 0.45
+param h_a: f32 = 2.8
+param h_b: f32 = 2.8
+param class: int = 1
+param cuts: geo<points>
+param top_planes: geo<points>
+param rng_seed: int = 7
+
+mesh = bl.wall_body(len = len, thick = thick, h_a = h_a, h_b = h_b, class_code = class, cuts = cuts, top_planes = top_planes)
+anchors = empty_points()
+
+output mesh
+output anchors

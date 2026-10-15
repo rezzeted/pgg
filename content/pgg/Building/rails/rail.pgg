@@ -1,0 +1,20 @@
+# BuildingGenerator slot asset: ограждение проёма плиты (§9.1, §11.1): терминал
+# rail_run из lib/arch/terminals_basic длиной len, высотой h. От origin вдоль +Z
+# (симметричный профиль), ставит BGG.
+
+import lib.arch.terminals_basic as tb
+
+def slot_version() -> (out: int) {
+    out = 1
+}
+
+param len: f32 = 2.0
+param h: f32 = 0.9
+param rng_seed: int = 7
+
+rail = tb.rail_run(len = len, h = h)
+mesh = set(rail, "Cd", vec3(0.40, 0.28, 0.16), domain = faces)
+anchors = empty_points()
+
+output mesh
+output anchors

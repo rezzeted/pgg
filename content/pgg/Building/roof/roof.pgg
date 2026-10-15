@@ -1,0 +1,23 @@
+# BuildingGenerator slot asset: кровля объёма (§11.1): панели прямого скелета по
+# контуру с @pitch на вершинах (90 — фронтон), свес уже в y0 (§7.2 считает BTG),
+# отверстия труб — holes. Паритет плоскостей с BTG — building_roof_parity_test.
+
+import Building.lib as bl
+
+def slot_version() -> (out: int) {
+    out = 1
+}
+
+param outline: geo<points>
+param pitch: f32 = 50.0
+param y0: f32 = 6.2233
+param overhang: f32 = 0.4
+param holes: geo<points>
+param hole_margin: f32 = 0.06
+param rng_seed: int = 7
+
+mesh = bl.roof_volume(outline = outline, pitch = pitch, y0 = y0, overhang = overhang, holes = holes, hole_margin = hole_margin)
+anchors = empty_points()
+
+output mesh
+output anchors

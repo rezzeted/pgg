@@ -1,0 +1,1 @@
+{"params": {"outline": "@../roof/roof.outline.points.json", "pitch": 50.0, "y0": 6.2233, "overhang": 0.4, "roof_t": 0.25, "inner": "@attic.inner.points.json", "holes": "@../roof/roof.holes.points.json", "hole_margin": 0.03, "rng_seed": 7}}

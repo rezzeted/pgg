@@ -1,0 +1,20 @@
+# BuildingGenerator slot asset: окно в проём (§11.1): терминал win_flat из
+# lib/arch/terminals_basic под размер проёма (w — чистая ширина, h — высота).
+# Локальная рамка терминала: низ-центр в origin, лицо +Z; ставит BGG.
+
+import lib.arch.terminals_basic as tb
+
+def slot_version() -> (out: int) {
+    out = 1
+}
+
+param w: f32 = 1.2
+param h: f32 = 1.5
+param rng_seed: int = 7
+
+win = tb.win_flat(w = w, h = h)
+mesh = set(win, "Cd", ingroup("glass") ? vec3(0.55, 0.65, 0.70) : (ingroup("iron") ? vec3(0.20, 0.18, 0.15) : vec3(0.62, 0.55, 0.44)), domain = faces)
+anchors = empty_points()
+
+output mesh
+output anchors

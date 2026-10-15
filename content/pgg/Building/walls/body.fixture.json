@@ -1,0 +1,1 @@
+{"params": {"len": 8.45, "thick": 0.45, "h_a": 2.8, "h_b": 2.8, "class": 1, "cuts": "@body.cuts.points.json", "top_planes": "@empty.points.json", "rng_seed": 7}}

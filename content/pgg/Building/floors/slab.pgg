@@ -1,0 +1,18 @@
+# BuildingGenerator slot asset: межэтажная плита (§11.1): rect'ы из IR (пол минус
+# лестничные проёмы и клетки трубы, §7.8), y точек — низ плиты, t — толщина.
+
+import Building.lib as bl
+
+def slot_version() -> (out: int) {
+    out = 1
+}
+
+param rects: geo<points>
+param t: f32 = 0.25
+param rng_seed: int = 7
+
+mesh = bl.rect_plates(rects = rects, t = t, grp = "wood", col = vec3(0.55, 0.40, 0.24))
+anchors = empty_points()
+
+output mesh
+output anchors

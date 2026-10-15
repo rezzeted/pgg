@@ -1,0 +1,17 @@
+# BuildingGenerator slot asset: узел-столб в стыке стен (§5.2, §11.1). След x/z,
+# высота y — size; низ-центр следа в origin. B0: прямой брус (высоты граней позже).
+
+import Building.lib as bl
+
+def slot_version() -> (out: int) {
+    out = 1
+}
+
+param size: vec3 = (0.45, 2.8, 0.45)
+param rng_seed: int = 7
+
+mesh = bl.node_post(size = size)
+anchors = empty_points()
+
+output mesh
+output anchors

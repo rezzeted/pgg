@@ -1,0 +1,196 @@
+# content/pgg/Building/lib.pgg — общие строители юнитов building_geometry_generator (B0).
+# Рамки: стены/лестницы/очаги — ЛОКАЛЬНЫЕ (ось стены +X от origin, база y = 0, толщина
+# симметрично по z; поворот и перенос делает BGG). Плиты, полы, крыша, подшивка — МИРОВЫЕ
+# координаты (rect'ы и контуры готовые из IR). Проёмы стены — пары точек с @y0/@y1 на
+# первой точке пары; верхний профиль фронтона — точки с @o/@n в конвенции IR (остаётся
+# полупространство dot(p − o, n) <= 0). Коды — Building/codes.pgg (int; строки в полях
+# PGG не читаются, requirements §10).
+#
+# Палитра B0 (плоские @Cd): штукатурка exterior (0.84, 0.79, 0.68), bearing
+# (0.80, 0.74, 0.62), partition/knee (0.86, 0.82, 0.72), gable (0.78, 0.70, 0.58);
+# дерево конструкций (0.55, 0.40, 0.24), пол (0.62, 0.47, 0.30), подшивка
+# (0.70, 0.58, 0.42), столбы (0.40, 0.28, 0.16); черепица (0.45, 0.20, 0.13);
+# кирпич (0.60, 0.35, 0.28).
+
+import lib.parts as parts
+import Building.codes as c
+
+def wall_color(class_code: int) -> (out: vec3) {
+    """Цвет тела стены по классу (codes.pgg WALL_*)."""
+    out = class_code == c.WALL_EXTERIOR() ? vec3(0.84, 0.79, 0.68) : (class_code == c.WALL_BEARING() ? vec3(0.80, 0.74, 0.62) : (class_code == c.WALL_GABLE() ? vec3(0.78, 0.70, 0.58) : vec3(0.86, 0.82, 0.72)))
+}
+
+def carve_openings(g: geo<mesh>, cuts: geo<points>) -> (out: geo<mesh>) {
+    """Прорезка проёмов тела стены без CSG (§11.3): cuts — пары точек на оси стены
+    (x = s0/s1 от начала), @y0/@y1 — высотный спан проёма. Один проём = 4 куска:
+    лево, право, подоконник (пуст при y0 = 0 — дверь), перемычка."""
+    out = repeat (g, iterations = count(cuts) / 2) |acc| {
+        i = @iteration
+        pa = delete(cuts, where = @index != 2 * i)
+        pb = delete(cuts, where = @index != 2 * i + 1)
+        qa = value(@P, on = pa)
+        qb = value(@P, on = pb)
+        y0 = value(@y0, on = pa)
+        y1 = value(@y1, on = pa)
+        sa = min(qa.x, qb.x)
+        sb = max(qa.x, qb.x)
+        left = clip(acc, origin = vec3(sa, 0.0, 0.0), normal = vec3(0.0 - 1.0, 0.0, 0.0))
+        right = clip(acc, origin = vec3(sb, 0.0, 0.0), normal = vec3(1.0, 0.0, 0.0))
+        band0 = clip(acc, origin = vec3(sa, 0.0, 0.0), normal = vec3(1.0, 0.0, 0.0))
+        band = clip(band0, origin = vec3(sb, 0.0, 0.0), normal = vec3(0.0 - 1.0, 0.0, 0.0))
+        sill = clip(band, origin = vec3(0.0, y0, 0.0), normal = vec3(0.0, 0.0 - 1.0, 0.0))
+        lintel = clip(band, origin = vec3(0.0, y1, 0.0), normal = vec3(0.0, 1.0, 0.0))
+        acc = merge(left, right, sill, lintel)
+    }
+}
+
+def wall_body(len: f32, thick: f32, h_a: f32, h_b: f32, class_code: int, cuts: geo<points>, top_planes: geo<points>) -> (out: geo<mesh>) {
+    """Тело стены (§5.2): box len × max(h_a, h_b) × thick, ось +X от origin (начало
+    стены a), база y = 0, толщина симметрично z = 0. Проёмы — cuts; верх фронтона —
+    клипы по top_planes (точки @o/@n, конвенция IR: остаётся dot(p − o, n) <= 0)."""
+    expect len > 0.0 & thick > 0.0: "wall_body: длина и толщина положительные, метры"
+    h = max(h_a, h_b)
+    body = parts.slab(size = vec3(len, h, thick), pos = vec3(len * 0.5, h * 0.5, 0.0), grp = "wall")
+    carved = carve_openings(g = body, cuts = cuts)
+    profiled = repeat (carved, iterations = count(top_planes)) |acc| {
+        row = delete(top_planes, where = @index != @iteration)
+        acc = clip(acc, origin = value(@o, on = row), normal = 0.0 - value(@n, on = row))
+    }
+    out = set(profiled, "Cd", wall_color(class_code = class_code), domain = faces)
+}
+
+def node_post(size: vec3) -> (out: geo<mesh>) {
+    """Узел-столб в стыке стен (§5.2): призма size (x/z — след, y — высота), низ-центр
+    следа в origin. B0: прямой брус; разные высоты граней (IrNodeFace) — позже."""
+    expect size.y > 0.0 & size.x > 0.0 & size.z > 0.0: "node_post: размеры положительные"
+    m = parts.piece(size = size, pos = vec3(0.0, size.y * 0.5, 0.0), grp = "wood")
+    out = set(m, "Cd", vec3(0.40, 0.28, 0.16), domain = faces)
+}
+
+def rect_plates(rects: geo<points>, t: f32, grp: string, col: vec3) -> (out: geo<mesh>) {
+    """Плиты по списку прямоугольников (§7.8): rects — пары точек (min, max) в мировых
+    координатах, y точек — низ плиты. Проёмы (лестничные проёмы, клетки трубы) уже
+    вычтены в IR: rect'ы не пересекаются, стыки компланарны."""
+    expect t > 0.0: "rect_plates: толщина положительная"
+    plates = repeat (empty_mesh(), iterations = count(rects) / 2) |acc| {
+        i = @iteration
+        p0 = value(@P, on = delete(rects, where = @index != 2 * i))
+        p1 = value(@P, on = delete(rects, where = @index != 2 * i + 1))
+        sx = p1.x - p0.x
+        sz = p1.z - p0.z
+        acc = merge(acc, parts.slab(size = vec3(sx, t, sz), pos = vec3(p0.x + sx * 0.5, p0.y + t * 0.5, p0.z + sz * 0.5), grp = grp))
+    }
+    out = set(plates, "Cd", col, domain = faces)
+}
+
+def stair_flight(risers: int, rise: f32, going: f32, w: f32, y0: f32) -> (out: geo<mesh>) {
+    """Один марш от линии первого подъёма (x = 0) вверх по +X: risers подъёмов по rise,
+    тело марша (risers − 1) · going (верхний подъём выходит на пол/площадку, §5.5).
+    Ступени — проступь 0.045 + подступёнок, на двух косоурах, подрезанных плоскостью
+    пола y = y0; под маршем пусто (§9.1). Ширина w (z симметрично 0)."""
+    expect risers >= 2 & rise > 0.0 & going > 0.0 & w > 0.0: "stair_flight: размеры положительные, метры"
+    n_t = risers - 1
+    steps = repeat (empty_mesh(), iterations = n_t) |acc| {
+        i = @iteration + 1
+        tread = parts.slab(size = vec3(going, 0.045, w), pos = vec3(going * (f32(i) - 0.5), y0 + rise * f32(i) - 0.0225, 0.0), grp = "wood")
+        riser = parts.slab(size = vec3(0.02, rise, w), pos = vec3(going * f32(i - 1) + 0.01, y0 + rise * (f32(i) - 0.5), 0.0), grp = "wood")
+        acc = merge(acc, tread, riser)
+    }
+    ang = atan2(rise, going)
+    nose_l = (f32(n_t) * going + 0.10) / cos(ang)
+    mx = f32(n_t) * going * 0.5 - 0.05
+    my = y0 + rise * f32(n_t) * 0.5 - 0.19 / cos(ang)
+    st0 = parts.slab(size = vec3(nose_l, 0.28, 0.03), pos = vec3(0.0, 0.0, 0.0), grp = "wood")
+    st1 = transform(st0, rotate = vec3(0.0, 0.0, degrees(ang)))
+    stl0 = transform(st1, translate = vec3(mx, my, w * 0.5 - 0.015))
+    str0 = transform(st1, translate = vec3(mx, my, 0.0 - (w * 0.5 - 0.015)))
+    stl = clip(stl0, origin = vec3(0.0, y0, 0.0), normal = vec3(0.0, 1.0, 0.0))
+    str = clip(str0, origin = vec3(0.0, y0, 0.0), normal = vec3(0.0, 1.0, 0.0))
+    out = merge(steps, stl, str)
+}
+
+def stair_l(risers: int, rise: f32, going: f32, w: f32, risers_low: int, turn: int) -> (out: geo<mesh>) {
+    """Г-лестница с площадкой (§9.1): марш 1 от origin вверх по +X (risers_low подъёмов),
+    площадка [L1, L1 + w] × [−w/2, w/2] на уровне risers_low · rise, марш 2 от дальней
+    кромки площадки по Z (turn = 1 — +Z, левый поворот; −1 — −Z), прибытие на
+    risers · rise (пол верхнего этажа). Ширина маршей одна w (B0)."""
+    expect risers >= 4 & risers_low >= 2 & risers_low < risers: "stair_l: разбиение маршей >= 2 подъёма"
+    expect going > 0.0 & rise > 0.0 & w > 0.0: "stair_l: размеры положительные, метры"
+    k2 = risers - risers_low
+    l1 = going * f32(risers_low - 1)
+    y_l = rise * f32(risers_low)
+    f1 = stair_flight(risers = risers_low, rise = rise, going = going, w = w, y0 = 0.0)
+    landing = parts.slab(size = vec3(w, 0.10, w), pos = vec3(l1 + w * 0.5, y_l - 0.05, 0.0), grp = "wood")
+    f2r = stair_flight(risers = k2, rise = rise, going = going, w = w, y0 = y_l)
+    f2t = transform(f2r, rotate = vec3(0.0, 0.0 - f32(turn) * 90.0, 0.0))
+    f2 = transform(f2t, translate = vec3(l1 + w * 0.5, 0.0, f32(turn) * w * 0.5))
+    out = set(merge(f1, landing, f2), "Cd", vec3(0.55, 0.40, 0.24), domain = faces)
+}
+
+def hole_cut(g: geo<mesh>, holes: geo<points>, margin: f32) -> (out: geo<mesh>) {
+    """Выкус прямоугольных отверстий (holes — пары min/max точек в плане) четырьмя
+    клипами на кусок (§11.3: отверстие в скате без CSG). margin — напуск на фартук."""
+    out = repeat (g, iterations = count(holes) / 2) |acc| {
+        i = @iteration
+        q0 = value(@P, on = delete(holes, where = @index != 2 * i))
+        q1 = value(@P, on = delete(holes, where = @index != 2 * i + 1))
+        x0 = min(q0.x, q1.x) - margin
+        x1 = max(q0.x, q1.x) + margin
+        z0 = min(q0.z, q1.z) - margin
+        z1 = max(q0.z, q1.z) + margin
+        west = clip(acc, origin = vec3(x0, 0.0, 0.0), normal = vec3(0.0 - 1.0, 0.0, 0.0))
+        east = clip(acc, origin = vec3(x1, 0.0, 0.0), normal = vec3(1.0, 0.0, 0.0))
+        band0 = clip(acc, origin = vec3(x0, 0.0, 0.0), normal = vec3(1.0, 0.0, 0.0))
+        band = clip(band0, origin = vec3(x1, 0.0, 0.0), normal = vec3(0.0 - 1.0, 0.0, 0.0))
+        south = clip(band, origin = vec3(0.0, 0.0, z0), normal = vec3(0.0, 0.0, 0.0 - 1.0))
+        north = clip(band, origin = vec3(0.0, 0.0, z1), normal = vec3(0.0, 0.0, 1.0))
+        acc = merge(west, east, south, north)
+    }
+}
+
+def roof_volume(outline: geo<points>, pitch: f32, y0: f32, overhang: f32, holes: geo<points>, hole_margin: f32) -> (out: geo<mesh>) {
+    """Кровля объёма (§11.1): скаты прямого скелета ядра по контуру с @pitch на вершинах
+    (90 — фронтон: его вертикальные панели удалены, торец закрывает фронтонная стена),
+    отверстия труб/слууховых — holes. Свес уже учтён в y0 (§7.2: BTG считает базу,
+    ассет получает готовое). Группа roof, цвет черепицы."""
+    panels0, _, _, _ = straight_skeleton(outline, pitch = pitch, cut = 0.0, y0 = y0, offset = overhang)
+    slopes = delete(panels0, where = @pitch > 89.9, domain = faces)
+    holed = hole_cut(g = slopes, holes = holes, margin = hole_margin)
+    out = set(compute_normals(holed, mode = flat), "Cd", vec3(0.45, 0.20, 0.13), domain = faces)
+}
+
+def ceiling_attic(outline: geo<points>, pitch: f32, y0: f32, overhang: f32, roof_t: f32, inner: geo<points>, holes: geo<points>, hole_margin: f32) -> (out: geo<mesh>) {
+    """Подшивка мансарды (§5.6, §11.2): панели скатов того же скелета, смещённые вниз на
+    roof_t по нормали панели (@N точек панели — нормаль ската), обрезанные по
+    внутреннему контуру мансарды (inner — вершины CCW сверху). Смещённые скаты
+    пересекаются под коньком: каждый обрезан вертикальной плоскостью конька на своей
+    стороне (B0 — двускатная крыша, ровно один конёк). Отверстия — как у roof_volume."""
+    expect roof_t > 0.0: "ceiling_attic: толщина пирога положительная"
+    panels0, edges0, _, _ = straight_skeleton(outline, pitch = pitch, cut = 0.0, y0 = y0, offset = overhang)
+    slopes = delete(panels0, where = @pitch > 89.9, domain = faces)
+    shifted = set_position(slopes, pos = @P - @N * roof_t)
+    ridges = delete(edges0, where = @arc_class != 3)
+    ensure count(ridges) == 1: "ceiling_attic (B0): двускатная крыша — ровно один конёк"
+    rp0 = value(@p0, on = ridges)
+    rp1 = value(@p1, on = ridges)
+    rd = rp1 - rp0
+    rl = length(rd)
+    left_n = vec3(rd.z / rl, 0.0, 0.0 - rd.x / rl)
+    mid = (rp0 + rp1) * 0.5
+    pos_side = delete(shifted, where = dot(@N, left_n) <= 0.0, domain = faces)
+    neg_side = delete(shifted, where = dot(@N, left_n) > 0.0, domain = faces)
+    pos_kept = clip(pos_side, origin = mid, normal = left_n)
+    neg_kept = clip(neg_side, origin = mid, normal = 0.0 - left_n)
+    split = merge(pos_kept, neg_kept)
+    trimmed = repeat (split, iterations = count(inner)) |acc| {
+        i = @iteration
+        va = value(@P, on = delete(inner, where = @index != i))
+        vb = value(@P, on = delete(inner, where = @index != (i + 1) % count(inner)))
+        tx = vb.x - va.x
+        tz = vb.z - va.z
+        tl = sqrt(tx * tx + tz * tz)
+        acc = clip(acc, origin = (va + vb) * 0.5, normal = vec3(tz / tl, 0.0, 0.0 - tx / tl))
+    }
+    holed = hole_cut(g = trimmed, holes = holes, margin = hole_margin)
+    out = set(holed, "Cd", vec3(0.70, 0.58, 0.42), domain = faces)
+}
