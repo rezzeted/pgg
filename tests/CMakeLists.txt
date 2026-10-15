@@ -102,6 +102,18 @@ set_property(TARGET building_assets_test PROPERTY FOLDER tests)
 
 add_test(NAME building_assets_test COMMAND building_assets_test)
 
+add_executable(building_fill_test building_fill_test.cpp)
+target_link_libraries(building_fill_test PRIVATE GTest::gtest_main building_geometry_generator building_topology_generator pgg nlohmann_json::nlohmann_json)
+target_compile_definitions(building_fill_test PRIVATE
+    BUILDING_FROZEN_DIR="${CMAKE_SOURCE_DIR}/content/building/frozen"
+    BUILDING_ASSETS_DIR="${CMAKE_SOURCE_DIR}/content/pgg/Building"
+    BUILDING_PGG_CONTENT_DIR="${CMAKE_SOURCE_DIR}/content/pgg")
+target_include_directories(building_fill_test PRIVATE ${CMAKE_SOURCE_DIR}/src/libs/building_topology_generator)
+target_compile_features(building_fill_test PRIVATE cxx_std_20)
+set_property(TARGET building_fill_test PROPERTY FOLDER tests)
+
+add_test(NAME building_fill_test COMMAND building_fill_test)
+
 add_executable(dungeon_geometry_generator_assets_test dungeon_geometry_generator_assets_test.cpp)
 target_link_libraries(dungeon_geometry_generator_assets_test PRIVATE GTest::gtest_main dungeon_geometry_generator dungeon_geometry_generator_fill pgg nlohmann_json::nlohmann_json)
 target_compile_definitions(dungeon_geometry_generator_assets_test PRIVATE DUNGEON_GEOMETRY_GENERATOR_ASSETS_DIR="${CMAKE_SOURCE_DIR}/content/dgg/assets")
