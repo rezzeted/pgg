@@ -184,9 +184,13 @@ JSON, `format: "village-topology-generator-layout/0"`:
   переносится в мировую рамку (map x,y-down → world x,0,z), всё мёржится в
   один меш; нет ассета под тип — fallback на `house.pgg` + диагностика) +
   ассеты `content/pgg/Village/buildings/` (house, bakery, tavern, mill, well;
-  контракт: фасад +Z, база y=0, выход `mesh: geo<mesh>`, группы на faces) +
+  контракт: фасад +Z, база y=0, выход `mesh: geo<mesh>`, группы и @Cd на
+  faces; файлы — тонкие обёртки над def'ами
+  `content/pgg/Village/buildings_lib.pgg`) +
   `VillageGeometryGeneratorCli` (IR JSON → OBJ; `--selftest` — вся цепочка
-  без IO). Ограничение v1: земля плоская (y=0), высота рельефа постройкам
+  без IO; `--emit-pgg` — сцена `.pgg` со всеми постройками для 3D-просмотра
+  в PggViewer: `PggTool run scene.pgg --lib content/pgg`).
+  Ограничение v1: земля плоская (y=0), высота рельефа постройкам
   не передаётся.
 
 ## 11. Открытые вопросы

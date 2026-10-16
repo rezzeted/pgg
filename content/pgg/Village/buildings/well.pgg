@@ -1,24 +1,13 @@
-param w: f32 = 6.0
-param d: f32 = 6.0
+param w: f32 = 8.0
+param d: f32 = 10.0
 param rng_seed: int = 1
 
-import lib.shapes as shapes
+import Village.buildings_lib as vb
 
-# Village building asset (village_geometry_generator S6): well — low stone
-# ring, two posts, tiny gable roof. Contract: facade +Z, base y=0, centered
-# in XZ; w/d — parcel front/depth in meters.
-# Groups (faces): stone, wood, roof.
-# Output: mesh (geo<mesh>).
+# Village building asset (village_geometry_generator S6): well — тонкая
+# обёртка над vb.b_well . Контракт: фасад +Z, база y=0,
+# центр XZ; w/d — габариты участка в метрах. Выход: mesh (geo<mesh>),
+# группы faces: wall, roof, wood, stone.
 
-ring = shapes.ngon_frustum(y0 = 0.0, y1 = 0.9, r0 = 0.85, r1 = 0.75, sides = 8, grp = "stone")
-
-post_l = mark(transform(box(size = vec3(0.14, 1.9, 0.14)), translate = vec3(0.0 - 0.8, 0.95, 0)), "wood", where = true, domain = faces)
-post_r = mark(transform(box(size = vec3(0.14, 1.9, 0.14)), translate = vec3(0.8, 0.95, 0)), "wood", where = true, domain = faces)
-
-# Tiny gable roof over the ring: triangle profile swept along X.
-prof = set_position(mesh_line(count = 3, length = 0.0), pos = @index == 0 ? vec3(0.0 - 1.05, 0.0 - 0.06, 0) : (@index == 1 ? vec3(1.05, 0.0 - 0.06, 0) : vec3(0, 0.5, 0)))
-path = transform(mesh_line(count = 2, length = 2.2, dir = (1, 0, 0)), translate = vec3(0.0 - 1.1, 1.9, 0))
-roof = mark(compute_normals(sweep(path, profile = prof), mode = flat), "roof", where = true, domain = faces)
-
-mesh = merge(merge(ring, roof), merge(post_l, post_r))
+mesh = vb.b_well(w = w, d = d, rng = rng_from_seed(rng_seed))
 output mesh

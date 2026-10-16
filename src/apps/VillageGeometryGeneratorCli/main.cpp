@@ -84,6 +84,7 @@ nlohmann::json selftest_ir() {
 int main(int argc, char* argv[]) {
     std::string ir_path;
     std::string out_path;
+    std::string scene_path;
     std::string assets_dir;
     uint64_t seed = 1;
     bool selftest = false;
@@ -94,6 +95,8 @@ int main(int argc, char* argv[]) {
             selftest = true;
         } else if (a == "-o" && i + 1 < argc) {
             out_path = argv[++i];
+        } else if (a == "--emit-pgg" && i + 1 < argc) {
+            scene_path = argv[++i];
         } else if (a == "--assets" && i + 1 < argc) {
             assets_dir = argv[++i];
         } else if (a == "--seed" && i + 1 < argc) {
@@ -127,6 +130,17 @@ int main(int argc, char* argv[]) {
 
     const std::string content_pgg = find_content_pgg();
     if (assets_dir.empty()) assets_dir = content_pgg + "/Village/buildings";
+
+    if (!scene_path.empty()) {
+        const std::string scene = village_geometry_generator::emit_scene_pgg(ir, seed);
+        if (scene.empty()) {
+            std::fprintf(stderr, "no buildings in the IR; scene not written\n");
+            return 1;
+        }
+        std::ofstream(scene_path) << scene;
+        std::printf("wrote %s (run: PggTool run %s --lib %s)\n", scene_path.c_str(),
+                    scene_path.c_str(), content_pgg.c_str());
+    }
 
     village_geometry_generator::GeomParams params;
     params.assets_dir = assets_dir;

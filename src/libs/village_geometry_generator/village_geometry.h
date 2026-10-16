@@ -44,4 +44,10 @@ pgg::GeoPtr merge_meshes(const std::vector<pgg::GeoPtr>& parts);
 // Run every building of the Layout IR through its PGG asset and merge.
 GeomResult generate_geometry(const nlohmann::json& ir, const GeomParams& params);
 
+// Emit the IR as a PGG scene source: one def call per building
+// (Village.buildings_lib) placed by transform. Open the result in PggViewer
+// for a 3D view, or run it with `PggTool run scene.pgg --lib content/pgg`.
+// Deterministic for a deterministic IR. Empty when there are no buildings.
+std::string emit_scene_pgg(const nlohmann::json& ir, uint64_t seed);
+
 }  // namespace village_geometry_generator
