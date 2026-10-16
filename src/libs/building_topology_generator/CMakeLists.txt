@@ -27,11 +27,17 @@ add_library(building_topology_generator STATIC
     plan.cpp
     plan_svg.h
     plan_svg.cpp
+    pipeline.h
+    pipeline.cpp
     program.h
     program.cpp
     rng.h
     roof.h
     roof.cpp
+    stairs.h
+    stairs.cpp
+    storeys.h
+    storeys.cpp
 )
 target_include_directories(building_topology_generator PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_precompile_headers(building_topology_generator PRIVATE pch.h)

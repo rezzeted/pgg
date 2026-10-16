@@ -51,7 +51,16 @@ struct OpeningMemo {
     std::map<std::string, double> window_axes;
 };
 
+// B3: per-storey overrides of the street-rooted derivation (§7.1). Upper
+// storeys have no street doors; their access graph is rooted at the rooms
+// covering the stair arrival cells (depth 0, no door to "outside").
+struct OpeningRules {
+    bool street_doors = true;        // ground storey
+    std::vector<int> arrival_cells;  // flat j*w+i on this storey's grid (G4)
+};
+
 DerivedOpenings derive_openings(const FloorPlan& fp, const ExpandedProgram& prog,
-                                const PlanParams& params, OpeningMemo& memo);
+                                const PlanParams& params, OpeningMemo& memo,
+                                const OpeningRules& rules = {});
 
 }  // namespace building_topology_generator

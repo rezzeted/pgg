@@ -80,6 +80,7 @@ struct MassingResult {
     std::vector<MassingCandidate> top;  // diverse top-M (algorithms §3)
     int candidates_total = 0;
     int rejected_site = 0, rejected_prop = 0, rejected_fit = 0, rejected_roof = 0;
+    int rejected_stair = 0;  // attic walk zone cannot host the stair well (§9.1, §5.6)
     std::string report;  // report.txt: why the winner won (F2)
 };
 

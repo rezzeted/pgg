@@ -42,4 +42,17 @@ struct PlanResult {
 PlanResult plan_floor(const ExpandedProgram& prog, const MassingCandidate& cand,
                       const PlanParams& params, uint64_t seed);
 
+// Lexicographic (hard, soft) comparison of two evaluated plans.
+bool lex_better(const CostBreakdown& a, const CostBreakdown& b);
+
+// B3: anneal one already-grown storey plan (grow_floor_cells output, the
+// stair shaft pinned). rules selects the access root (street vs stair
+// arrival, §7.1); below is the lower storey's plan for the support term
+// (C11, may be null on the ground storey). The single attempt only — the
+// caller owns the re-grow retry loop (the pinned shaft is re-placed by G4,
+// not by the growth).
+PlanResult anneal_plan(FloorPlan grown, const ExpandedProgram& prog,
+                       const PlanParams& params, const OpeningRules& rules,
+                       const FloorPlan* below, Rng& rng);
+
 }  // namespace building_topology_generator

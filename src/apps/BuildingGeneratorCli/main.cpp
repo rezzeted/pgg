@@ -24,9 +24,11 @@
 
 #include "building_geometry.h"
 #include "anneal.h"
+#include "codes.h"
 #include "emit.h"
 #include "massing.h"
 #include "pin.h"
+#include "pipeline.h"
 #include "plan_svg.h"
 #include "program.h"
 
@@ -96,8 +98,9 @@ int do_fill(const std::string& ir_path, const std::string& out_dir, const std::s
 }
 
 // generate: program -> G1 (validate, expand) -> G2 (massing; pinned massing
-// is validated and used as-is, §4.5) -> G5+G6 (B2, single-storey massings
-// only) -> ir.json + report.txt + SVG plans.
+// is validated and used as-is, §4.5) -> plan stage -> ir.json + report.txt +
+// SVG plans. The plan stage is the full B3 chain (G3/G4/G5/G6) by default and
+// the B2 single-storey path with --single-storey.
 int do_generate(const std::string& program_path, const std::string& out_dir,
                 const building_topology_generator::Site& site, uint64_t seed,
                 const std::string& pin_path, const std::string& pin_from,
@@ -148,6 +151,8 @@ int do_generate(const std::string& program_path, const std::string& out_dir,
         std::fprintf(stderr, "generate: %s\n", massing.error.c_str());
         return 1;
     }
+    if (std::getenv("BTG_DEBUG_DUMP"))
+        std::fprintf(stderr, "%s\n", massing.report.c_str());
 
     bt::Ir ir;
     if (!bt::massing_to_ir(massing.chosen, expanded, mp, seed, ir, err)) {
@@ -155,12 +160,12 @@ int do_generate(const std::string& program_path, const std::string& out_dir,
         return 1;
     }
 
-    // B2 plan stage (G5+G6): only when every volume is a single full storey
-    // without an attic; otherwise the IR stays a massing skeleton (B1
-    // behavior) and the note says why.
+    // Plan stage: the B2 single-storey path with --single-storey, else the
+    // full B3 chain (G3 storeys, G4 stairs, per-storey G5/G6, multi-storey
+    // G8 emit).
     bool plan_ran = false;
     std::string plan_note;
-    {
+    if (single_storey) {
         bool single = true;
         for (const bt::MassingVolume& v : massing.chosen.volumes)
             if (v.storeys != 1 || v.attic) single = false;
@@ -190,8 +195,69 @@ int do_generate(const std::string& program_path, const std::string& out_dir,
         } else {
             plan_note =
                 "\nplan (G5+G6): skipped — the chosen massing is multi-storey or has an "
-                "attic (B3 scope). Run with --single-storey for the B2 path.\n";
+                "attic while --single-storey was not given... this cannot happen; report "
+                "this.\n";
         }
+    } else {
+        bt::PlanParams pp;
+        if (plan_budget > 0) pp.budget = plan_budget;
+        // The agreement loop (algorithms §3): the plan stage works on the
+        // effective program — the attic fallback below may rewrite it.
+        bt::ExpandedProgram prog_eff = expanded;
+        bt::BuildingPlanResult bp = bt::plan_building(prog_eff, ir, pp, seed);
+        std::string fallback_note;
+        // When the plan stage cannot realize an attic massing (the stair well
+        // shatters the small walk field into more pieces than the attic has
+        // rooms), fall back to a full-storey massing: re-run G2 with the attic
+        // forbidden, same seed (determinism). Never with a pinned massing —
+        // the pin is law (§4.5).
+        if (!bp.ok && !pin.has_massing && expanded.attic == bt::AtticMode::Allowed) {
+            bool has_attic = false;
+            for (const bt::IrStorey& st : ir.storeys)
+                has_attic = has_attic || st.kind_code == bt::kStoreyAttic;
+            if (has_attic) {
+                bt::ExpandedProgram no_attic = expanded;
+                no_attic.attic = bt::AtticMode::Forbidden;
+                bt::MassingResult m2 = bt::generate_massing(no_attic, site, mp, seed);
+                bt::Ir ir2;
+                if (m2.ok && bt::massing_to_ir(m2.chosen, no_attic, mp, seed, ir2, err)) {
+                    bt::BuildingPlanResult bp2 = bt::plan_building(no_attic, ir2, pp, seed);
+                    if (bp2.ok) {
+                        fallback_note =
+                            "  agreement loop: the attic massing was not realizable (" +
+                            bp.error + ") — re-massed without the attic\n";
+                        massing = std::move(m2);
+                        ir = std::move(ir2);
+                        prog_eff = std::move(no_attic);
+                        bp = std::move(bp2);
+                    }
+                }
+            }
+        }
+        if (!bp.ok) {
+            std::fprintf(stderr, "generate: plan: %s\n", bp.error.c_str());
+            return 1;
+        }
+        if (!bt::emit_building_ir(bp, prog_eff, pp, ir, err)) {
+            std::fprintf(stderr, "generate: emit: %s\n", err.c_str());
+            return 1;
+        }
+        plan_ran = true;
+        std::ostringstream rs;
+        rs << "\nplan (G3-G6, B3): seed " << seed << ", budget " << pp.budget << ", retries "
+           << bp.retries_used + 1 << "\n"
+           << fallback_note;
+        for (size_t k = 0; k < bp.storeys.size(); ++k) {
+            const bt::PlanResult& pr = bp.storeys[k];
+            rs << "  " << ir.storeys[k].id << ": hard " << pr.cost.hard << ", soft "
+               << pr.cost.soft << "\n";
+            for (const auto& [name, v] : pr.cost.raw)
+                rs << "    " << name << " = " << v << "\n";
+            for (const auto& [name, n2] : pr.cost.hard_terms)
+                rs << "    hard." << name << " = " << n2 << "\n";
+        }
+        for (const std::string& line : ir.report_moves) rs << "  " << line << "\n";
+        plan_note = rs.str();
     }
 
     std::error_code ec;
@@ -212,10 +278,12 @@ int do_generate(const std::string& program_path, const std::string& out_dir,
     std::printf("program: %s (%zu rooms, required %.1f m2)\n", expanded.type.c_str(),
                 expanded.rooms.size(), expanded.required_area());
     std::printf("massing: %s\n", massing.chosen.shape.c_str());
-    if (plan_ran)
+    if (plan_ran) {
+        size_t n_openings = 0;
+        for (const bt::IrWall& w : ir.walls) n_openings += w.openings.size();
         std::printf("plan: %zu spaces, %zu walls, %zu openings (access: %zu edges)\n",
-                    ir.spaces.size(), ir.walls.size(),
-                    ir.access.edges.size(), ir.access.edges.size());
+                    ir.spaces.size(), ir.walls.size(), n_openings, ir.access.edges.size());
+    }
     std::printf("wrote %s, report.txt, %zu plan(s)\n", ir_out.c_str(), ir.storeys.size());
     if (pin.has_cores)
         std::printf("note: pinned cores carried (%s), applied from B3 (G4)\n",

@@ -118,6 +118,27 @@ double corner_dist(const PlanRoom& room, const glm::dvec2& c) {
     return best;
 }
 
+// Door-capability of a candidate span (§9.1): every door cell on BOTH sides
+// of the wall must be door-ok for its room (the stair shaft allows doors
+// only on the full-headroom floor: the pad, the notch, the arrival row).
+bool span_door_ok(const FloorPlan& fp, const Run& run, int c0, int need) {
+    for (int c = c0; c < c0 + need; ++c) {
+        const int32_t lo = run.vertical ? (run.line > 0 ? fp.at(run.line - 1, c) : kCellOutside)
+                                        : (run.line > 0 ? fp.at(c, run.line - 1) : kCellOutside);
+        const int32_t hi = run.vertical
+                               ? (run.line < fp.w ? fp.at(run.line, c) : kCellOutside)
+                               : (run.line < fp.h ? fp.at(c, run.line) : kCellOutside);
+        for (int32_t L : {lo, hi}) {
+            if (L < 0) continue;
+            const PlanRoom& room = fp.rooms[static_cast<size_t>(L)];
+            const bool ok = run.vertical ? room.door_ok_at(run.line - (L == lo ? 1 : 0), c)
+                                         : room.door_ok_at(c, run.line - (L == lo ? 1 : 0));
+            if (!ok) return false;
+        }
+    }
+    return true;
+}
+
 // Pick the door position on one of the runs: memo-sticky when still valid,
 // else the run/c0 minimizing the summed distance to the nearest corners of
 // both rooms (§7.1) — for entrance doors the distance to the facade center.
@@ -136,7 +157,7 @@ bool place_door(const FloorPlan& fp, int a, int b, const std::vector<Run>& runs,
         const int c0 = static_cast<int>(std::lround((m0 - line_m) / s));
         for (const Run& run : runs)
             if (run.vertical == vertical && run.line == line && c0 >= run.c0 + m &&
-                c0 + need <= run.c1 - m) {
+                c0 + need <= run.c1 - m && span_door_ok(fp, run, c0, need)) {
                 out.vertical = vertical;
                 out.line = line;
                 out.m0 = m0;
@@ -152,6 +173,7 @@ bool place_door(const FloorPlan& fp, int a, int b, const std::vector<Run>& runs,
     for (const Run& run : runs) {
         if (run.len() < need + 2 * m) continue;
         for (int c0 = run.c0 + m; c0 + need <= run.c1 - m; ++c0) {
+            if (!span_door_ok(fp, run, c0, need)) continue;
             const glm::dvec2 c = door_center(run, c0, need);
             double score;
             if (entrance) {
@@ -179,6 +201,25 @@ bool place_door(const FloorPlan& fp, int a, int b, const std::vector<Run>& runs,
     return true;
 }
 
+// True exterior run: every cell across the wall is kCellOutside. Runs along
+// VOID (stair well, §9.1) or ROOFVOID (knee zone, §5.6) cells are walls, but
+// they host no windows — the well is a hole and the knee wall is too low.
+bool run_is_exterior(const FloorPlan& fp, const Run& run) {
+    for (int c = run.c0; c < run.c1; ++c) {
+        int32_t n;
+        if (run.vertical) {
+            // The room is on one side; the neighbor is across the line.
+            const int32_t L = run.line > 0 ? fp.at(run.line - 1, c) : kCellOutside;
+            n = (L >= 0) ? (run.line < fp.w ? fp.at(run.line, c) : kCellOutside) : L;
+        } else {
+            const int32_t D = run.line > 0 ? fp.at(c, run.line - 1) : kCellOutside;
+            n = (D >= 0) ? (run.line < fp.h ? fp.at(c, run.line) : kCellOutside) : D;
+        }
+        if (n != kCellOutside) return false;
+    }
+    return true;
+}
+
 }  // namespace
 
 int DerivedOpenings::door_count() const {
@@ -189,7 +230,8 @@ int DerivedOpenings::door_count() const {
 }
 
 DerivedOpenings derive_openings(const FloorPlan& fp, const ExpandedProgram& prog,
-                                const PlanParams& params, OpeningMemo& memo) {
+                                const PlanParams& params, OpeningMemo& memo,
+                                const OpeningRules& rules) {
     DerivedOpenings out;
     const int N = static_cast<int>(fp.rooms.size());
     const PlanScan scan = scan_plan(fp);
@@ -261,8 +303,9 @@ DerivedOpenings derive_openings(const FloorPlan& fp, const ExpandedProgram& prog
         }
         return best;
     };
-    const int entrance_room = pick_street_host(true);
-    const int back_room = prog.has_back_door ? pick_street_host(false) : -1;
+    const int entrance_room = rules.street_doors ? pick_street_host(true) : -1;
+    const int back_room =
+        (rules.street_doors && prog.has_back_door) ? pick_street_host(false) : -1;
     auto add_street_edge = [&](int r) {
         adj[static_cast<size_t>(OUT)].push_back({r, 1.0});
         adj[static_cast<size_t>(r)].push_back({OUT, 1.0 + pass_price(fp.rooms[static_cast<size_t>(r)])});
@@ -273,8 +316,22 @@ DerivedOpenings derive_openings(const FloorPlan& fp, const ExpandedProgram& prog
     std::vector<int> parent(static_cast<size_t>(N) + 1, -1);
     using QItem = std::pair<double, int>;
     std::priority_queue<QItem, std::vector<QItem>, std::greater<>> pq;
-    dist[static_cast<size_t>(OUT)] = 0.0;
-    pq.push({0.0, OUT});
+    if (rules.street_doors) {
+        dist[static_cast<size_t>(OUT)] = 0.0;
+        pq.push({0.0, OUT});
+    } else {
+        // Upper storey (B3, §7.1): the access graph is rooted at the rooms
+        // covering the stair arrival cells — depth 0, no street door.
+        for (const int cell : rules.arrival_cells) {
+            const int r = fp.at(cell % fp.w, cell / fp.w);
+            if (r < 0) continue;
+            if (dist[static_cast<size_t>(r)] > 0.0) {
+                dist[static_cast<size_t>(r)] = 0.0;
+                parent[static_cast<size_t>(r)] = kOutside;  // via stair: no door
+                pq.push({0.0, r});
+            }
+        }
+    }
     while (!pq.empty()) {
         const auto [d, u] = pq.top();
         pq.pop();
@@ -330,9 +387,10 @@ DerivedOpenings derive_openings(const FloorPlan& fp, const ExpandedProgram& prog
     if (back_room >= 0 && !(street_door_side[static_cast<size_t>(back_room)] & 2))
         if (add_door(back_room, kOutside, facade_runs(back_room, false), /*entrance=*/true))
             street_door_side[static_cast<size_t>(back_room)] |= 2;
-    out.entrance_ok =
-        entrance_room >= 0 && (street_door_side[static_cast<size_t>(entrance_room)] & 1) != 0;
-    out.back_door_ok = !prog.has_back_door ||
+    out.entrance_ok = !rules.street_doors ||
+                      (entrance_room >= 0 &&
+                       (street_door_side[static_cast<size_t>(entrance_room)] & 1) != 0);
+    out.back_door_ok = !rules.street_doors || !prog.has_back_door ||
                        (back_room >= 0 &&
                         (street_door_side[static_cast<size_t>(back_room)] & 2) != 0);
 
@@ -404,6 +462,7 @@ DerivedOpenings derive_openings(const FloorPlan& fp, const ExpandedProgram& prog
             std::vector<double> slots;
             for (double axis : (vertical ? axes_z : axes_x)) {
                 for (const Run& run : runs) {
+                    if (!run_is_exterior(fp, run)) continue;
                     const double r0 = line_m + run.c0 * s, r1 = line_m + run.c1 * s;
                     if (axis < r0 + clr || axis > r1 - clr) continue;
                     bool blocked_hit = false;
@@ -512,7 +571,8 @@ DerivedOpenings derive_openings(const FloorPlan& fp, const ExpandedProgram& prog
             const Run* longest = nullptr;
             for (int side : side_order)
                 for (const Run& run : scan.exterior[static_cast<size_t>(r)][side])
-                    if (!longest || run.len() > longest->len()) longest = &run;
+                    if (run_is_exterior(fp, run) && (!longest || run.len() > longest->len()))
+                        longest = &run;
             if (!longest) break;
             const bool vertical = longest->vertical;
             const double line_m = vertical ? fp.origin.y : fp.origin.x;

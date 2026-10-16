@@ -44,6 +44,11 @@ void units_on_vertical_line(const FloorPlan& fp, int X, std::vector<ShiftUnit>& 
         if (covered[static_cast<size_t>(z)]) continue;
         const int32_t L = fp.at(X - 1, z), R = fp.at(X, z);
         if (L < 0 || R < 0 || L == R) continue;
+        // A fixed room (the stair shaft, a winged L-room) never moves; no
+        // unit crosses it.
+        if (fp.rooms[static_cast<size_t>(L)].fixed() ||
+            fp.rooms[static_cast<size_t>(R)].fixed())
+            continue;
         if (fp.rooms[static_cast<size_t>(L)].x1 != X ||
             fp.rooms[static_cast<size_t>(R)].x0 != X)
             continue;
@@ -59,6 +64,8 @@ void units_on_vertical_line(const FloorPlan& fp, int X, std::vector<ShiftUnit>& 
             for (int row = a; row < b && valid; ++row) {
                 const int32_t l = fp.at(X - 1, row), r = fp.at(X, row);
                 if (l < 0 || r < 0 || l == r ||
+                    fp.rooms[static_cast<size_t>(l)].fixed() ||
+                    fp.rooms[static_cast<size_t>(r)].fixed() ||
                     fp.rooms[static_cast<size_t>(l)].x1 != X ||
                     fp.rooms[static_cast<size_t>(r)].x0 != X) {
                     valid = false;
@@ -106,6 +113,9 @@ void units_on_horizontal_line(const FloorPlan& fp, int Z, std::vector<ShiftUnit>
         if (covered[static_cast<size_t>(i)]) continue;
         const int32_t D = fp.at(i, Z - 1), U = fp.at(i, Z);
         if (D < 0 || U < 0 || D == U) continue;
+        if (fp.rooms[static_cast<size_t>(D)].fixed() ||
+            fp.rooms[static_cast<size_t>(U)].fixed())
+            continue;
         if (fp.rooms[static_cast<size_t>(D)].z1 != Z ||
             fp.rooms[static_cast<size_t>(U)].z0 != Z)
             continue;
@@ -119,6 +129,8 @@ void units_on_horizontal_line(const FloorPlan& fp, int Z, std::vector<ShiftUnit>
             for (int col = a; col < b && valid; ++col) {
                 const int32_t d = fp.at(col, Z - 1), u = fp.at(col, Z);
                 if (d < 0 || u < 0 || d == u ||
+                    fp.rooms[static_cast<size_t>(d)].fixed() ||
+                    fp.rooms[static_cast<size_t>(u)].fixed() ||
                     fp.rooms[static_cast<size_t>(d)].z1 != Z ||
                     fp.rooms[static_cast<size_t>(u)].z0 != Z) {
                     valid = false;
@@ -232,8 +244,17 @@ bool random_move(const FloorPlan& fp, double s, Rng& rng, Move& out) {
         }
     }
     if (N >= 2) {
-        int a = rng.below(N), b = rng.below(N - 1);
-        if (b >= a) ++b;
+        // Swaps never touch fixed rooms (the stair shaft stays put, B3; a
+        // winged L-room's shape is the field's, phase L).
+        std::vector<int> free_rooms;
+        for (int r = 0; r < N; ++r)
+            if (!fp.rooms[static_cast<size_t>(r)].fixed()) free_rooms.push_back(r);
+        if (free_rooms.size() < 2) return false;
+        const int a = free_rooms[static_cast<size_t>(rng.below(static_cast<int>(free_rooms.size())))];
+        std::vector<int> rest;
+        for (int r : free_rooms)
+            if (r != a) rest.push_back(r);
+        const int b = rest[static_cast<size_t>(rng.below(static_cast<int>(rest.size())))];
         out = Move{};
         out.is_swap = true;
         out.swap_a = a;
@@ -302,6 +323,8 @@ bool facade_capable(const FloorPlan& fp, const PlanParams& params, int r, bool f
 struct Ctx {
     const ExpandedProgram* prog = nullptr;
     const PlanParams* params = nullptr;
+    const OpeningRules* rules = nullptr;  // access root (street / stair arrival)
+    const FloorPlan* below = nullptr;     // lower storey plan for C11 (support)
     OpeningMemo memo;
     FloorPlan cur;
     DerivedOpenings ops;
@@ -320,39 +343,32 @@ Candidate evaluate(const Ctx& c, const FloorPlan& plan) {
     cand.plan = plan;
     cand.plan.rasterize();
     cand.memo = c.memo;
-    cand.ops = derive_openings(cand.plan, *c.prog, *c.params, cand.memo);
-    cand.cost = evaluate_cost(cand.plan, *c.prog, cand.ops, *c.params);
+    cand.ops = derive_openings(cand.plan, *c.prog, *c.params, cand.memo, *c.rules);
+    cand.cost = evaluate_cost(cand.plan, *c.prog, cand.ops, *c.params, c.below);
     return cand;
 }
+
+}  // namespace
 
 bool lex_better(const CostBreakdown& a, const CostBreakdown& b) {
     if (a.hard != b.hard) return a.hard < b.hard;
     return a.soft < b.soft - 1e-12;
 }
 
-}  // namespace
-
-namespace {
-
-// One grow + anneal attempt (algorithms §11). The caller owns the rng: attempt
-// k > 0 anneals a fresh growth drawn from a split sub-stream.
-PlanResult plan_floor_once(const ExpandedProgram& prog, const MassingCandidate& cand,
-                           const PlanParams& params, Rng& rng) {
+PlanResult anneal_plan(FloorPlan grown, const ExpandedProgram& prog,
+                       const PlanParams& params, const OpeningRules& rules,
+                       const FloorPlan* below, Rng& rng) {
     PlanResult res;
-    std::string err;
-    FloorPlan grown = grow_floor(prog, cand, params, rng, err);
-    if (!err.empty()) {
-        res.error = err;
-        return res;
-    }
 
     Ctx c;
     c.prog = &prog;
     c.params = &params;
+    c.rules = &rules;
+    c.below = below;
     c.cur = std::move(grown);
     c.cur.rasterize();
-    c.ops = derive_openings(c.cur, prog, params, c.memo);
-    c.cost = evaluate_cost(c.cur, prog, c.ops, params);
+    c.ops = derive_openings(c.cur, prog, params, c.memo, rules);
+    c.cost = evaluate_cost(c.cur, prog, c.ops, params, below);
 
     AnnealReport& rep = res.anneal;
     rep.initial = c.cost;
@@ -362,13 +378,7 @@ PlanResult plan_floor_once(const ExpandedProgram& prog, const MassingCandidate& 
 
     // -- T0 calibration (§11): mean positive delta is accepted with p = 0.5.
     {
-        Ctx probe;
-        probe.prog = &prog;
-        probe.params = &params;
-        probe.cur = c.cur;
-        probe.memo = c.memo;
-        probe.ops = c.ops;
-        probe.cost = c.cost;
+        Ctx probe = c;  // rules/below come along; cur/ops/cost shadow below
         std::vector<double> pos;
         for (int i = 0; i < params.calibrate_moves; ++i) {
             Move mv;
@@ -427,6 +437,7 @@ PlanResult plan_floor_once(const ExpandedProgram& prog, const MassingCandidate& 
                     std::vector<int> hosts, donors, donors_soft;
                     for (int r = 0; r < N; ++r) {
                         const PlanRoom& room = c.cur.rooms[static_cast<size_t>(r)];
+                        if (room.fixed()) continue;
                         if (front ? room.entrance_front : room.entrance_back) {
                             hosts.push_back(r);
                         } else if (facade_capable(c.cur, params, r, front)) {
@@ -453,12 +464,20 @@ PlanResult plan_floor_once(const ExpandedProgram& prog, const MassingCandidate& 
                 const auto& link = c.ops.missing_door_links[static_cast<size_t>(
                     rng.below(static_cast<int>(c.ops.missing_door_links.size())))];
                 const int a = link.first, b = link.second;
+                const bool fix_a = c.cur.rooms[static_cast<size_t>(a)].fixed();
+                const bool fix_b = c.cur.rooms[static_cast<size_t>(b)].fixed();
+                if (fix_a || fix_b) {
+                    // A fixed endpoint (the stair shaft, a winged L-room)
+                    // cannot swap; pull the other room toward it.
+                    if (!fix_a) have = shift_touching(c.cur, a, s, rng, mv);
+                    if (!have && !fix_b) have = shift_touching(c.cur, b, s, rng, mv);
+                } else {
                 // Swap b with a room adjacent to a; the shared wall makes the
                 // link door-capable.
                 std::vector<int> partners;
                 for (const auto& [x, y] : c.ops.adjacency) {
                     const int o = x == a ? y : y == a ? x : -1;
-                    if (o >= 0 && o != b &&
+                    if (o >= 0 && o != b && !c.cur.rooms[static_cast<size_t>(o)].fixed() &&
                         std::find(partners.begin(), partners.end(), o) == partners.end())
                         partners.push_back(o);
                 }
@@ -472,11 +491,13 @@ PlanResult plan_floor_once(const ExpandedProgram& prog, const MassingCandidate& 
                 } else {
                     have = shift_touching(c.cur, a, s, rng, mv);
                 }
+                }
             }
             if (!have) {
                 std::vector<int> unreachable;
                 for (size_t r = 0; r < c.ops.reachable.size(); ++r)
-                    if (!c.ops.reachable[r]) unreachable.push_back(static_cast<int>(r));
+                    if (!c.ops.reachable[r] && !c.cur.rooms[r].fixed())
+                        unreachable.push_back(static_cast<int>(r));
                 if (!unreachable.empty()) {
                     const int u = unreachable[static_cast<size_t>(
                         rng.below(static_cast<int>(unreachable.size())))];
@@ -484,11 +505,13 @@ PlanResult plan_floor_once(const ExpandedProgram& prog, const MassingCandidate& 
                         std::vector<int> partners;
                         for (const auto& [a, b] : c.ops.adjacency) {
                             const int other = a == u ? b : b == u ? a : -1;
-                            if (other >= 0 && c.ops.reachable[static_cast<size_t>(other)])
+                            if (other >= 0 && c.ops.reachable[static_cast<size_t>(other)] &&
+                                !c.cur.rooms[static_cast<size_t>(other)].fixed())
                                 partners.push_back(other);
                         }
                         for (size_t r = 0; partners.empty() && r < c.ops.reachable.size(); ++r)
-                            if (c.ops.reachable[r] && static_cast<int>(r) != u)
+                            if (c.ops.reachable[r] && static_cast<int>(r) != u &&
+                                !c.cur.rooms[r].fixed())
                                 partners.push_back(static_cast<int>(r));
                         if (!partners.empty()) {
                             mv = Move{};
@@ -508,7 +531,7 @@ PlanResult plan_floor_once(const ExpandedProgram& prog, const MassingCandidate& 
                 // that has exterior exposure (prefer non-habitable donors).
                 std::vector<int> unlit;
                 for (size_t r = 0; r < c.cur.rooms.size(); ++r) {
-                    if (!c.cur.rooms[r].habitable) continue;
+                    if (!c.cur.rooms[r].habitable || c.cur.rooms[r].fixed()) continue;
                     bool lit = false;
                     for (const DerivedOpening& o : c.ops.openings)
                         if (o.kind_code == kOpeningWindow && o.room_a == static_cast<int>(r)) {
@@ -522,7 +545,8 @@ PlanResult plan_floor_once(const ExpandedProgram& prog, const MassingCandidate& 
                         unlit[static_cast<size_t>(rng.below(static_cast<int>(unlit.size())))];
                     std::vector<int> donors, donors_soft;
                     for (size_t r = 0; r < c.cur.rooms.size(); ++r) {
-                        if (static_cast<int>(r) == u || !room_has_exterior(c.cur, static_cast<int>(r)))
+                        if (static_cast<int>(r) == u || c.cur.rooms[r].fixed() ||
+                            !room_has_exterior(c.cur, static_cast<int>(r)))
                             continue;
                         (c.cur.rooms[r].habitable ? donors_soft : donors).push_back(static_cast<int>(r));
                     }
@@ -607,8 +631,6 @@ PlanResult plan_floor_once(const ExpandedProgram& prog, const MassingCandidate& 
     return res;
 }
 
-}  // namespace
-
 PlanResult plan_floor(const ExpandedProgram& prog, const MassingCandidate& cand,
                       const PlanParams& params, uint64_t seed) {
     Rng rng = Rng::from_seed(seed);
@@ -620,7 +642,13 @@ PlanResult plan_floor(const ExpandedProgram& prog, const MassingCandidate& cand,
     const int attempts = std::max(1, params.max_attempts);
     for (int k = 0; k < attempts; ++k) {
         Rng arng = k == 0 ? rng : rng.split(0xB2B20000ull + static_cast<uint64_t>(k));
-        PlanResult r = plan_floor_once(prog, cand, params, arng);
+        std::string err;
+        FloorPlan grown = grow_floor(prog, cand, params, arng, err);
+        if (!err.empty()) {
+            if (best.error.empty()) best.error = err;
+            continue;
+        }
+        PlanResult r = anneal_plan(std::move(grown), prog, params, OpeningRules{}, nullptr, arng);
         if (!r.ok) {
             if (best.error.empty()) best.error = r.error;
             continue;

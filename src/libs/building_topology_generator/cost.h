@@ -2,8 +2,9 @@
 
 // Cost function of the plan search (algorithms §8.2, normalization §8.4):
 // hard violations (access, program door links, min dimensions) counted per
-// occurrence; soft terms normalized to order 1 and weighted. B2 subset:
-// rooms are rectangles (form term is identically 0), no cores/stairs yet.
+// occurrence; soft terms normalized to order 1 and weighted. Rect mode: the
+// form term is identically 0. B3 adds the support term (C11) against the
+// lower storey's plan when `below` is given.
 
 #include <map>
 #include <string>
@@ -24,6 +25,7 @@ struct CostBreakdown {
 };
 
 CostBreakdown evaluate_cost(const FloorPlan& fp, const ExpandedProgram& prog,
-                            const DerivedOpenings& ops, const PlanParams& params);
+                            const DerivedOpenings& ops, const PlanParams& params,
+                            const FloorPlan* below = nullptr);
 
 }  // namespace building_topology_generator

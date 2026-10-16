@@ -10,6 +10,7 @@
 
 #include "codes.h"
 #include "roof.h"
+#include "stairs.h"
 
 namespace building_topology_generator {
 
@@ -112,12 +113,12 @@ double rect_attic_useful(int w_cells, int d_cells, int roof_kind, double pitch_d
     return static_cast<double>(w) * static_cast<double>(d) * s * s;
 }
 
-// Useful attic area of any footprint via the skeleton: a cell is walkable
-// when every corner clears h_walk (the under-ceiling field is linear inside a
-// skeleton face, so the corners bound it; §5.6). Corners outside the outline
-// (the L cut) fail ceiling_y_at, so no explicit cut mask is needed.
-double attic_useful(const MassingVolume& vol, int w_cells, int d_cells,
-                    const MassingParams& params) {
+// Per-cell walk mask of an attic footprint (§5.6 worst-corner rule against
+// the skeleton ceiling model) — the same field storey_fields derives from the
+// IR. Corners outside the outline (the L cut) fail ceiling_y_at, so no
+// explicit cut mask is needed. Returns false when the roof model fails.
+bool attic_walk_mask(const MassingVolume& vol, int w_cells, int d_cells,
+                     const MassingParams& params, std::vector<char>& walk) {
     IrVolume iv;
     iv.id = "attic";
     iv.outline = vol.outline;
@@ -130,32 +131,98 @@ double attic_useful(const MassingVolume& vol, int w_cells, int d_cells,
     iv.roof.roof_t = params.ir.roof_t;
     RoofModel model;
     std::string err;
-    if (!build_roof_model(iv, model, err)) return 0.0;
+    if (!build_roof_model(iv, model, err)) return false;
     const double s = params.ir.cell;
     // The grid is queried in the outline frame: the inner field starts half an
     // exterior wall inside the bbox.
     const BBox mb = bbox_of(vol.outline);
     const double ox = mb.x0 + params.ir.t_exterior / 2;
     const double oz = mb.z0 + params.ir.t_exterior / 2;
-    int useful = 0;
+    walk.assign(static_cast<size_t>(w_cells) * d_cells, 0);
     for (int i = 0; i < w_cells; ++i)
         for (int j = 0; j < d_cells; ++j) {
-            bool walk = true;
-            for (int ci = 0; ci <= 1 && walk; ++ci)
-                for (int cj = 0; cj <= 1 && walk; ++cj) {
+            bool ok = true;
+            for (int ci = 0; ci <= 1 && ok; ++ci)
+                for (int cj = 0; cj <= 1 && ok; ++cj) {
                     double cy = 0.0;
                     if (!ceiling_y_at(model, ox + (i + ci) * s, oz + (j + cj) * s, cy) ||
                         cy < params.ir.h_walk())
-                        walk = false;
+                        ok = false;
                 }
-            if (walk) ++useful;
+            walk[static_cast<size_t>(j) * w_cells + i] = ok ? 1 : 0;
         }
+    return true;
+}
+
+// Useful attic area of any footprint via the skeleton (algorithms §3): the
+// walk cells of attic_walk_mask, times the cell area.
+double attic_useful(const MassingVolume& vol, int w_cells, int d_cells,
+                    const MassingParams& params) {
+    std::vector<char> walk;
+    if (!attic_walk_mask(vol, w_cells, d_cells, params, walk)) return 0.0;
+    int useful = 0;
+    for (char c : walk) useful += c;
+    const double s = params.ir.cell;
     return useful * s * s;
+}
+
+// Analytic walk mask of a RECT attic footprint: the ceiling field is linear
+// inside each skeleton face, so the worst-corner rule reduces to the j0 inset
+// of rect_attic_useful (gable trims the two z sides, hip all four).
+std::vector<char> rect_attic_walk_mask(int w_cells, int d_cells, int roof_kind,
+                                       double pitch_deg, double eave_rise,
+                                       const MassingParams& params) {
+    const double s = params.ir.cell;
+    const double t_walk = walk_inset(pitch_deg, eave_rise, params.ir);
+    const int j0 = static_cast<int>(std::ceil((t_walk - params.ir.t_exterior / 2) / s - kEps));
+    std::vector<char> walk(static_cast<size_t>(w_cells) * d_cells, 0);
+    const int i0 = roof_kind == kRoofHip ? j0 : 0;
+    const int i1 = roof_kind == kRoofHip ? w_cells - j0 : w_cells;
+    for (int j = j0; j < d_cells - j0; ++j)
+        for (int i = i0; i < i1; ++i) walk[static_cast<size_t>(j) * w_cells + i] = 1;
+    return walk;
+}
+
+// G2 feasibility (the §9.1 exit-into-attic rule): reject candidates whose
+// attic walk zone cannot host the stair well + arrival of any riser split and
+// orientation — G4 would find no placement, and neither the retry loop nor
+// the plan stages can fix a massing decision. `analytic` selects the cheap
+// rect mask (exact for the scan's rect footprints); anything else goes
+// through the skeleton model.
+bool attic_hosts_stair(const MassingVolume& vol, int w_cells, int d_cells, bool analytic,
+                       double pitch_deg, const MassingParams& params, double h_gap) {
+    std::vector<char> walk;
+    if (analytic)
+        walk = rect_attic_walk_mask(w_cells, d_cells, vol.roof_kind, pitch_deg, vol.eave_rise,
+                                    params);
+    else if (!attic_walk_mask(vol, w_cells, d_cells, params, walk))
+        return false;
+    return attic_walk_hosts_stair(walk, w_cells, d_cells, h_gap, params.ir.slab_t, params.ir);
+}
+
+// G2 feasibility (§5.6): an attic the program uses must host at least the
+// smallest required room allowed there — G3 donates a room to an otherwise
+// empty storey, and a donation the attic cannot hold (its net area counts the
+// h_walk cells only) surfaces only in G5 as "no free cell", past the point
+// where a massing change is cheap. The accounting mirrors G3 exactly: the
+// walk-cell net minus the circulation reserve must clear the room's area_min.
+bool attic_hosts_room(const ExpandedProgram& prog, double net) {
+    double min_area = 0.0;
+    for (const RoomInstance& r : prog.rooms)
+        if (!r.optional && (r.storeys_mask & (1u << kStoreyAttic)) != 0 &&
+            (min_area == 0.0 || r.area_min < min_area))
+            min_area = r.area_min;
+    if (min_area == 0.0) return true;  // the program leaves the attic unused
+    const double circ = std::max(3.0, 0.10 * net);  // the G3 reserve (storeys.cpp)
+    return net - circ >= min_area - kEps;
 }
 
 // Per-storey net areas (algorithms §3 step 1): gross minus the exterior wall
 // band, minus the partitions estimate, minus cores (stair, chimney channels);
-// the attic by the useful mask.
+// the attic by the useful mask. The corridor of a stair'd storey is NOT
+// reserved here: it is paid out of the 12% circulation margin (comms_share),
+// and G3 re-reserves it at assignment time (storeys.cpp) — subtracting it in
+// the massing too would count the circulation twice.
 std::vector<double> storey_areas(int w_cells, int d_cells, int cut_cells, int n_full, bool attic,
                                  int roof_kind, double pitch, double eave_rise, double annex_net,
                                  int hearth_channels, const MassingParams& params) {
@@ -380,7 +447,7 @@ void finish_massing(const ExpandedProgram& prog, const Site& site, const Massing
     r << "candidates: " << result.candidates_total << " considered, "
       << "rejected: " << result.rejected_site << " site, " << result.rejected_prop
       << " proportions, " << result.rejected_fit << " program fit, " << result.rejected_roof
-      << " roof clash\n";
+      << " roof clash, " << result.rejected_stair << " stair-in-attic\n";
     r << "top " << result.top.size() << ":\n";
     for (size_t i = 0; i < result.top.size(); ++i)
         r << "  " << (i + 1) << ". " << describe(result.top[i]) << "\n";
@@ -464,6 +531,22 @@ MassingResult generate_massing(const ExpandedProgram& prog, const Site& site,
                             cand.net_area = storey_areas(w, d, 0, n, attic, vol.roof_kind, pitch,
                                                          cand.eave_rise, 0.0, hearth_channels,
                                                          params);
+                            // G2 feasibility (§9.1): the attic must host the
+                            // stair well + arrival inside its walk zone —
+                            // G4 cannot place a stair into a hopeless attic.
+                            if (attic &&
+                                !attic_hosts_stair(vol, w, d, true, pitch, params,
+                                                   (n == 1 ? h_ground : params.ir.h_upper) +
+                                                       params.ir.slab_t)) {
+                                ++result.rejected_stair;
+                                continue;
+                            }
+                            // §5.6: a used attic must also host a room, not
+                            // just the stair — G3 will donate one into it.
+                            if (attic && !attic_hosts_room(prog, cand.net_area.back())) {
+                                ++result.rejected_fit;
+                                continue;
+                            }
                             if (!assign_rooms(prog, cand.net_area, n, attic, params)
                                      .all_required) {
                                 ++result.rejected_fit;
@@ -514,10 +597,32 @@ MassingResult generate_massing(const ExpandedProgram& prog, const Site& site,
                                                  base.pitch, base.eave_rise, 0.0,
                                                  hearth_channels, params);
                     if (base.attic) {
-                        const double useful = attic_useful(vol, w, d, params);
-                        double net = useful * (1.0 - params.kappa_partitions);
+                        std::vector<char> walk;
+                        if (!attic_walk_mask(vol, w, d, params, walk)) {
+                            ++result.rejected_roof;
+                            continue;
+                        }
+                        int useful_cells = 0;
+                        for (char c : walk) useful_cells += c;
+                        double net = useful_cells * s * s * (1.0 - params.kappa_partitions);
                         net -= params.stair_area * 0.5;
                         cand.net_area.back() = std::max(0.0, net);
+                        // Same §9.1 feasibility as the rect family, on the
+                        // true L walk mask (the cut also trims the attic).
+                        const double gap =
+                            (base.storeys == 1 ? h_ground : params.ir.h_upper) +
+                            params.ir.slab_t;
+                        if (!attic_walk_hosts_stair(walk, w, d, gap, params.ir.slab_t,
+                                                    params.ir)) {
+                            ++result.rejected_stair;
+                            continue;
+                        }
+                        // §5.6: the walk-cell net must also host a room (the
+                        // G3 donation into an empty storey is unconditional).
+                        if (!attic_hosts_room(prog, cand.net_area.back())) {
+                            ++result.rejected_fit;
+                            continue;
+                        }
                     }
                     if (!assign_rooms(prog, cand.net_area, base.storeys, base.attic, params)
                              .all_required) {
@@ -692,13 +797,35 @@ MassingResult massing_from_pin(const ExpandedProgram& prog, const Site& site,
     }
     cand.net_area = storey_areas(w, d, cut, main.storeys, main.attic, main.roof_kind, cand.pitch,
                                  cand.eave_rise, annex_net, hearth_channels, params);
-    if (main.attic && cut > 0) {
-        // storey_areas uses the analytic rect attic; an L footprint needs the
-        // skeleton mask (same override as the L family).
-        const double useful = attic_useful(main, w, d, params);
-        double net = useful * (1.0 - params.kappa_partitions);
-        net -= params.stair_area * 0.5;
-        cand.net_area.back() = std::max(0.0, net);
+    if (main.attic) {
+        if (cut > 0) {
+            // storey_areas uses the analytic rect attic; an L footprint needs
+            // the skeleton mask (same override as the L family).
+            const double useful = attic_useful(main, w, d, params);
+            double net = useful * (1.0 - params.kappa_partitions);
+            net -= params.stair_area * 0.5;
+            cand.net_area.back() = std::max(0.0, net);
+        }
+        // §4.5 validation (the §9.1 exit-into-attic rule): an attic the stair
+        // cannot reach is an invalid pin, not a G4 surprise.
+        const double h_ground = prog.h_ground > 0.0 ? prog.h_ground : params.ir.h_ground;
+        const double gap =
+            (main.storeys == 1 ? h_ground : params.ir.h_upper) + params.ir.slab_t;
+        if (!attic_hosts_stair(main, w, d, false, cand.pitch, params, gap)) {
+            result.error =
+                "pin: the attic walk zone cannot host the stair well + arrival (§9.1, "
+                "§5.6) — raise eave_rise, soften the pitch or deepen the volume";
+            result.report = result.error + "\n";
+            return result;
+        }
+        // Same §5.6 rule as the scan: a used attic must host a room too.
+        if (!attic_hosts_room(prog, cand.net_area.back())) {
+            result.error =
+                "pin: the attic useful area cannot host any required room (§5.6) — "
+                "raise eave_rise, steepen the pitch or deepen the volume";
+            result.report = result.error + "\n";
+            return result;
+        }
     }
     if (!assign_rooms(prog, cand.net_area, main.storeys, main.attic, params).all_required) {
         result.error = "pin: the pinned massing does not fit the program (a required room has "
