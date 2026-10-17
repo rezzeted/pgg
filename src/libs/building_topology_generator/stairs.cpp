@@ -53,76 +53,6 @@ glm::ivec2 map_cell(const glm::dvec2& dir, const glm::dvec2& dir2, const glm::dv
             static_cast<int>(std::lround((std::min(a.y, b.y) - f.origin.y) / s))};
 }
 
-// The to-storey free field must stay 4-connected once the well cells are
-// carved out (a disconnected floor has unreachable rooms; I3 would fail).
-bool connected_after_voids(const std::vector<int32_t>& mask, int w, int h,
-                           const std::vector<int>& voids) {
-    std::vector<char> blocked(static_cast<size_t>(w) * h, 0);
-    for (int c : voids) blocked[static_cast<size_t>(c)] = 1;
-    int total = 0, start = -1;
-    for (int idx = 0; idx < w * h; ++idx)
-        if (mask[static_cast<size_t>(idx)] == kCellFree && !blocked[static_cast<size_t>(idx)]) {
-            ++total;
-            if (start < 0) start = idx;
-        }
-    if (total == 0) return false;
-    std::vector<int> stack{start};
-    std::vector<char> seen(static_cast<size_t>(w) * h, 0);
-    seen[static_cast<size_t>(start)] = 1;
-    int seen_n = 0;
-    while (!stack.empty()) {
-        const int c = stack.back();
-        stack.pop_back();
-        ++seen_n;
-        const int ci = c % w, cj = c / w;
-        const int di[4] = {-1, 1, 0, 0};
-        const int dj[4] = {0, 0, -1, 1};
-        for (int q = 0; q < 4; ++q) {
-            const int ni = ci + di[q], nj = cj + dj[q];
-            if (ni < 0 || nj < 0 || ni >= w || nj >= h) continue;
-            const int n = nj * w + ni;
-            if (mask[static_cast<size_t>(n)] == kCellFree &&
-                !blocked[static_cast<size_t>(n)] && !seen[static_cast<size_t>(n)]) {
-                seen[static_cast<size_t>(n)] = 1;
-                stack.push_back(n);
-            }
-        }
-    }
-    return seen_n == total;
-}
-
-// True when `mask` holds a DEAD piece near the changed cells: a free rect
-// piece too thin to host any room (min side < 3 cells) whose cells cannot
-// even find a kWingCoverCells-square cover within the union of itself and
-// its free edge-adjacent neighbors — never a room, never a wing (I1 kills
-// the storey: a 1-row remnant sandwiched between the L cut and the well is
-// the classic case). Pieces away from the change are the field's own; the
-// stair cannot fix them and is not charged for them.
-bool dead_piece_near(const std::vector<int32_t>& mask, int w, int h,
-                     const std::vector<int>& changed) {
-    std::vector<std::array<int, 4>> pieces = decompose_cells(mask, w, h);
-    merge_rect_pairs(pieces);
-    for (size_t pi = 0; pi < pieces.size(); ++pi) {
-        const std::array<int, 4>& p = pieces[pi];
-        if (std::min(p[2] - p[0], p[3] - p[1]) >= kWingCoverCells) continue;  // self-covering
-        bool near = false;
-        for (int c : changed) {
-            const int ci = c % w, cj = c / w;
-            if (ci >= p[0] - 1 && ci <= p[2] && cj >= p[1] - 1 && cj <= p[3]) {
-                near = true;
-                break;
-            }
-        }
-        if (!near) continue;
-        std::vector<std::array<int, 4>> parts{p};
-        for (size_t qi = 0; qi < pieces.size(); ++qi)
-            if (qi != pi && rects_edge_adjacent(p, pieces[qi]))
-                parts.push_back(pieces[qi]);
-        if (!rects_covering_ok(parts, kWingCoverCells, kWingCoverCells)) return true;
-    }
-    return false;
-}
-
 }  // namespace
 
 void size_stair(double h, int& risers, double& rise, double& going) {
@@ -477,7 +407,7 @@ bool place_stairs(const Ir& ir, StoreyFields& fields, const PlanParams& params, 
                             score += rng.f64() * 0.5;
                             if (found && score >= best_score) continue;
                             // Expensive last: the to-storey must stay connected.
-                            if (!connected_after_voids(mask_to, fields.w, fields.h, voids)) {
+                            if (!field_connected_without(mask_to, fields.w, fields.h, voids)) {
                                 ++dbg_n_disc;
                                 continue;
                             }
@@ -634,6 +564,66 @@ bool place_stairs(const Ir& ir, StoreyFields& fields, const PlanParams& params, 
         out.push_back(std::move(best));
     }
     return true;
+}
+
+std::vector<glm::ivec2> corridor_seed_cells(const std::vector<int32_t>& mask, int w, int h,
+                                            const std::vector<StairCore>& stairs, int k) {
+    std::vector<glm::ivec2> seed_set;
+    auto push = [&](int i, int j) {
+        if (i < 0 || j < 0 || i >= w || j >= h) return;
+        if (mask[static_cast<size_t>(j) * w + i] != kCellFree) return;
+        const glm::ivec2 c(i, j);
+        if (std::find(seed_set.begin(), seed_set.end(), c) == seed_set.end())
+            seed_set.push_back(c);
+    };
+    static const int di[4] = {-1, 1, 0, 0};
+    static const int dj[4] = {0, 0, -1, 1};
+    for (const StairCore& st : stairs) {
+        if (st.from != k) continue;
+        const PlanRoom& sr = st.shaft_room;
+        // A side qualifies only when every one of its cells is door-ok (the
+        // long flight side and the far end, §9.1): a contact anywhere else
+        // cannot host the corridor~stairwell door.
+        auto side_door_ok = [&](int side) {
+            if (sr.door_ok.empty()) return true;
+            const int sw = sr.x1 - sr.x0;
+            auto at = [&](int i, int j) {
+                return sr.door_ok[static_cast<size_t>(j) * sw + i] != 0;
+            };
+            if (side == 0)
+                for (int j = 0; j < sr.z1 - sr.z0; ++j)
+                    if (!at(0, j)) return false;
+            if (side == 1)
+                for (int j = 0; j < sr.z1 - sr.z0; ++j)
+                    if (!at(sw - 1, j)) return false;
+            if (side == 2)
+                for (int i = 0; i < sw; ++i)
+                    if (!at(i, 0)) return false;
+            if (side == 3)
+                for (int i = 0; i < sw; ++i)
+                    if (!at(i, sr.z1 - sr.z0 - 1)) return false;
+            return true;
+        };
+        for (int j = sr.z0; j < sr.z1; ++j)
+            for (int i = sr.x0; i < sr.x1; ++i)
+                for (int q = 0; q < 4; ++q) {
+                    const bool boundary =
+                        (q == 0 && i == sr.x0) || (q == 1 && i == sr.x1 - 1) ||
+                        (q == 2 && j == sr.z0) || (q == 3 && j == sr.z1 - 1);
+                    if (!boundary || !side_door_ok(q)) continue;
+                    push(i + di[q], j + dj[q]);
+                }
+    }
+    if (!seed_set.empty()) return seed_set;
+    // No fully door-ok side exposed (shouldn't happen): any free neighbor.
+    for (const StairCore& st : stairs) {
+        if (st.from != k) continue;
+        const PlanRoom& sr = st.shaft_room;
+        for (int j = sr.z0; j < sr.z1; ++j)
+            for (int i = sr.x0; i < sr.x1; ++i)
+                for (int q = 0; q < 4; ++q) push(i + di[q], j + dj[q]);
+    }
+    return seed_set;
 }
 
 }  // namespace building_topology_generator

@@ -393,6 +393,21 @@ DerivedOpenings derive_openings(const FloorPlan& fp, const ExpandedProgram& prog
     out.back_door_ok = !rules.street_doors || !prog.has_back_door ||
                        (back_room >= 0 &&
                         (street_door_side[static_cast<size_t>(back_room)] & 2) != 0);
+    // Door gradient (B4): a failed street door reports how far its best
+    // allowed host run is from door-capable (1.0 = no host has any run).
+    auto street_gap = [&](bool front) {
+        int best = 0;
+        for (int r = 0; r < N; ++r) {
+            const PlanRoom& room = fp.rooms[static_cast<size_t>(r)];
+            if (!(front ? room.entrance_front : room.entrance_back)) continue;
+            for (const Run& run : scan.exterior[static_cast<size_t>(r)][front ? 3 : 2])
+                best = std::max(best, run.len());
+        }
+        return static_cast<double>(min_run - std::min(best, min_run)) / min_run;
+    };
+    if (rules.street_doors && !out.entrance_ok) out.door_gap += street_gap(true);
+    if (rules.street_doors && prog.has_back_door && !out.back_door_ok)
+        out.door_gap += street_gap(false);
 
     for (const ProgramLink& l : prog.links) {
         if (l.kind != kLinkDoor) continue;
@@ -401,8 +416,12 @@ DerivedOpenings derive_openings(const FloorPlan& fp, const ExpandedProgram& prog
         const std::pair<int, int> key{std::min(a, b), std::max(a, b)};
         if (has_door.count({a, b}) || has_door.count({b, a})) continue;
         if (no_door.count(key)) continue;
-        if (!door_capable(a, b) || !add_door(a, b, runs_of(a, b), /*entrance=*/false))
+        if (!door_capable(a, b) || !add_door(a, b, runs_of(a, b), /*entrance=*/false)) {
             out.missing_door_links.emplace_back(a, b);
+            int best = 0;
+            for (const Run& run : runs_of(a, b)) best = std::max(best, run.len());
+            out.door_gap += static_cast<double>(min_run - std::min(best, min_run)) / min_run;
+        }
     }
     for (const auto& [pair, runs] : scan.shared) {
         const int a = pair.first, b = pair.second;
@@ -458,8 +477,11 @@ DerivedOpenings derive_openings(const FloorPlan& fp, const ExpandedProgram& prog
             const bool vertical = side < 2;
             // Span coordinate: z along a vertical wall, x along a horizontal.
             const double line_m = vertical ? fp.origin.y : fp.origin.x;
-            // Valid axis slots on this side.
-            std::vector<double> slots;
+            // Valid axis slots on this side: (axis, the hosting run's line) —
+            // the run may belong to a WING, whose line differs from the main
+            // rect's bbox side (o.line below must name the wall the emit will
+            // find, not the bbox edge).
+            std::vector<std::pair<double, int>> slots;
             for (double axis : (vertical ? axes_z : axes_x)) {
                 for (const Run& run : runs) {
                     if (!run_is_exterior(fp, run)) continue;
@@ -472,7 +494,7 @@ DerivedOpenings derive_openings(const FloorPlan& fp, const ExpandedProgram& prog
                             break;
                         }
                     if (!blocked_hit) {
-                        slots.push_back(axis);
+                        slots.push_back({axis, run.line});
                         break;
                     }
                 }
@@ -482,28 +504,32 @@ DerivedOpenings derive_openings(const FloorPlan& fp, const ExpandedProgram& prog
             const double center =
                 vertical ? fp.origin.y + (room.z0 + room.z1) * s / 2.0
                          : fp.origin.x + (room.x0 + room.x1) * s / 2.0;
-            std::sort(slots.begin(), slots.end(), [&](double p, double q) {
-                const double dp = std::fabs(p - center), dq = std::fabs(q - center);
+            std::sort(slots.begin(), slots.end(), [&](const auto& p, const auto& q) {
+                const double dp = std::fabs(p.first - center),
+                             dq = std::fabs(q.first - center);
                 if (dp != dq) return dp < dq;
-                return p < q;
+                return p.first < q.first;
             });
             // Memo: pin the previous axis when it is still a valid slot.
             const std::string mkey = room.id + "|" + std::to_string(side);
-            std::vector<double> chosen;
+            std::vector<std::pair<double, int>> chosen;
             if (auto it = memo.window_axes.find(mkey); it != memo.window_axes.end()) {
                 const double pinned = it->second;
-                if (std::find(slots.begin(), slots.end(), pinned) != slots.end())
-                    chosen.push_back(pinned);
+                for (const auto& sl : slots)
+                    if (sl.first == pinned) {
+                        chosen.push_back(sl);
+                        break;
+                    }
             }
             if (strict) {
                 // Symmetric pairs around the center first, the center slot last.
                 std::vector<char> used(slots.size(), 0);
                 for (size_t i = 0; i < slots.size(); ++i) {
                     if (used[i]) continue;
-                    const double mirror = 2 * center - slots[i];
+                    const double mirror = 2 * center - slots[i].first;
                     int j = -1;
                     for (size_t k = i + 1; k < slots.size(); ++k)
-                        if (!used[k] && std::fabs(slots[k] - mirror) < 0.3) {
+                        if (!used[k] && std::fabs(slots[k].first - mirror) < 0.3) {
                             j = static_cast<int>(k);
                             break;
                         }
@@ -515,7 +541,7 @@ DerivedOpenings derive_openings(const FloorPlan& fp, const ExpandedProgram& prog
                     }
                 }
                 for (size_t i = 0; i < slots.size(); ++i)
-                    if (!used[i] && std::fabs(slots[i] - center) < 0.3) {
+                    if (!used[i] && std::fabs(slots[i].first - center) < 0.3) {
                         used[i] = 1;
                         chosen.push_back(slots[i]);
                         break;
@@ -527,13 +553,13 @@ DerivedOpenings derive_openings(const FloorPlan& fp, const ExpandedProgram& prog
                         chosen.push_back(slots[i]);
                     }
             } else {
-                for (double p : slots)
-                    if (std::find(chosen.begin(), chosen.end(), p) == chosen.end())
-                        chosen.push_back(p);
+                for (const auto& sl : slots)
+                    if (std::find(chosen.begin(), chosen.end(), sl) == chosen.end())
+                        chosen.push_back(sl);
             }
             // Emit from the chosen list, keeping a min gap on the wall.
             std::vector<double> emitted;
-            for (double p : chosen) {
+            for (const auto& [p, line] : chosen) {
                 if (placed >= need) break;
                 bool clash = false;
                 for (double q : emitted)
@@ -547,10 +573,7 @@ DerivedOpenings derive_openings(const FloorPlan& fp, const ExpandedProgram& prog
                 o.room_a = r;
                 o.room_b = kOutside;
                 o.vertical = vertical;
-                // The wall line index of this side of the room.
-                o.line = side == 0 ? room.x0 : side == 1 ? room.x1
-                         : side == 2 ? room.z0
-                                     : room.z1;
+                o.line = line;
                 o.m0 = p - win_w / 2;
                 o.m1 = p + win_w / 2;
                 o.y0 = params.sill_y;

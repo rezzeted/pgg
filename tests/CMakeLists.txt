@@ -153,6 +153,15 @@ target_compile_features(building_stairs_test PRIVATE cxx_std_20)
 set_property(TARGET building_stairs_test PROPERTY FOLDER tests)
 add_test(NAME building_stairs_test COMMAND building_stairs_test)
 
+add_executable(building_chimneys_test building_chimneys_test.cpp)
+target_link_libraries(building_chimneys_test PRIVATE GTest::gtest_main building_topology_generator nlohmann_json::nlohmann_json)
+target_compile_definitions(building_chimneys_test PRIVATE
+    BUILDING_PROGRAMS_DIR="${CMAKE_SOURCE_DIR}/content/building/programs")
+target_include_directories(building_chimneys_test PRIVATE ${CMAKE_SOURCE_DIR}/src/libs/building_topology_generator)
+target_compile_features(building_chimneys_test PRIVATE cxx_std_20)
+set_property(TARGET building_chimneys_test PROPERTY FOLDER tests)
+add_test(NAME building_chimneys_test COMMAND building_chimneys_test)
+
 # Slow (parallel over seeds; ~minutes in Debug): the B2 §16 acceptance gate.
 add_executable(building_plan_acceptance_test building_plan_acceptance_test.cpp)
 target_link_libraries(building_plan_acceptance_test PRIVATE GTest::gtest_main building_topology_generator nlohmann_json::nlohmann_json)
@@ -178,7 +187,7 @@ target_compile_features(building_plan_b3_acceptance_test PRIVATE cxx_std_20)
 set_property(TARGET building_plan_b3_acceptance_test PROPERTY FOLDER tests)
 
 add_test(NAME building_plan_b3_acceptance_test COMMAND building_plan_b3_acceptance_test)
-set_tests_properties(building_plan_b3_acceptance_test PROPERTIES TIMEOUT 1200)
+set_tests_properties(building_plan_b3_acceptance_test PROPERTIES TIMEOUT 2400)
 
 add_executable(dungeon_geometry_generator_assets_test dungeon_geometry_generator_assets_test.cpp)
 target_link_libraries(dungeon_geometry_generator_assets_test PRIVATE GTest::gtest_main dungeon_geometry_generator dungeon_geometry_generator_fill pgg nlohmann_json::nlohmann_json)

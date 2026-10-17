@@ -603,6 +603,27 @@ bool emit_building_ir(const BuildingPlanResult& bp, const ExpandedProgram& prog,
             if (point_in_poly(ir.volumes[vi].outline, p.x, p.y)) return static_cast<int>(vi);
         return -1;
     };
+    // The ceiling planes of a non-convex volume (the hip over an L) are only
+    // valid over their own slope's footprint: extended across the plan, a
+    // plane of the other leg can put the roof surface below the storey floor
+    // at this wall — wall_body's clip then erases the whole body (observed:
+    // the knee wall at the L's far leg erased by the wing's -x slope). Drop a
+    // plane whose surface is at/below the floor at BOTH wall endpoints; a
+    // linear surface below the floor at the ends is below it along the whole
+    // span, so the plane cannot govern this wall.
+    auto plane_height = [](const IrPlane& p, double x, double z) {
+        if (std::fabs(p.n.y) < 1e-9) return std::numeric_limits<double>::max();
+        return p.o.y + (p.n.x * (p.o.x - x) + p.n.z * (p.o.z - z)) / p.n.y;
+    };
+    auto wall_ceilings = [&](const VolRoof& vr, const glm::dvec2& a, const glm::dvec2& b,
+                             double floor_y) {
+        std::vector<IrPlane> out;
+        for (const IrPlane& p : vr.ceilings)
+            if (plane_height(p, a.x, a.y) > floor_y + 1e-9 ||
+                plane_height(p, b.x, b.y) > floor_y + 1e-9)
+                out.push_back(p);
+        return out;
+    };
     // Gable end = the nearest outline edge has a ~90 degree pitch (§7.2).
     auto gable_at = [&](int vi, const glm::dvec2& p) {
         if (vi < 0) return false;
@@ -643,6 +664,7 @@ bool emit_building_ir(const BuildingPlanResult& bp, const ExpandedProgram& prog,
         auto side_name = [&](int32_t label) -> std::string {
             if (label >= 0) return space_id(label);
             if (label == kCellOutside) return "outside";
+            if (label == kCellCore) return "core";  // chimney stack body (§6)
             return "void";  // stair well or roof void (§5.6, frozen contract)
         };
 
@@ -697,6 +719,8 @@ bool emit_building_ir(const BuildingPlanResult& bp, const ExpandedProgram& prog,
             const bool has_void = run.lo == kCellVoid || run.hi == kCellVoid;
             const bool has_rv = run.lo == kCellRoofVoid || run.hi == kCellRoofVoid;
             const bool has_out = run.lo == kCellOutside || run.hi == kCellOutside;
+            const bool has_core = run.lo == kCellCore || run.hi == kCellCore;
+            if (has_core && !has_out) continue;  // the stack asset builds the face (§6)
             if (has_void && !has_out) continue;  // open well edge -> railing below
             if (!has_room && !has_out) continue;  // void|roofvoid: no wall body
 
@@ -730,7 +754,7 @@ bool emit_building_ir(const BuildingPlanResult& bp, const ExpandedProgram& prog,
                 w.class_code = kWallGable;
                 w.thickness = params.ir.t_exterior;
                 w.h = ridge_h;
-                if (vr) w.top_profile = vr->ceilings;
+                if (vr) w.top_profile = wall_ceilings(*vr, w.a, w.b, storey.y);
             } else if (has_out) {
                 // Eave side (§5.6): the parapet up to the eave, no clip.
                 w.class_code = kWallExterior;
@@ -740,12 +764,12 @@ bool emit_building_ir(const BuildingPlanResult& bp, const ExpandedProgram& prog,
                 w.class_code = kWallKnee;
                 w.thickness = params.ir.t_knee;
                 w.h = params.ir.h_knee + 0.8;
-                if (vr) w.top_profile = vr->ceilings;
+                if (vr) w.top_profile = wall_ceilings(*vr, w.a, w.b, storey.y);
             } else {
                 w.class_code = kWallPartition;
                 w.thickness = params.ir.t_partition;
                 w.h = ridge_h;
-                if (vr) w.top_profile = vr->ceilings;
+                if (vr) w.top_profile = wall_ceilings(*vr, w.a, w.b, storey.y);
             }
             // Owner (I9): the room side (the smaller id on a shared wall);
             // a shell wall without a room side belongs to the volume.
@@ -853,6 +877,21 @@ bool emit_building_ir(const BuildingPlanResult& bp, const ExpandedProgram& prog,
                 break;
             }
             if (host < 0) {
+                if (std::getenv("BTG_DEBUG_DUMP")) {
+                    std::fprintf(stderr,
+                                 "no host wall: %s opening vert=%d line=%d span [%.2f, %.2f] "
+                                 "rooms %s|%s\n",
+                                 p.c_str(), o.vertical, o.line, o.m0, o.m1, ra.c_str(),
+                                 rb.c_str());
+                    for (size_t q = 0; q < runs.size(); ++q) {
+                        const B3Run& run = runs[q];
+                        if (run.vertical != o.vertical || run.line != o.line) continue;
+                        std::fprintf(stderr,
+                                     "  run line=%d span [%d, %d] sides %s|%s wall=%d\n",
+                                     run.line, run.c0, run.c1, side_name(run.lo).c_str(),
+                                     side_name(run.hi).c_str(), wall_of_run[q]);
+                    }
+                }
                 err = "emit_building_ir: no host wall for an opening of " + ra;
                 return false;
             }
@@ -961,92 +1000,8 @@ bool emit_building_ir(const BuildingPlanResult& bp, const ExpandedProgram& prog,
             a.space = space_id(o.room_a);
             ir.anchors.push_back(a);
         }
-        // Hearths (as B2, per storey).
-        for (int r = 0; r < N; ++r) {
-            const PlanRoom& room = fp.rooms[static_cast<size_t>(r)];
-            if (room.hearth_code == 0) continue;
-            int other = -1;
-            for (const auto& [a, b] : ops.adjacency) {
-                const int oi = a == r ? b : b == r ? a : -1;
-                if (oi >= 0 && fp.rooms[static_cast<size_t>(oi)].hearth_code != 0) {
-                    other = oi;
-                    break;
-                }
-            }
-            int side = -1;
-            if (other >= 0) {
-                const PlanRoom& B = fp.rooms[static_cast<size_t>(other)];
-                if (room.x1 == B.x0) side = 1;
-                else if (room.x0 == B.x1) side = 0;
-                else if (room.z1 == B.z0) side = 3;
-                else if (room.z0 == B.z1) side = 2;
-            }
-            if (side < 0) {
-                int best_len = 0;
-                for (const auto& [a, b] : ops.adjacency) {
-                    const int oi = a == r ? b : b == r ? a : -1;
-                    if (oi < 0) continue;
-                    const PlanRoom& B = fp.rooms[static_cast<size_t>(oi)];
-                    if (room.x1 == B.x0 || room.x0 == B.x1) {
-                        const int len = std::min(room.z1, B.z1) - std::max(room.z0, B.z0);
-                        const int sd = room.x1 == B.x0 ? 1 : 0;
-                        if (len > best_len) {
-                            best_len = len;
-                            side = sd;
-                        }
-                    } else if (room.z1 == B.z0 || room.z0 == B.z1) {
-                        const int len = std::min(room.x1, B.x1) - std::max(room.x0, B.x0);
-                        const int sd = room.z1 == B.z0 ? 3 : 2;
-                        if (len > best_len) {
-                            best_len = len;
-                            side = sd;
-                        }
-                    }
-                }
-            }
-            if (side < 0) side = 2;
-            const double wx = side == 0 ? fp.origin.x + room.x0 * s
-                              : side == 1 ? fp.origin.x + room.x1 * s
-                                          : 0.0;
-            const double wz = side == 2 ? fp.origin.y + room.z0 * s
-                              : side == 3 ? fp.origin.y + room.z1 * s
-                                          : 0.0;
-            glm::dvec2 out_n(0.0);
-            double along = 0.0;
-            if (side == 0) {
-                out_n = {-1, 0};
-                along = fp.origin.y + (room.z0 + room.z1) * s / 2.0;
-            } else if (side == 1) {
-                out_n = {1, 0};
-                along = fp.origin.y + (room.z0 + room.z1) * s / 2.0;
-            } else if (side == 2) {
-                out_n = {0, -1};
-                along = fp.origin.x + (room.x0 + room.x1) * s / 2.0;
-            } else {
-                out_n = {0, 1};
-                along = fp.origin.x + (room.x0 + room.x1) * s / 2.0;
-            }
-            if (other >= 0) {
-                const PlanRoom& B = fp.rooms[static_cast<size_t>(other)];
-                if (side < 2) {
-                    const double za = fp.origin.y + std::max(room.z0, B.z0) * s;
-                    const double zb = fp.origin.y + std::min(room.z1, B.z1) * s;
-                    along = (za + zb) / 2.0;
-                } else {
-                    const double xa = fp.origin.x + std::max(room.x0, B.x0) * s;
-                    const double xb = fp.origin.x + std::min(room.x1, B.x1) * s;
-                    along = (xa + xb) / 2.0;
-                }
-            }
-            IrAnchor a;
-            a.kind_code = kAnchorHearth;
-            const glm::dvec2 wall_p =
-                side < 2 ? glm::dvec2(wx, along) : glm::dvec2(along, wz);
-            a.p = glm::dvec3(wall_p.x - out_n.x * 0.9, storey.y, wall_p.y - out_n.y * 0.9);
-            a.dir = glm::dvec3(-out_n.x, 0.0, -out_n.y);
-            a.space = space_id(r);
-            ir.anchors.push_back(a);
-        }
+        // Hearth anchors are emitted with the chimneys below (§9.2: the
+        // hearth sits on the room wall nearest its stack).
         // Bed slots (as B2, per storey).
         for (int r = 0; r < N; ++r) {
             const PlanRoom& room = fp.rooms[static_cast<size_t>(r)];
@@ -1165,9 +1120,99 @@ bool emit_building_ir(const BuildingPlanResult& bp, const ExpandedProgram& prog,
         }
     }
 
+    // -- Chimneys (§9.2) + the hearth anchors ---------------------------------
+    // The stack body is the kCellCore column stamped into the fields (no walls
+    // on its boundary — the core asset builds the faces, §6). The hearth refs
+    // point each hearth room at its emitted wall nearest the stack; the hearth
+    // anchor sits 0.9 m off that wall, facing into the room (the frozen
+    // convention of emit_ir).
+    for (const ChimneyCore& cc : bp.chimneys) {
+        IrChimney ic;
+        ic.id = cc.id;
+        int i0 = cc.cells[0].x, j0 = cc.cells[0].y, i1 = i0 + 1, j1 = j0 + 1;
+        for (const glm::ivec2& c : cc.cells) {
+            i0 = std::min(i0, c.x);
+            j0 = std::min(j0, c.y);
+            i1 = std::max(i1, c.x + 1);
+            j1 = std::max(j1, c.y + 1);
+        }
+        ic.section = {(i1 - i0) * s, (j1 - j0) * s};
+        for (int k = cc.storey0; k <= cc.storey1; ++k)
+            ic.cells_by_storey[ir.storeys[static_cast<size_t>(k)].id] = cc.cells;
+        ic.top = cc.top;
+        ic.roof_plane = cc.roof_plane;
+        const glm::dvec2 stack_c{cc.top.x, cc.top.z};
+        for (const int qi : cc.hearths) {
+            const int k = bp.storey_of[static_cast<size_t>(qi)];
+            if (k < 0) continue;  // the room was dropped after the stacking
+            const IrStorey& storey = ir.storeys[static_cast<size_t>(k)];
+            const std::string sid =
+                prefix_of(k) + "_" + prog.rooms[static_cast<size_t>(qi)].id;
+            // Nearest emitted wall of the room: the perpendicular distance to
+            // the wall axis, then the clamp overshoot, then the id.
+            const IrWall* best_w = nullptr;
+            double best_d = 1e30, best_over = 1e30, best_s = 0.0;
+            for (const IrWall& w : ir.walls) {
+                if (w.storey != storey.id) continue;
+                if (w.side_l != sid && w.side_r != sid) continue;
+                const glm::dvec2 axis = w.b - w.a;
+                const double len = glm::length(axis);
+                if (len < 1e-9) continue;
+                const glm::dvec2 u = axis / len;
+                const double s_raw = glm::dot(stack_c - w.a, u);
+                const double lo = std::min(0.75, len * 0.5);
+                const double hi = std::max(len - 0.75, len * 0.5);
+                const double sc = std::clamp(s_raw, lo, hi);
+                const glm::dvec2 dv = stack_c - (w.a + u * sc);
+                const double d = std::abs(dv.x * -u.y + dv.y * u.x);
+                const double over = std::abs(sc - s_raw);
+                if (!best_w || d < best_d - 1e-9 ||
+                    (d < best_d + 1e-9 &&
+                     (over < best_over - 1e-9 ||
+                      (over < best_over + 1e-9 && w.id < best_w->id)))) {
+                    best_w = &w;
+                    best_d = d;
+                    best_over = over;
+                    best_s = sc;
+                }
+            }
+            if (!best_w) continue;  // a room without walls: nothing to host the hearth
+            IrHearthRef hr;
+            hr.space = sid;
+            hr.kind_code = prog.rooms[static_cast<size_t>(qi)].hearth_code;
+            hr.wall = best_w->id;
+            hr.s = best_s;
+            ic.hearths.push_back(hr);
+
+            const glm::dvec2 axis = best_w->b - best_w->a;
+            const glm::dvec2 u = axis / glm::length(axis);
+            const glm::dvec2 foot = best_w->a + u * best_s;
+            // "Into the room": from the wall foot toward the room center,
+            // minus the along-wall component.
+            glm::dvec2 room_c = stack_c;
+            const FloorPlan& fp = bp.storeys[static_cast<size_t>(k)].plan;
+            for (const PlanRoom& room : fp.rooms)
+                if (room.id == prog.rooms[static_cast<size_t>(qi)].id) {
+                    room_c = {fp.origin.x + (room.x0 + room.x1) * 0.5 * s,
+                              fp.origin.y + (room.z0 + room.z1) * 0.5 * s};
+                    break;
+                }
+            glm::dvec2 in_n = room_c - foot;
+            in_n -= u * glm::dot(in_n, u);
+            const double in_len = glm::length(in_n);
+            in_n = in_len > 1e-9 ? in_n / in_len : glm::dvec2(-u.y, u.x);
+            IrAnchor a;
+            a.kind_code = kAnchorHearth;
+            a.p = glm::dvec3(foot.x + in_n.x * 0.9, storey.y, foot.y + in_n.y * 0.9);
+            a.dir = glm::dvec3(in_n.x, 0.0, in_n.y);
+            a.space = sid;
+            ir.anchors.push_back(a);
+        }
+        ir.chimneys.push_back(std::move(ic));
+    }
+
     ir.report_cost["hard"] = hard_sum;
     ir.report_cost["soft"] = soft_sum;
-    (void)prog;
     return true;
 }
 

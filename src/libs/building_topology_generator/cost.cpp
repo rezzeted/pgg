@@ -13,7 +13,7 @@ namespace building_topology_generator {
 
 CostBreakdown evaluate_cost(const FloorPlan& fp, const ExpandedProgram& prog,
                             const DerivedOpenings& ops, const PlanParams& params,
-                            const FloorPlan* below) {
+                            const FloorPlan* below, bool full_height) {
     CostBreakdown cb;
     const int N = static_cast<int>(fp.rooms.size());
     const IrParams& ir = params.ir;
@@ -47,7 +47,54 @@ CostBreakdown evaluate_cost(const FloorPlan& fp, const ExpandedProgram& prog,
             ++n_min_dim;
     }
     cb.hard_terms["min_dim"] = n_min_dim;
-    cb.hard = n_unreachable + n_program + n_min_dim;
+
+    // Hearth (§9.2, B4): a hearth room must touch its chimney stack
+    // (kCellCore) — G4b placed the core before the growth and seeded the room
+    // next to it; ending away from the core is a hard violation. The term is
+    // armed only when the field carries cores (the single-storey B2 path has
+    // none and keeps its heuristic anchors).
+    int n_hearth = 0;
+    {
+        std::vector<char> touch(static_cast<size_t>(N), 0);
+        bool has_core = false;
+        static const int di[4] = {-1, 1, 0, 0};
+        static const int dj[4] = {0, 0, -1, 1};
+        for (int j = 0; j < fp.h; ++j)
+            for (int i = 0; i < fp.w; ++i) {
+                if (fp.at(i, j) != kCellCore) continue;
+                has_core = true;
+                for (int q = 0; q < 4; ++q) {
+                    const int32_t n = fp.room_at(i + di[q], j + dj[q]);
+                    if (n >= 0) touch[static_cast<size_t>(n)] = 1;
+                }
+            }
+        if (has_core)
+            for (int r = 0; r < N; ++r)
+                if (fp.rooms[static_cast<size_t>(r)].hearth_code != 0 &&
+                    !touch[static_cast<size_t>(r)])
+                    ++n_hearth;
+    }
+    cb.hard_terms["hearth"] = n_hearth;
+    // Daylight (I6): an unlit habitable room on a full-height storey is a hard
+    // violation — the B4 stacks pull hearth rooms off the facade, and a soft
+    // penalty never moved them back (the dark-room critic's swap cannot touch
+    // an anchored room). As a hard term the driver retries explore other stack
+    // positions (the tried-ban forces a new one per attempt). The attic is
+    // exempt (a hip attic has no gable wall for a window until dormers, C4).
+    const int n_light = full_height ? [&] {
+        int n = 0;
+        for (int r = 0; r < N; ++r) {
+            if (!fp.rooms[static_cast<size_t>(r)].habitable) continue;
+            bool lit = false;
+            for (const DerivedOpening& o : ops.openings)
+                if (o.kind_code == kOpeningWindow && o.room_a == r) lit = true;
+            if (!lit) ++n;
+        }
+        return n;
+    }()
+                                  : 0;
+    cb.hard_terms["light"] = n_light;
+    cb.hard = n_unreachable + n_program + n_min_dim + n_hearth + n_light;
 
     // -- Soft terms (§8.4 normalization; weights from PlanParams) -------------
     auto add = [&](const char* name, double raw, double w) {
@@ -82,6 +129,12 @@ CostBreakdown evaluate_cost(const FloorPlan& fp, const ExpandedProgram& prog,
     }
     add("adjacency", near_total > 0 ? double(near_total - near_met) / near_total : 0.0,
         params.w_adjacency);
+
+    // Door gradient (B4): the derived closeness of every failed door (program
+    // link or street door) to a door-capable run. The hard term is binary —
+    // this gives the anneal a hill where a link needs several coordinated
+    // line shifts (a 2-cell shared run two shifts short of min_run).
+    add("doors", ops.door_gap, params.w_door_gap);
 
     // Privacy: private rooms want depth >= d_min from the street (§8.2).
     double priv_sum = 0.0;

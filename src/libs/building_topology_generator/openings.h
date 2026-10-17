@@ -39,6 +39,12 @@ struct DerivedOpenings {
     bool entrance_ok = false;                    // entrance door on the front facade
     bool back_door_ok = true;                    // program has none, or it is placed
     std::vector<std::pair<int, int>> missing_door_links;  // program door links w/o a door
+    // Gradient for the door hard terms (B4): per missing door link and per
+    // failed street door, how far the best candidate run is from door-capable,
+    // in [0, 1] each (1 = no shared wall / no facade run at all). The hard
+    // term is binary; this feeds the soft "doors" term so the anneal can
+    // climb toward a 4-cell run one line shift at a time.
+    double door_gap = 0.0;
 
     int door_count() const;
 };
@@ -57,6 +63,10 @@ struct OpeningMemo {
 struct OpeningRules {
     bool street_doors = true;        // ground storey
     std::vector<int> arrival_cells;  // flat j*w+i on this storey's grid (G4)
+    // Full-height storeys require every habitable room lit (I6, hard); the
+    // attic is exempt — a hip attic has no gable wall for a window until
+    // dormers (C4) and the light stays a soft term there.
+    bool full_height = true;
 };
 
 DerivedOpenings derive_openings(const FloorPlan& fp, const ExpandedProgram& prog,

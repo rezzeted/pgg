@@ -263,22 +263,23 @@ pgg::GeoPtr merge_meshes(const std::vector<pgg::GeoPtr>& parts) {
 namespace {
 
 // One asset run; null on failure (diagnostics appended inside).
-pgg::GeoPtr run_unit(const std::string& asset, pgg::RunParams& rp, const FillParams& params,
-                     FillResult& res) {
+pgg::GeoPtr run_unit(const std::string& id, const std::string& asset, pgg::RunParams& rp,
+                     const FillParams& params, FillResult& res) {
     rp.importRoots = params.import_roots;
     const pgg::RunResult rr = pgg::runFile(asset, rp, {"mesh"});
     if (rr.hasErrors()) {
         for (const auto& d : rr.diagnostics)
-            res.diagnostics.push_back(pgg::formatDiagnostic(d, asset));
+            res.diagnostics.push_back(id + ": " + pgg::formatDiagnostic(d, asset));
         return nullptr;
     }
     if (rr.outputs.empty()) {
-        res.diagnostics.push_back(asset + ": no 'mesh' output");
+        res.diagnostics.push_back(id + ": " + asset + ": no 'mesh' output");
         return nullptr;
     }
     const pgg::GeoPtr g = pgg::asGeo(rr.outputs.front().value);
     if (!g || g->kind != pgg::GeoKind::Mesh || g->pointCount() == 0) {
-        res.diagnostics.push_back(asset + ": 'mesh' output is not a non-empty mesh");
+        res.diagnostics.push_back(id + ": " + asset +
+                                  ": 'mesh' output is not a non-empty mesh");
         return nullptr;
     }
     return g;
@@ -290,7 +291,7 @@ void add_unit(FillResult& res, const FillParams& params, const std::string& id,
     const std::string asset = params.assets_dir + "/" + slot_rel;
     rp.values.emplace_back("rng_seed",
                            pgg::Value(static_cast<int64_t>(unit_seed(params.seed, id))));
-    FillUnit unit{id, asset, run_unit(asset, rp, params, res)};
+    FillUnit unit{id, asset, run_unit(id, asset, rp, params, res)};
     if (unit.mesh) {
         unit.mesh = transform_geo(unit.mesh, pl.yaw_deg, pl.at.x, pl.at.y, pl.at.z);
         ++res.units_built;

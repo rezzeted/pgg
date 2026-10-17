@@ -225,6 +225,25 @@ void apply_move(FloorPlan& fp, const Move& mv) {
 // Move proposals
 // ---------------------------------------------------------------------------
 
+// True when the room is a hearth room currently touching its stack (§9.2).
+// Swapping such a room trades its hearth hard term for whatever the swap
+// fixes — a trap the lex-best then cannot leave (the way back is +1 hard
+// uphill), so the random swap below excludes anchored rooms.
+bool anchored_room(const FloorPlan& fp, int r) {
+    const PlanRoom& room = fp.rooms[static_cast<size_t>(r)];
+    if (room.hearth_code == 0) return false;
+    static const int di[4] = {-1, 1, 0, 0};
+    static const int dj[4] = {0, 0, -1, 1};
+    for (int j = room.z0; j < room.z1; ++j)
+        for (int i = room.x0; i < room.x1; ++i)
+            for (int q = 0; q < 4; ++q) {
+                const int ni = i + di[q], nj = j + dj[q];
+                if (ni < 0 || nj < 0 || ni >= fp.w || nj >= fp.h) continue;
+                if (fp.at(ni, nj) == kCellCore) return true;
+            }
+    return false;
+}
+
 bool random_move(const FloorPlan& fp, double s, Rng& rng, Move& out) {
     const int N = static_cast<int>(fp.rooms.size());
     if (rng.f64() < 0.8) {
@@ -245,10 +264,12 @@ bool random_move(const FloorPlan& fp, double s, Rng& rng, Move& out) {
     }
     if (N >= 2) {
         // Swaps never touch fixed rooms (the stair shaft stays put, B3; a
-        // winged L-room's shape is the field's, phase L).
+        // winged L-room's shape is the field's, phase L) nor anchored ones
+        // (a hearth room on its core, §9.2).
         std::vector<int> free_rooms;
         for (int r = 0; r < N; ++r)
-            if (!fp.rooms[static_cast<size_t>(r)].fixed()) free_rooms.push_back(r);
+            if (!fp.rooms[static_cast<size_t>(r)].fixed() && !anchored_room(fp, r))
+                free_rooms.push_back(r);
         if (free_rooms.size() < 2) return false;
         const int a = free_rooms[static_cast<size_t>(rng.below(static_cast<int>(free_rooms.size())))];
         std::vector<int> rest;
@@ -344,7 +365,8 @@ Candidate evaluate(const Ctx& c, const FloorPlan& plan) {
     cand.plan.rasterize();
     cand.memo = c.memo;
     cand.ops = derive_openings(cand.plan, *c.prog, *c.params, cand.memo, *c.rules);
-    cand.cost = evaluate_cost(cand.plan, *c.prog, cand.ops, *c.params, c.below);
+    cand.cost = evaluate_cost(cand.plan, *c.prog, cand.ops, *c.params, c.below,
+                              c.rules->full_height);
     return cand;
 }
 
@@ -368,7 +390,7 @@ PlanResult anneal_plan(FloorPlan grown, const ExpandedProgram& prog,
     c.cur = std::move(grown);
     c.cur.rasterize();
     c.ops = derive_openings(c.cur, prog, params, c.memo, rules);
-    c.cost = evaluate_cost(c.cur, prog, c.ops, params, below);
+    c.cost = evaluate_cost(c.cur, prog, c.ops, params, below, rules.full_height);
 
     AnnealReport& rep = res.anneal;
     rep.initial = c.cost;
@@ -428,6 +450,30 @@ PlanResult anneal_plan(FloorPlan grown, const ExpandedProgram& prog,
         bool have = false;
         if (rng.f64() < params.q_critic) {
             const int N = static_cast<int>(c.cur.rooms.size());
+            // Core contact (§9.2), computed at most once per iteration: the
+            // door-link critic spares core-touching hearth rooms, the hearth
+            // critic reads its bad/donor sets from it.
+            std::vector<char> touch_memo;
+            auto core_touch = [&]() -> const std::vector<char>& {
+                if (touch_memo.empty()) {
+                    touch_memo.assign(static_cast<size_t>(N), 0);
+                    static const int di[4] = {-1, 1, 0, 0};
+                    static const int dj[4] = {0, 0, -1, 1};
+                    for (int j = 0; j < c.cur.h; ++j)
+                        for (int i = 0; i < c.cur.w; ++i) {
+                            if (c.cur.at(i, j) != kCellCore) continue;
+                            for (int q = 0; q < 4; ++q) {
+                                const int32_t nn = c.cur.room_at(i + di[q], j + dj[q]);
+                                if (nn >= 0) touch_memo[static_cast<size_t>(nn)] = 1;
+                            }
+                        }
+                }
+                return touch_memo;
+            };
+            auto anchored = [&](int r) {
+                const PlanRoom& rm = c.cur.rooms[static_cast<size_t>(r)];
+                return rm.hearth_code != 0 && core_touch()[static_cast<size_t>(r)];
+            };
             // Program critic (hard.program): a street door without a facade
             // host, or a program door link without a door-capable run.
             if (!c.ops.entrance_ok || !c.ops.back_door_ok) {
@@ -438,6 +484,14 @@ PlanResult anneal_plan(FloorPlan grown, const ExpandedProgram& prog,
                     for (int r = 0; r < N; ++r) {
                         const PlanRoom& room = c.cur.rooms[static_cast<size_t>(r)];
                         if (room.fixed()) continue;
+                        // An anchor (§9.2: a hearth room touching its core)
+                        // never moves for a street door — the swap trades the
+                        // facade term for a hearth term and the two critics
+                        // oscillate (observed: hall swapped off its stack for
+                        // the back door, then swapped back). Every host
+                        // anchored -> the critic stays silent; the repair or
+                        // a re-grow owns the failure.
+                        if (anchored(r)) continue;
                         if (front ? room.entrance_front : room.entrance_back) {
                             hosts.push_back(r);
                         } else if (facade_capable(c.cur, params, r, front)) {
@@ -472,19 +526,31 @@ PlanResult anneal_plan(FloorPlan grown, const ExpandedProgram& prog,
                     if (!fix_a) have = shift_touching(c.cur, a, s, rng, mv);
                     if (!have && !fix_b) have = shift_touching(c.cur, b, s, rng, mv);
                 } else {
-                // Swap b with a room adjacent to a; the shared wall makes the
-                // link door-capable.
+                // Swap one endpoint with a room adjacent to the other; the
+                // shared wall makes the link door-capable. An anchor — a
+                // hearth room touching its core (§9.2) — is never the one to
+                // move: that would trade the link for a hearth hard term.
+                // When b is anchored, a travels toward b instead. Both
+                // anchored -> no swap at all, only a boundary nudge.
+                const bool anc_a = anchored(a), anc_b = anchored(b);
+                if (anc_a && anc_b) {
+                    have = shift_touching(c.cur, a, s, rng, mv);
+                    if (!have) have = shift_touching(c.cur, b, s, rng, mv);
+                } else {
+                const int mover = anc_b ? a : b;
+                const int stay = mover == a ? b : a;
                 std::vector<int> partners;
                 for (const auto& [x, y] : c.ops.adjacency) {
-                    const int o = x == a ? y : y == a ? x : -1;
-                    if (o >= 0 && o != b && !c.cur.rooms[static_cast<size_t>(o)].fixed() &&
+                    const int o = x == stay ? y : y == stay ? x : -1;
+                    if (o >= 0 && o != mover &&
+                        !c.cur.rooms[static_cast<size_t>(o)].fixed() && !anchored(o) &&
                         std::find(partners.begin(), partners.end(), o) == partners.end())
                         partners.push_back(o);
                 }
                 if (!partners.empty()) {
                     mv = Move{};
                     mv.is_swap = true;
-                    mv.swap_a = b;
+                    mv.swap_a = mover;
                     mv.swap_b = partners[static_cast<size_t>(
                         rng.below(static_cast<int>(partners.size())))];
                     have = true;
@@ -492,11 +558,19 @@ PlanResult anneal_plan(FloorPlan grown, const ExpandedProgram& prog,
                     have = shift_touching(c.cur, a, s, rng, mv);
                 }
                 }
+                }
             }
             if (!have) {
+                // Access critic (hard.access): pull an unreachable room into
+                // the connected set. Anchors are excluded on both sides — the
+                // swap would otherwise fix access by breaking the hearth
+                // contact (observed: the unreachable pantry swapped with the
+                // anchored hall, hall landed in the back stripe off its
+                // stack).
                 std::vector<int> unreachable;
                 for (size_t r = 0; r < c.ops.reachable.size(); ++r)
-                    if (!c.ops.reachable[r] && !c.cur.rooms[r].fixed())
+                    if (!c.ops.reachable[r] && !c.cur.rooms[r].fixed() &&
+                        !anchored(static_cast<int>(r)))
                         unreachable.push_back(static_cast<int>(r));
                 if (!unreachable.empty()) {
                     const int u = unreachable[static_cast<size_t>(
@@ -506,12 +580,13 @@ PlanResult anneal_plan(FloorPlan grown, const ExpandedProgram& prog,
                         for (const auto& [a, b] : c.ops.adjacency) {
                             const int other = a == u ? b : b == u ? a : -1;
                             if (other >= 0 && c.ops.reachable[static_cast<size_t>(other)] &&
-                                !c.cur.rooms[static_cast<size_t>(other)].fixed())
+                                !c.cur.rooms[static_cast<size_t>(other)].fixed() &&
+                                !anchored(other))
                                 partners.push_back(other);
                         }
                         for (size_t r = 0; partners.empty() && r < c.ops.reachable.size(); ++r)
                             if (c.ops.reachable[r] && static_cast<int>(r) != u &&
-                                !c.cur.rooms[r].fixed())
+                                !c.cur.rooms[r].fixed() && !anchored(static_cast<int>(r)))
                                 partners.push_back(static_cast<int>(r));
                         if (!partners.empty()) {
                             mv = Move{};
@@ -526,12 +601,47 @@ PlanResult anneal_plan(FloorPlan grown, const ExpandedProgram& prog,
                     }
                 }
             }
+            if (!have && c.cost.hard_terms.count("hearth") != 0 &&
+                c.cost.hard_terms.at("hearth") > 0) {
+                // Hearth critic (hard.hearth, §9.2): a hearth room ended away
+                // from its chimney stack — swap it with a (non-fixed)
+                // non-hearth room touching a core; failing that, pull one of
+                // its boundary lines.
+                const int Nr = static_cast<int>(c.cur.rooms.size());
+                const std::vector<char>& touch = core_touch();
+                std::vector<int> bad, donors;
+                for (int r = 0; r < Nr; ++r) {
+                    const PlanRoom& room = c.cur.rooms[static_cast<size_t>(r)];
+                    if (room.fixed()) continue;
+                    if (room.hearth_code != 0 && !touch[static_cast<size_t>(r)])
+                        bad.push_back(r);
+                    else if (room.hearth_code == 0 && touch[static_cast<size_t>(r)])
+                        donors.push_back(r);
+                }
+                if (!bad.empty() && !donors.empty()) {
+                    mv = Move{};
+                    mv.is_swap = true;
+                    mv.swap_a =
+                        bad[static_cast<size_t>(rng.below(static_cast<int>(bad.size())))];
+                    mv.swap_b =
+                        donors[static_cast<size_t>(rng.below(static_cast<int>(donors.size())))];
+                    have = true;
+                } else if (!bad.empty()) {
+                    have = shift_touching(
+                        c.cur, bad[static_cast<size_t>(rng.below(static_cast<int>(bad.size())))],
+                        s, rng, mv);
+                }
+            }
             if (!have) {
                 // Dark-room critic: swap an unlit habitable room with a room
                 // that has exterior exposure (prefer non-habitable donors).
+                // Anchors are excluded on both sides (same reason as the
+                // access critic: light is not worth a hearth hard term).
                 std::vector<int> unlit;
                 for (size_t r = 0; r < c.cur.rooms.size(); ++r) {
-                    if (!c.cur.rooms[r].habitable || c.cur.rooms[r].fixed()) continue;
+                    if (!c.cur.rooms[r].habitable || c.cur.rooms[r].fixed() ||
+                        anchored(static_cast<int>(r)))
+                        continue;
                     bool lit = false;
                     for (const DerivedOpening& o : c.ops.openings)
                         if (o.kind_code == kOpeningWindow && o.room_a == static_cast<int>(r)) {
@@ -546,6 +656,7 @@ PlanResult anneal_plan(FloorPlan grown, const ExpandedProgram& prog,
                     std::vector<int> donors, donors_soft;
                     for (size_t r = 0; r < c.cur.rooms.size(); ++r) {
                         if (static_cast<int>(r) == u || c.cur.rooms[r].fixed() ||
+                            anchored(static_cast<int>(r)) ||
                             !room_has_exterior(c.cur, static_cast<int>(r)))
                             continue;
                         (c.cur.rooms[r].habitable ? donors_soft : donors).push_back(static_cast<int>(r));

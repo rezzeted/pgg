@@ -116,6 +116,15 @@ std::string storey_plan_svg(const Ir& ir, int storey_index, const Site& site) {
             << " m2</text>\n";
     }
 
+    // Chimney stacks (B4, §9.2): the masonry footprint on the crossed storeys.
+    for (const IrChimney& c : ir.chimneys) {
+        if (!c.cells_by_storey.count(storey_id)) continue;
+        const double hx = c.section.x * 0.5, hz = c.section.y * 0.5;
+        svg << "<rect x=\"" << pr.px(c.top.x - hx) << "\" y=\"" << pr.py(c.top.z - hz)
+            << "\" width=\"" << c.section.x * kScale << "\" height=\"" << c.section.y * kScale
+            << "\" fill=\"#935116\" stroke=\"#4e2e0b\" stroke-width=\"1.5\"/>\n";
+    }
+
     // Walls (B2): exterior thick dark, partitions thin gray.
     for (const IrWall& w : ir.walls) {
         if (w.storey != storey_id) continue;

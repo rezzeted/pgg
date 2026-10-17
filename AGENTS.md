@@ -215,9 +215,11 @@ Linux-флоу — Ninja (single-config) + CMake Presets, триплет `x64-li
   `docs/building_generator/algorithms.md`. Реализованы **B0** (геометрия
   поверх вручную замороженного IR), **B1** (G1/G2: программа → массинг → IR),
   **B2** (G5/G6: план одноэтажного здания — рост комнат, отжиг L0,
-  проёмы, эмит в IR; решения и расхождения — algorithms §15) и **B3**
+  проёмы, эмит в IR; решения и расхождения — algorithms §15), **B3**
   (этажи и лестницы: G3 `storeys.*`, G4 `stairs.*`, `pipeline.*`, Г-формы
-  комнат, терм опирания C11; решения — algorithms §16).
+  комнат, терм опирания C11; решения — algorithms §16) и **B4** (дымоходы:
+  G4b `chimneys.*` — группировка очагов в стояки, seeded-фронтаж, гейты;
+  решения — algorithms §17).
 - `src/libs/building_topology_generator` — IR v0
   (`building-topology-generator-ir/0`: типы, JSON, валидация, коды
   FN/WALL/OP/ROOF/…), модель крыши на `geom2d::straight_skeleton`
@@ -233,7 +235,11 @@ Linux-флоу — Ninja (single-config) + CMake Presets, триплет `x64-li
   (`emit.*`: spaces/walls/openings/nodes/access/anchors); B3: G3
   (`storeys.*`: распределение комнат по этажам, донор пустого этажа), G4
   (`stairs.*`: Г-лестницы, колодцы §14.2, walk-зона мансарды), конвейер
-  (`pipeline.*`: поля этажей → лестницы → G3 → поэтажные G5/G6).
+  (`pipeline.*`: поля этажей → лестницы → G3 → поэтажные G5/G6); B4: G4b
+  (`chimneys.*`: группировка очагов в стояки 1×1/1×2, архетипы
+  central/gable/free, §5.7-выход при размещении, rect-net гейты кандидатов,
+  tried-ban ретраев), `PlanRoom::pin_cell` и pin-aware гильотина ремонта,
+  эмит `Ir::chimneys` + hearth-референсы.
 - Шаблоны программ — `content/building/programs/{house,bakery,tavern}.json`.
 - `src/libs/geom2d` — домен-нейтральная 2D-геометрия (straight skeleton,
   offsetOutline), вынесена из ядра PGG.
@@ -255,6 +261,8 @@ Linux-флоу — Ninja (single-config) + CMake Presets, триплет `x64-li
   `building_assets_test`, `building_fill_test`, `building_program_test`,
   `building_massing_test`, `building_plan_test` (юниты G5–G8),
   `building_stairs_test` (юниты G4: формы колодцев, walk-фильтры),
+  `building_chimneys_test` (юниты G4b: численный пример §9.2, размещение,
+  детерминизм, эмит IR),
   `building_plan_acceptance_test` (приёмка B2: 3 программы × 100 seed'ов,
   I1/I3/I6/I7 = 100 %, ~2 мин — медленный), `building_plan_b3_acceptance_test`
   (приёмка B3: house × 100 seed'ов, 2 этажа + мансарда, I1/I3/I6/I7 = 100 % +

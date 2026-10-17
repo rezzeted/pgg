@@ -9,10 +9,12 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <iterator>
+#include <limits>
 
 #include "roof.h"  // point_in_poly, build_roof_model, ceiling_y_at
 
@@ -28,12 +30,72 @@ constexpr double kEps = 1e-9;
 
 // Half-thickness the boundary against `label` shaves off a room (§5.2):
 // outside -> an exterior wall, roofvoid -> a knee wall, void -> a railing
-// (no wall body), a room -> a partition.
+// (no wall body), core -> the stack face (§6: no wall either), a room -> a
+// partition.
 double side_half_t(int32_t label, const IrParams& p) {
     if (label == kCellOutside) return p.t_exterior / 2;
     if (label == kCellRoofVoid) return p.t_knee / 2;
     if (label == kCellVoid) return 0.0;
+    if (label == kCellCore) return 0.0;
     return p.t_partition / 2;
+}
+
+void field_side_margins(const std::vector<int32_t>& mask, int w, int h,
+                        const IrParams& ir, int x0, int z0, int x1, int z1,
+                        double& t_x0, double& t_x1, double& t_z0, double& t_z1) {
+    auto out_t = [&](int i, int j) {
+        if (i < 0 || j < 0 || i >= w || j >= h) return ir.t_exterior / 2;
+        return side_half_t(mask[static_cast<size_t>(j) * w + i], ir);
+    };
+    t_x0 = t_x1 = t_z0 = t_z1 = 0.0;
+    for (int j = z0; j < z1; ++j) {
+        t_x0 = std::max(t_x0, out_t(x0 - 1, j));
+        t_x1 = std::max(t_x1, out_t(x1, j));
+    }
+    for (int i = x0; i < x1; ++i) {
+        t_z0 = std::max(t_z0, out_t(i, z0 - 1));
+        t_z1 = std::max(t_z1, out_t(i, z1));
+    }
+}
+
+void field_piece_net(const std::vector<int32_t>& occ,
+                     const std::vector<int32_t>& margins_mask, int w, int h,
+                     const IrParams& ir, std::vector<double>& piece_net) {
+    piece_net.assign(static_cast<size_t>(w) * h, 0.0);
+    // Integral image of the non-free cells for O(1) all-free queries.
+    const int iw = w + 1;
+    std::vector<int> blocked(static_cast<size_t>(iw) * (h + 1), 0);
+    for (int j = 0; j < h; ++j)
+        for (int i = 0; i < w; ++i) {
+            const int b = occ[static_cast<size_t>(j) * w + i] != kCellFree ? 1 : 0;
+            blocked[static_cast<size_t>(j + 1) * iw + i + 1] =
+                b + blocked[static_cast<size_t>(j) * iw + i + 1] +
+                blocked[static_cast<size_t>(j + 1) * iw + i] -
+                blocked[static_cast<size_t>(j) * iw + i];
+        }
+    auto blocked_in = [&](int x0, int z0, int x1, int z1) {
+        return blocked[static_cast<size_t>(z1) * iw + x1] -
+               blocked[static_cast<size_t>(z0) * iw + x1] -
+               blocked[static_cast<size_t>(z1) * iw + x0] +
+               blocked[static_cast<size_t>(z0) * iw + x0];
+    };
+    // The max net side over all-free squares (any feasible rect contains such
+    // a square on its short side, and any such square is itself a feasible
+    // rect, so the test is exact).
+    for (int z0 = 0; z0 < h; ++z0)
+        for (int x0 = 0; x0 < w; ++x0)
+            for (int l = 1; z0 + l <= h && x0 + l <= w; ++l) {
+                if (blocked_in(x0, z0, x0 + l, z0 + l) > 0) break;
+                double t_x0, t_x1, t_z0, t_z1;
+                field_side_margins(margins_mask, w, h, ir, x0, z0, x0 + l, z0 + l, t_x0,
+                                   t_x1, t_z0, t_z1);
+                const double net =
+                    std::min(l * ir.cell - t_x0 - t_x1, l * ir.cell - t_z0 - t_z1);
+                for (int j = z0; j < z0 + l; ++j)
+                    for (int i = x0; i < x0 + l; ++i)
+                        piece_net[static_cast<size_t>(j) * w + i] =
+                            std::max(piece_net[static_cast<size_t>(j) * w + i], net);
+            }
 }
 
 void FloorPlan::rasterize() {
@@ -448,6 +510,89 @@ std::vector<std::array<int, 4>> decompose_field(const std::vector<int32_t>& mask
     return rects;
 }
 
+// Shared state of one field_reslice_feasible call / one repair-side set
+// check: the storey field, the room set ((min_dim, target)) and the memo of
+// the recursive piece feasibility.
+struct ResliceCtx {
+    const std::vector<int32_t>* margins = nullptr;
+    int w = 0, h = 0;
+    IrParams ir;
+    std::vector<std::pair<double, double>> rooms;  // (min_dim, target)
+    std::map<std::pair<std::array<int, 4>, int>, char> memo;
+};
+
+// Recursive feasibility of hosting the room set (bitmask over cx.rooms) in
+// the rect: mirrors guillotine()'s net min_dim cut rule, with free
+// bipartitions and a free split span (the growth-time centroid order and the
+// target share are unknowable pre-growth — any subset may take the low side).
+bool rect_set_feasible(ResliceCtx& cx, int x0, int z0, int x1, int z1, int set) {
+    const int n = std::popcount(static_cast<unsigned>(set));
+    if (n == 0) return true;  // orphan piece: a future wing
+    double t_x0, t_x1, t_z0, t_z1;
+    field_side_margins(*cx.margins, cx.w, cx.h, cx.ir, x0, z0, x1, z1, t_x0, t_x1, t_z0,
+                       t_z1);
+    if (n == 1) {
+        const double md =
+            cx.rooms[static_cast<size_t>(std::countr_zero(static_cast<unsigned>(set)))].first;
+        const double net_w = (x1 - x0) * cx.ir.cell - t_x0 - t_x1;
+        const double net_h = (z1 - z0) * cx.ir.cell - t_z0 - t_z1;
+        return std::min(net_w, net_h) >= md - kEps;
+    }
+    const int w = x1 - x0, h = z1 - z0;
+    if (w < 2 && h < 2) return false;
+    const auto key = std::make_pair(std::array<int, 4>{x0, z0, x1, z1}, set);
+    const auto it = cx.memo.find(key);
+    if (it != cx.memo.end()) return it->second != 0;
+    const int lowest = set & -set;  // complement symmetry: the lowest bit stays low
+    double total = 0.0;
+    for (int r = 0; r < static_cast<int>(cx.rooms.size()); ++r)
+        if (set & (1 << r)) total += cx.rooms[static_cast<size_t>(r)].second;
+    auto try_axis = [&](bool vertical) {
+        const int axis = vertical ? w : h;
+        if (axis < 2) return false;
+        const double t_out_a = vertical ? t_x0 : t_z0;  // the low side's allowance
+        const double t_out_b = vertical ? t_x1 : t_z1;
+        auto min_cells_net = [&](int r, double t_out) {
+            const double need =
+                cx.rooms[static_cast<size_t>(r)].first + t_out + cx.ir.t_partition / 2;
+            return std::max(1, static_cast<int>(std::ceil(need / cx.ir.cell - kEps)));
+        };
+        for (int a = (set - 1) & set; a > 0; a = (a - 1) & set) {
+            if (!(a & lowest)) continue;
+            const int b = set ^ a;
+            int m_a = 1, m_b = 1;
+            double share = 0.0;
+            for (int r = 0; r < static_cast<int>(cx.rooms.size()); ++r) {
+                if (a & (1 << r)) {
+                    m_a = std::max(m_a, min_cells_net(r, t_out_a));
+                    share += cx.rooms[static_cast<size_t>(r)].second;
+                }
+                if (b & (1 << r)) m_b = std::max(m_b, min_cells_net(r, t_out_b));
+            }
+            if (axis < m_a + m_b) continue;
+            const int guess = total > 0.0
+                                  ? std::clamp(static_cast<int>(std::lround(axis * share / total)),
+                                               m_a, axis - m_b)
+                                  : (m_a + axis - m_b) / 2;
+            for (const int span : {guess, m_a, axis - m_b}) {
+                if (span < m_a || span > axis - m_b) continue;
+                const int xc = vertical ? x0 + span : x1;
+                const int zc = vertical ? z1 : z0 + span;
+                if (rect_set_feasible(cx, x0, z0, xc, zc, a) &&
+                    rect_set_feasible(cx, vertical ? x0 + span : x0,
+                                      vertical ? z0 : z0 + span, x1, z1, b))
+                    return true;
+            }
+        }
+        return false;
+    };
+    // The preferred direction first, as in guillotine().
+    const bool prefer_vertical = (w >= 2 && w >= h) || h < 2;
+    const bool ok = try_axis(prefer_vertical) || try_axis(!prefer_vertical);
+    cx.memo[key] = ok ? 1 : 0;
+    return ok;
+}
+
 // Wall allowances of a field piece's four sides, scanned in fp.outside:
 // beyond the field -> t_exterior/2, roof-void -> t_knee/2, anything else
 // (a future room, the pinned shaft) -> t_partition/2. Matches room_dims_net
@@ -455,30 +600,20 @@ std::vector<std::array<int, 4>> decompose_field(const std::vector<int32_t>& mask
 // the rooms are stamped.
 void piece_side_margins(const FloorPlan& fp, const IrParams& ir, int x0, int z0, int x1,
                         int z1, double& t_x0, double& t_x1, double& t_z0, double& t_z1) {
-    auto out_t = [&](int i, int j) {
-        if (!fp.inside(i, j)) return ir.t_exterior / 2;
-        return side_half_t(fp.outside[static_cast<size_t>(j) * fp.w + i], ir);
-    };
-    t_x0 = t_x1 = t_z0 = t_z1 = 0.0;
-    for (int j = z0; j < z1; ++j) {
-        t_x0 = std::max(t_x0, out_t(x0 - 1, j));
-        t_x1 = std::max(t_x1, out_t(x1, j));
-    }
-    for (int i = x0; i < x1; ++i) {
-        t_z0 = std::max(t_z0, out_t(i, z0 - 1));
-        t_z1 = std::max(t_z1, out_t(i, z1));
-    }
+    field_side_margins(fp.outside, fp.w, fp.h, ir, x0, z0, x1, z1, t_x0, t_x1, t_z0, t_z1);
 }
 
 // Recursively split the rect [x0,x1)x[z0,z1) among rooms[lo, hi) weighted by
 // their area targets. Deterministic: split direction by the longer side, the
 // room subset by a median split along the split axis (rooms are pre-sorted
-// by their centroid projection). Every side of a cut must leave every hosted
-// room its NET min_dim — gross cells minus the wall allowances (the piece's
-// envelope side plus the cut's partition) — a thinner slice is a strip the
-// anneal cannot legally escape (shift_legal keeps the neighbors above their
-// own min_dim), so an infeasible split fails the slice and the growth
-// retries. The preferred direction is tried first, then the other one.
+// by their pin/centroid projection — a room with a pinned seed cell keys on
+// the pin). Every side of a cut must leave every hosted room its NET min_dim
+// — gross cells minus the wall allowances (the piece's envelope side plus the
+// cut's partition) — and every pinned room a slice containing its pin cell; a
+// thinner slice is a strip the anneal cannot legally escape (shift_legal
+// keeps the neighbors above their own min_dim), so an infeasible split fails
+// the slice and the growth retries. The preferred direction is tried first,
+// then the other one.
 bool guillotine(FloorPlan& fp, std::vector<int>& ord, int lo, int hi, int x0, int z0,
                 int x1, int z1, const IrParams& ir, std::string& err) {
     const double cell = ir.cell;
@@ -486,6 +621,15 @@ bool guillotine(FloorPlan& fp, std::vector<int>& ord, int lo, int hi, int x0, in
     piece_side_margins(fp, ir, x0, z0, x1, z1, t_x0, t_x1, t_z0, t_z1);
     if (hi - lo == 1) {
         PlanRoom& r = fp.rooms[static_cast<size_t>(ord[static_cast<size_t>(lo)])];
+        // A pinned seed cell must survive in the room's slice (B4): the pin
+        // is the stack/shaft contact — a slice missing it ends the plan with
+        // a hard term the anneal cannot always repair.
+        if (r.pin_cell.x >= 0 &&
+            (r.pin_cell.x < x0 || r.pin_cell.x >= x1 || r.pin_cell.y < z0 ||
+             r.pin_cell.y >= z1)) {
+            err = "guillotine: the slice lost the pin of room " + r.id;
+            return false;
+        }
         const double net_w = (x1 - x0) * cell - t_x0 - t_x1;
         const double net_h = (z1 - z0) * cell - t_z0 - t_z1;
         if (std::min(net_w, net_h) < r.min_dim - 1e-6) {
@@ -504,13 +648,19 @@ bool guillotine(FloorPlan& fp, std::vector<int>& ord, int lo, int hi, int x0, in
         return false;
     }
     auto split = [&](bool vertical, std::string& serr) {
+        // Sort along the axis: a pinned room keys on its pin (the stack/shaft
+        // contact it must keep), the rest on their centroid.
+        auto key_of = [&](int r) {
+            const PlanRoom& R = fp.rooms[static_cast<size_t>(r)];
+            if (R.pin_cell.x >= 0)
+                return vertical ? R.pin_cell.x + 0.5 : R.pin_cell.y + 0.5;
+            return vertical ? (R.x0 + R.x1) / 2.0 : (R.z0 + R.z1) / 2.0;
+        };
         std::sort(ord.begin() + lo, ord.begin() + hi, [&](int a, int b) {
-            const PlanRoom& A = fp.rooms[static_cast<size_t>(a)];
-            const PlanRoom& B = fp.rooms[static_cast<size_t>(b)];
-            const double ca = vertical ? (A.x0 + A.x1) / 2.0 : (A.z0 + A.z1) / 2.0;
-            const double cb = vertical ? (B.x0 + B.x1) / 2.0 : (B.z0 + B.z1) / 2.0;
+            const double ca = key_of(a);
+            const double cb = key_of(b);
             if (ca != cb) return ca < cb;
-            return A.id < B.id;
+            return fp.rooms[static_cast<size_t>(a)].id < fp.rooms[static_cast<size_t>(b)].id;
         });
         double total = 0.0;
         for (int k = lo; k < hi; ++k) total += fp.rooms[static_cast<size_t>(ord[k])].target;
@@ -528,6 +678,24 @@ bool guillotine(FloorPlan& fp, std::vector<int>& ord, int lo, int hi, int x0, in
             }
         }
         if (cut_rooms <= lo) cut_rooms = lo + 1;
+        // Pin separability: every low-side pin must sit strictly below every
+        // high-side pin on this axis (an equal projection — same column —
+        // cannot separate here; the other axis may still work).
+        int pin_lo_max = std::numeric_limits<int>::min();
+        int pin_hi_min = std::numeric_limits<int>::max();
+        for (int k = lo; k < cut_rooms; ++k) {
+            const PlanRoom& R = fp.rooms[static_cast<size_t>(ord[k])];
+            if (R.pin_cell.x >= 0)
+                pin_lo_max = std::max(pin_lo_max, vertical ? R.pin_cell.x : R.pin_cell.y);
+        }
+        for (int k = cut_rooms; k < hi; ++k) {
+            const PlanRoom& R = fp.rooms[static_cast<size_t>(ord[k])];
+            if (R.pin_cell.x >= 0)
+                pin_hi_min = std::min(pin_hi_min, vertical ? R.pin_cell.x : R.pin_cell.y);
+        }
+        if (pin_lo_max != std::numeric_limits<int>::min() &&
+            pin_hi_min != std::numeric_limits<int>::max() && pin_lo_max >= pin_hi_min)
+            return false;
         const double t_out_a = vertical ? t_x0 : t_z0;  // the low side's allowance
         const double t_out_b = vertical ? t_x1 : t_z1;  // the high side's
         auto min_cells_net = [&](int r, double t_out) {
@@ -542,12 +710,29 @@ bool guillotine(FloorPlan& fp, std::vector<int>& ord, int lo, int hi, int x0, in
             m_b = std::max(m_b, min_cells_net(ord[k], t_out_b));
         const int axis = vertical ? w : h;
         if (axis < m_a + m_b) return false;  // infeasible along this axis
+        // Pin containment: the low slice [base, base+span) must cover every
+        // low-side pin (span > pin - base), the high slice [base+span, …)
+        // every high-side pin (span <= pin - base).
+        const int base = vertical ? x0 : z0;
+        int span_lo = m_a, span_hi = axis - m_b;
+        for (int k = lo; k < cut_rooms; ++k) {
+            const PlanRoom& R = fp.rooms[static_cast<size_t>(ord[k])];
+            if (R.pin_cell.x >= 0)
+                span_lo = std::max(span_lo,
+                                   (vertical ? R.pin_cell.x : R.pin_cell.y) - base + 1);
+        }
+        for (int k = cut_rooms; k < hi; ++k) {
+            const PlanRoom& R = fp.rooms[static_cast<size_t>(ord[k])];
+            if (R.pin_cell.x >= 0)
+                span_hi = std::min(span_hi, (vertical ? R.pin_cell.x : R.pin_cell.y) - base);
+        }
+        if (span_lo > span_hi) return false;
         double left_share = 0.0;
         for (int k = lo; k < cut_rooms; ++k)
             left_share += fp.rooms[static_cast<size_t>(ord[k])].target;
         const double frac = total > 0.0 ? left_share / total : 0.5;
         const int span =
-            std::clamp(static_cast<int>(std::lround(axis * frac)), m_a, axis - m_b);
+            std::clamp(static_cast<int>(std::lround(axis * frac)), span_lo, span_hi);
         if (vertical) {
             const int xc = x0 + span;
             return guillotine(fp, ord, lo, cut_rooms, x0, z0, xc, z1, ir, serr) &&
@@ -655,6 +840,86 @@ bool repair_reslice(FloorPlan& fp, const IrParams& ir, std::string& err) {
             if (moved) break;
         }
     }
+    // Hearth rooms (§9.2) must stay in a piece touching their chimney stack:
+    // the centroid attachment knows nothing about the cores, and a hearth
+    // room re-sliced away from its stack ends the plan with a hard hearth
+    // term the anneal cannot always repair (a winged room is fixed). Move
+    // each such room to the least crowded core-adjacent piece that fits its
+    // min_dim (same preference as the misfit pass); a room nobody can host
+    // stays put — the hearth hard term owns the failure.
+    std::vector<char> core_adj(rects.size(), 0);
+    for (size_t k = 0; k < rects.size(); ++k) {
+        static const int di[4] = {-1, 1, 0, 0};
+        static const int dj[4] = {0, 0, -1, 1};
+        for (int j = rects[k][1]; j < rects[k][3] && !core_adj[k]; ++j)
+            for (int i = rects[k][0]; i < rects[k][2] && !core_adj[k]; ++i)
+                for (int q = 0; q < 4; ++q) {
+                    const int ni = i + di[q], nj = j + dj[q];
+                    if (ni < 0 || nj < 0 || ni >= fp.w || nj >= fp.h) continue;
+                    if (fp.outside[static_cast<size_t>(nj) * fp.w + ni] == kCellCore)
+                        core_adj[k] = 1;
+                }
+    }
+    // Pin-first attachment (B4): a room with a pinned seed cell (a hearth
+    // room's stack contact, the auto-corridor's shaft door side) belongs to
+    // the piece CONTAINING the pin — the centroid attachment may have put it
+    // in a different (even core-adjacent) piece, where the guillotine cannot
+    // give it a slice containing the pin and the plan ends hard. Move it
+    // there when the piece fits its min_dim; the pin-aware guillotine and the
+    // joint fixpoint then settle the crowding.
+    for (size_t ri = 0; ri < fp.rooms.size(); ++ri) {
+        const PlanRoom& room = fp.rooms[ri];
+        if (room.pinned || room.pin_cell.x < 0) continue;
+        const int pp = static_cast<int>(
+            rect_of(room.pin_cell.x + 0.5, room.pin_cell.y + 0.5));
+        if (pp < 0 || room.min_dim > piece_net_min(static_cast<size_t>(pp)) + kEps)
+            continue;
+        int home = -1;
+        for (size_t k = 0; k < rects.size(); ++k)
+            if (std::find(rect_rooms[k].begin(), rect_rooms[k].end(),
+                          static_cast<int>(ri)) != rect_rooms[k].end()) {
+                home = static_cast<int>(k);
+                break;
+            }
+        if (home == pp) continue;
+        if (home >= 0) {
+            auto& src = rect_rooms[static_cast<size_t>(home)];
+            src.erase(std::find(src.begin(), src.end(), static_cast<int>(ri)));
+        }
+        rect_rooms[static_cast<size_t>(pp)].push_back(static_cast<int>(ri));
+    }
+    for (size_t ri = 0; ri < fp.rooms.size(); ++ri) {
+        const PlanRoom& room = fp.rooms[ri];
+        if (room.pinned || room.hearth_code == 0) continue;
+        int home = -1;
+        for (size_t k = 0; k < rects.size(); ++k)
+            if (std::find(rect_rooms[k].begin(), rect_rooms[k].end(),
+                          static_cast<int>(ri)) != rect_rooms[k].end()) {
+                home = static_cast<int>(k);
+                break;
+            }
+        if (home < 0 || core_adj[static_cast<size_t>(home)]) continue;
+        const double hx = (room.x0 + room.x1) / 2.0, hz = (room.z0 + room.z1) / 2.0;
+        int best_t = -1;
+        size_t best_load = 1 << 30;
+        double best_dist = 1e30;
+        for (size_t t = 0; t < rects.size(); ++t) {
+            if (!core_adj[t] || room.min_dim > piece_net_min(t) + kEps) continue;
+            const double dx = (rects[t][0] + rects[t][2]) / 2.0 - hx;
+            const double dz = (rects[t][1] + rects[t][3]) / 2.0 - hz;
+            const double dist = dx * dx + dz * dz;
+            if (rect_rooms[t].size() < best_load ||
+                (rect_rooms[t].size() == best_load && dist < best_dist - kEps)) {
+                best_t = static_cast<int>(t);
+                best_load = rect_rooms[t].size();
+                best_dist = dist;
+            }
+        }
+        if (best_t < 0) continue;
+        auto& src = rect_rooms[static_cast<size_t>(home)];
+        src.erase(std::find(src.begin(), src.end(), static_cast<int>(ri)));
+        rect_rooms[static_cast<size_t>(best_t)].push_back(static_cast<int>(ri));
+    }
     // Orphan rects (no room centroid landed inside): prefer the nearest room
     // donated by the most crowded rect (rooms stay rectangular); with no
     // donor the orphan becomes a wing of an edge-adjacent room after the
@@ -692,6 +957,7 @@ bool repair_reslice(FloorPlan& fp, const IrParams& ir, std::string& err) {
             if (rect_rooms[d].size() < 2) continue;
             for (size_t q = 0; q < rect_rooms[d].size(); ++q) {
                 const PlanRoom& room = fp.rooms[static_cast<size_t>(rect_rooms[d][q])];
+                if (room.pin_cell.x >= 0) continue;  // pins stay in their piece (B4)
                 if (room.min_dim > net_min + kEps) continue;
                 const double dx = (room.x0 + room.x1) / 2.0 - cx;
                 const double dz = (room.z0 + room.z1) / 2.0 - cz;
@@ -717,11 +983,133 @@ bool repair_reslice(FloorPlan& fp, const IrParams& ir, std::string& err) {
     // piece (the band a stair shaft brackets against the field edge) still
     // finds its hosts — before the slice it could only wing onto a
     // single-room piece.
-    for (size_t k = 0; k < rects.size(); ++k) {
-        if (rect_rooms[k].empty()) continue;  // winged away below
-        if (!guillotine(fp, rect_rooms[k], 0, static_cast<int>(rect_rooms[k].size()),
-                        rects[k][0], rects[k][1], rects[k][2], rects[k][3], ir, err))
+    // Joint-infeasibility fixpoint: the growth put the rooms where it wanted,
+    // so two rooms that fit a piece individually may still be unable to share
+    // it (the guillotine's m_a + m_b > axis). The earlier passes only move
+    // INDIVIDUAL misfits — on a joint failure, re-home the hardest room of
+    // the failed piece to the least crowded piece whose joint set stays
+    // guillotine-feasible (rect_set_feasible mirrors the slice rule) and
+    // re-slice. No target -> the honest failure stands (the growth retries).
+    ResliceCtx rcx;
+    rcx.margins = &fp.outside;
+    rcx.w = fp.w;
+    rcx.h = fp.h;
+    rcx.ir = ir;
+    for (const PlanRoom& room : fp.rooms)
+        rcx.rooms.emplace_back(room.min_dim, room.target);
+    if (std::getenv("BTG_DEBUG_DUMP")) {
+        bool has_hearth = false;
+        for (const PlanRoom& room : fp.rooms) has_hearth = has_hearth || room.hearth_code != 0;
+        if (has_hearth) {
+            std::string d = "repair pieces (storey " + std::to_string(fp.storey_index) + "):\n";
+            for (size_t k = 0; k < rects.size(); ++k) {
+                d += "  [" + std::to_string(rects[k][0]) + "," + std::to_string(rects[k][1]) +
+                     "-" + std::to_string(rects[k][2]) + "," + std::to_string(rects[k][3]) + "]" +
+                     (core_adj[k] ? " core_adj" : "") + " rooms:";
+                for (const int r : rect_rooms[k]) {
+                    const PlanRoom& rm = fp.rooms[static_cast<size_t>(r)];
+                    d += " " + rm.id + (rm.hearth_code ? "(H)" : "") + "@(" +
+                         std::to_string((rm.x0 + rm.x1) / 2) + "," +
+                         std::to_string((rm.z0 + rm.z1) / 2) + ")";
+                }
+                d += "\n";
+            }
+            std::fprintf(stderr, "%s", d.c_str());
+        }
+    }
+    const bool can_fix = fp.rooms.size() <= 24;  // the set bitmask is an int
+    auto dump_failure = [&](const char* why, int failed) {
+        if (!std::getenv("BTG_DEBUG_DUMP")) return;
+        std::string d = std::string("repair joint-fixpoint failed (") + why + "): storey " +
+                        std::to_string(fp.storey_index) + "\n";
+        for (size_t k = 0; k < rects.size(); ++k) {
+            d += "  piece [" + std::to_string(rects[k][0]) + "," + std::to_string(rects[k][1]) +
+                 " - " + std::to_string(rects[k][2]) + "," + std::to_string(rects[k][3]) + "]" +
+                 (static_cast<int>(k) == failed ? " FAILED" : "") +
+                 (core_adj[k] ? " core_adj" : "") + " net_min=" +
+                 std::to_string(piece_net_min(k)) + " rooms:";
+            for (const int r : rect_rooms[k]) {
+                const PlanRoom& rm = fp.rooms[static_cast<size_t>(r)];
+                d += " " + rm.id + "(md=" + std::to_string(rm.min_dim) +
+                     ",tg=" + std::to_string(rm.target) +
+                     (rm.hearth_code ? ",hearth" : "") + ")";
+            }
+            d += "\n";
+        }
+        std::fprintf(stderr, "%s", d.c_str());
+    };
+    for (int guard = 0;; ++guard) {
+        int failed = -1;
+        for (size_t k = 0; k < rects.size(); ++k) {
+            if (rect_rooms[k].empty()) continue;  // winged away below
+            if (!guillotine(fp, rect_rooms[k], 0, static_cast<int>(rect_rooms[k].size()),
+                            rects[k][0], rects[k][1], rects[k][2], rects[k][3], ir, err)) {
+                failed = static_cast<int>(k);
+                break;
+            }
+        }
+        if (failed < 0) break;
+        if (!can_fix || guard >= static_cast<int>(fp.rooms.size())) {
+            dump_failure("guard exhausted", failed);
             return false;
+        }
+        auto& pool = rect_rooms[static_cast<size_t>(failed)];
+        // The hardest room of the failed piece moves out — prefer one without
+        // a pinned seed cell: a pinned room (a hearth room's stack contact,
+        // the auto-corridor's shaft side, §9.2/§6.4) must keep its pin.
+        size_t move_q = 0;
+        {
+            bool have_plain = false;
+            for (const int r : pool)
+                if (fp.rooms[static_cast<size_t>(r)].pin_cell.x < 0) have_plain = true;
+            for (size_t q = 1; q < pool.size(); ++q) {
+                const PlanRoom& cand = fp.rooms[static_cast<size_t>(pool[q])];
+                const PlanRoom& cur = fp.rooms[static_cast<size_t>(pool[move_q])];
+                if (have_plain && cand.pin_cell.x >= 0) continue;
+                if ((have_plain && cur.pin_cell.x >= 0) || cand.min_dim > cur.min_dim)
+                    move_q = q;
+            }
+        }
+        const int move_r = pool[move_q];
+        const PlanRoom& room = fp.rooms[static_cast<size_t>(move_r)];
+        const double rcx_c = (room.x0 + room.x1) / 2.0, rcz_c = (room.z0 + room.z1) / 2.0;
+        // A pinned room can only go to the piece containing its pin.
+        const int pin_piece =
+            room.pin_cell.x >= 0
+                ? static_cast<int>(rect_of(room.pin_cell.x + 0.5, room.pin_cell.y + 0.5))
+                : -1;
+        int best_t = -1;
+        size_t best_load = 1 << 30;
+        double best_dist = 1e30;
+        for (size_t t = 0; t < rects.size(); ++t) {
+            if (static_cast<int>(t) == failed) continue;
+            if (pin_piece >= 0 && static_cast<int>(t) != pin_piece) continue;
+            int set = 0;
+            for (const int r : rect_rooms[t]) set |= 1 << r;
+            const int ns = set | (1 << move_r);
+            if (!rect_set_feasible(rcx, rects[t][0], rects[t][1], rects[t][2], rects[t][3],
+                                   ns))
+                continue;
+            const double dx = (rects[t][0] + rects[t][2]) / 2.0 - rcx_c;
+            const double dz = (rects[t][1] + rects[t][3]) / 2.0 - rcz_c;
+            const double dist = dx * dx + dz * dz;
+            if (rect_rooms[t].size() < best_load ||
+                (rect_rooms[t].size() == best_load && dist < best_dist - kEps)) {
+                best_t = static_cast<int>(t);
+                best_load = rect_rooms[t].size();
+                best_dist = dist;
+            }
+        }
+        if (best_t < 0) {
+            dump_failure("no host for the joint set", failed);
+            return false;  // nobody can host the joint set
+        }
+        rect_rooms[static_cast<size_t>(best_t)].push_back(move_r);
+        pool.erase(pool.begin() + static_cast<long>(move_q));
+        if (pool.empty()) {
+            pending[static_cast<size_t>(failed)] = 1;  // a fresh orphan: the
+            ++orphans_left;                            // wing path absorbs it
+        }
     }
     // Wing path (phase L), fixpoint over the final room rects: an orphan joins
     // an edge-adjacent room passing the covering test (two tiers: the host's
@@ -894,10 +1282,49 @@ bool repair_reslice(FloorPlan& fp, const IrParams& ir, std::string& err) {
         }
         return false;
     }
+    // The joint fixpoint's failed guillotine probes leave their message in
+    // err — a successful repair must not leak a stale error (the caller
+    // treats any non-empty err as a failed attempt).
+    err.clear();
     return true;
 }
 
 }  // namespace
+
+bool field_reslice_feasible(const std::vector<int32_t>& mask,
+                            const std::vector<int32_t>& margins_mask, int w, int h,
+                            const IrParams& ir,
+                            const std::vector<std::pair<double, double>>& rooms) {
+    if (rooms.empty()) return true;
+    std::vector<std::array<int, 4>> pieces = decompose_cells(mask, w, h);
+    merge_rect_pairs(pieces);
+    ResliceCtx cx;
+    cx.margins = &margins_mask;
+    cx.w = w;
+    cx.h = h;
+    cx.ir = ir;
+    cx.rooms = rooms;
+    std::sort(cx.rooms.begin(), cx.rooms.end(),
+              [](const auto& a, const auto& b) { return a.first > b.first; });
+    if (cx.rooms.size() > 24) return false;  // the bitmask is an int
+    // Assign the rooms (the hardest first) to the pieces; a piece's growing
+    // set must stay guillotine-feasible at every step (memoized).
+    std::vector<int> piece_set(pieces.size(), 0);
+    auto assign = [&](auto&& self, int ri) -> bool {
+        if (ri == static_cast<int>(cx.rooms.size())) return true;
+        for (size_t pi = 0; pi < pieces.size(); ++pi) {
+            const int ns = piece_set[pi] | (1 << ri);
+            if (ns == piece_set[pi]) continue;
+            const auto& r = pieces[pi];
+            if (!rect_set_feasible(cx, r[0], r[1], r[2], r[3], ns)) continue;
+            piece_set[pi] = ns;
+            if (self(self, ri + 1)) return true;
+            piece_set[pi] ^= (1 << ri);
+        }
+        return false;
+    };
+    return assign(assign, 0);
+}
 
 bool rects_edge_adjacent(const std::array<int, 4>& a, const std::array<int, 4>& b) {
     if (a[2] == b[0] || b[2] == a[0]) return std::min(a[3], b[3]) > std::max(a[1], b[1]);
@@ -947,6 +1374,111 @@ bool rects_covering_ok(const std::vector<std::array<int, 4>>& parts, int m_main,
 std::vector<std::array<int, 4>> decompose_cells(const std::vector<int32_t>& mask, int w,
                                                 int h) {
     return decompose_field(mask, w, h);
+}
+
+bool field_connected_without(const std::vector<int32_t>& mask, int w, int h,
+                             const std::vector<int>& blocked_list) {
+    std::vector<char> blocked(static_cast<size_t>(w) * h, 0);
+    for (int c : blocked_list) blocked[static_cast<size_t>(c)] = 1;
+    int total = 0, start = -1;
+    for (int idx = 0; idx < w * h; ++idx)
+        if (mask[static_cast<size_t>(idx)] == kCellFree && !blocked[static_cast<size_t>(idx)]) {
+            ++total;
+            if (start < 0) start = idx;
+        }
+    if (total == 0) return false;
+    std::vector<int> stack{start};
+    std::vector<char> seen(static_cast<size_t>(w) * h, 0);
+    seen[static_cast<size_t>(start)] = 1;
+    int seen_n = 0;
+    while (!stack.empty()) {
+        const int c = stack.back();
+        stack.pop_back();
+        ++seen_n;
+        const int ci = c % w, cj = c / w;
+        const int di[4] = {-1, 1, 0, 0};
+        const int dj[4] = {0, 0, -1, 1};
+        for (int q = 0; q < 4; ++q) {
+            const int ni = ci + di[q], nj = cj + dj[q];
+            if (ni < 0 || nj < 0 || ni >= w || nj >= h) continue;
+            const int n = nj * w + ni;
+            if (mask[static_cast<size_t>(n)] == kCellFree &&
+                !blocked[static_cast<size_t>(n)] && !seen[static_cast<size_t>(n)]) {
+                seen[static_cast<size_t>(n)] = 1;
+                stack.push_back(n);
+            }
+        }
+    }
+    return seen_n == total;
+}
+
+bool dead_piece_near(const std::vector<int32_t>& mask, int w, int h,
+                     const std::vector<int>& changed) {
+    std::vector<std::array<int, 4>> pieces = decompose_cells(mask, w, h);
+    merge_rect_pairs(pieces);
+    for (size_t pi = 0; pi < pieces.size(); ++pi) {
+        const std::array<int, 4>& p = pieces[pi];
+        if (std::min(p[2] - p[0], p[3] - p[1]) >= kWingCoverCells) continue;  // self-covering
+        bool near = false;
+        for (int c : changed) {
+            const int ci = c % w, cj = c / w;
+            if (ci >= p[0] - 1 && ci <= p[2] && cj >= p[1] - 1 && cj <= p[3]) {
+                near = true;
+                break;
+            }
+        }
+        if (!near) continue;
+        std::vector<std::array<int, 4>> parts{p};
+        for (size_t qi = 0; qi < pieces.size(); ++qi)
+            if (qi != pi && rects_edge_adjacent(p, pieces[qi]))
+                parts.push_back(pieces[qi]);
+        if (!rects_covering_ok(parts, kWingCoverCells, kWingCoverCells)) return true;
+    }
+    return false;
+}
+
+void field_piece_net_rect(const std::vector<int32_t>& occ,
+                          const std::vector<int32_t>& margins_mask, int w, int h,
+                          const IrParams& ir, std::vector<double>& piece_net_rect) {
+    piece_net_rect.assign(static_cast<size_t>(w) * h, 0.0);
+    std::vector<std::array<int, 4>> rects = decompose_field(occ, w, h);
+    merge_rect_pairs(rects);
+    for (const std::array<int, 4>& r : rects) {
+        double t_x0, t_x1, t_z0, t_z1;
+        field_side_margins(margins_mask, w, h, ir, r[0], r[1], r[2], r[3], t_x0, t_x1,
+                           t_z0, t_z1);
+        const double net_min = std::min((r[2] - r[0]) * ir.cell - t_x0 - t_x1,
+                                        (r[3] - r[1]) * ir.cell - t_z0 - t_z1);
+        for (int j = r[1]; j < r[3]; ++j)
+            for (int i = r[0]; i < r[2]; ++i)
+                piece_net_rect[static_cast<size_t>(j) * w + i] = net_min;
+    }
+}
+
+void field_piece_ids(const std::vector<int32_t>& occ,
+                     const std::vector<int32_t>& margins_mask, int w, int h,
+                     const IrParams& ir, std::vector<int>& piece_id,
+                     std::vector<double>& piece_net_x,
+                     std::vector<double>& piece_net_z,
+                     std::vector<std::array<int, 4>>& piece_rects) {
+    piece_id.assign(static_cast<size_t>(w) * h, -1);
+    piece_net_x.clear();
+    piece_net_z.clear();
+    piece_rects.clear();
+    std::vector<std::array<int, 4>> rects = decompose_field(occ, w, h);
+    merge_rect_pairs(rects);
+    for (size_t pi = 0; pi < rects.size(); ++pi) {
+        const std::array<int, 4>& r = rects[pi];
+        double t_x0, t_x1, t_z0, t_z1;
+        field_side_margins(margins_mask, w, h, ir, r[0], r[1], r[2], r[3], t_x0, t_x1,
+                           t_z0, t_z1);
+        piece_net_x.push_back((r[2] - r[0]) * ir.cell - t_x0 - t_x1);
+        piece_net_z.push_back((r[3] - r[1]) * ir.cell - t_z0 - t_z1);
+        piece_rects.push_back(r);
+        for (int j = r[1]; j < r[3]; ++j)
+            for (int i = r[0]; i < r[2]; ++i)
+                piece_id[static_cast<size_t>(j) * w + i] = static_cast<int>(pi);
+    }
 }
 
 void merge_rect_pairs(std::vector<std::array<int, 4>>& rects) {
@@ -1076,39 +1608,23 @@ FloorPlan grow_floor_cells(const GrowInput& in, const ExpandedProgram& prog,
     // pieces (the attic knee bands around a stair well), so the check scans
     // squares directly. The relax pass below keeps the honest "no free cell"
     // error when nothing hostable is left.
-    std::vector<double> piece_net(static_cast<size_t>(fp.w) * fp.h, 0.0);
-    {
-        // Integral image of the non-free cells for O(1) all-free queries.
-        const int iw = fp.w + 1;
-        std::vector<int> blocked(static_cast<size_t>(iw) * (fp.h + 1), 0);
-        for (int j = 0; j < fp.h; ++j)
-            for (int i = 0; i < fp.w; ++i) {
-                const int b = occ[static_cast<size_t>(j) * fp.w + i] != kCellFree ? 1 : 0;
-                blocked[static_cast<size_t>(j + 1) * iw + i + 1] =
-                    b + blocked[static_cast<size_t>(j) * iw + i + 1] +
-                    blocked[static_cast<size_t>(j + 1) * iw + i] -
-                    blocked[static_cast<size_t>(j) * iw + i];
-            }
-        auto blocked_in = [&](int x0, int z0, int x1, int z1) {
-            return blocked[static_cast<size_t>(z1) * iw + x1] -
-                   blocked[static_cast<size_t>(z0) * iw + x1] -
-                   blocked[static_cast<size_t>(z1) * iw + x0] +
-                   blocked[static_cast<size_t>(z0) * iw + x0];
-        };
-        for (int z0 = 0; z0 < fp.h; ++z0)
-            for (int x0 = 0; x0 < fp.w; ++x0)
-                for (int l = 1; z0 + l <= fp.h && x0 + l <= fp.w; ++l) {
-                    if (blocked_in(x0, z0, x0 + l, z0 + l) > 0) break;
-                    double t_x0, t_x1, t_z0, t_z1;
-                    piece_side_margins(fp, params.ir, x0, z0, x0 + l, z0 + l, t_x0, t_x1,
-                                       t_z0, t_z1);
-                    const double net = std::min(l * params.ir.cell - t_x0 - t_x1,
-                                                l * params.ir.cell - t_z0 - t_z1);
-                    for (int j = z0; j < z0 + l; ++j)
-                        for (int i = x0; i < x0 + l; ++i)
-                            piece_net[static_cast<size_t>(j) * fp.w + i] =
-                                std::max(piece_net[static_cast<size_t>(j) * fp.w + i], net);
-                }
+    std::vector<double> piece_net;
+    field_piece_net(occ, fp.outside, fp.w, fp.h, params.ir, piece_net);
+    // Rect-piece net for the seed_next_to rooms (B4): their seed constraint is
+    // never relaxed, so it must predict the repair's piece binding — a room
+    // seeded in a piece whose net min side is under its min_dim gets re-homed
+    // by the repair and loses its stack/shaft contact (the square scan above
+    // is too lenient on slivers: a square may extend into a neighbor piece).
+    // Computed on the repair's model: the field with the pinned rooms blocked.
+    std::vector<double> piece_net_rect;
+    if (!in.seed_next_to.empty()) {
+        std::vector<int32_t> decomp = fp.outside;
+        for (const PlanRoom& room : fp.rooms)
+            if (room.pinned)
+                for (int j = room.z0; j < room.z1; ++j)
+                    for (int i = room.x0; i < room.x1; ++i)
+                        decomp[static_cast<size_t>(j) * fp.w + i] = kCellOutside;
+        field_piece_net_rect(decomp, fp.outside, fp.w, fp.h, params.ir, piece_net_rect);
     }
 
     for (const RoomInstance* r : chosen) {
@@ -1138,15 +1654,23 @@ FloorPlan grow_floor_cells(const GrowInput& in, const ExpandedProgram& prog,
     }
 
     // -- Seeds -------------------------------------------------------------
-    // Order (§6.1): entrance room first, then by descending target area
-    // (hearth rooms lead once cores exist — B4). Pinned rooms are already
-    // placed; they only feed the crowding term.
+    // Order (§6.1): stack-bound rooms first (their stack-neighbor cells are
+    // the scarcest resource, B4 §9.2) — among them the largest min_dim first,
+    // mirroring the G4b gate's greedy match: a bigger room seeded late can
+    // find every remaining seed cell too thin for it (the gate matched it to
+    // a cell the smaller room then took). Then the entrance room, then by
+    // descending target area. Pinned rooms are already placed; they only feed
+    // the crowding term.
     std::vector<int> order;
     for (size_t i = 0; i < fp.rooms.size(); ++i)
         if (!fp.rooms[i].pinned) order.push_back(static_cast<int>(i));
     std::stable_sort(order.begin(), order.end(), [&](int a, int b) {
         const PlanRoom& A = fp.rooms[static_cast<size_t>(a)];
         const PlanRoom& B = fp.rooms[static_cast<size_t>(b)];
+        const bool sa = in.seed_next_to.count(A.id) != 0;
+        const bool sb = in.seed_next_to.count(B.id) != 0;
+        if (sa != sb) return sa;
+        if (sa && A.min_dim != B.min_dim) return A.min_dim > B.min_dim;
         if (A.entrance_front != B.entrance_front) return A.entrance_front;
         return A.target > B.target;
     });
@@ -1218,6 +1742,9 @@ FloorPlan grow_floor_cells(const GrowInput& in, const ExpandedProgram& prog,
         // side under the room's min_dim) are skipped on the first pass — a
         // seed there is trapped in a strip the anneal cannot leave; the relax
         // pass keeps the honest failure when nothing hostable is left.
+        // B4: a hearth room is additionally pinned to its stack's neighbor
+        // cells (seed_next_to) in every pass — never relaxed.
+        const auto seed_only_it = in.seed_next_to.find(room.id);
         int best_i = -1, best_j = -1;
         double best = -1e30;
         for (int relax = 0; relax < 2 && best_i < 0; ++relax)
@@ -1225,6 +1752,22 @@ FloorPlan grow_floor_cells(const GrowInput& in, const ExpandedProgram& prog,
                 for (int j = 0; j < fp.h; ++j)
                     for (int i = 0; i < fp.w; ++i) {
                         if (occ[static_cast<size_t>(j) * fp.w + i] != kCellFree) continue;
+                        if (seed_only_it != in.seed_next_to.end()) {
+                            bool listed = false;
+                            for (const glm::ivec2& c : seed_only_it->second)
+                                if (c.x == i && c.y == j) {
+                                    listed = true;
+                                    break;
+                                }
+                            if (!listed) continue;
+                            // The piece must host the room on its own (the
+                            // repair binds one room to one piece); never
+                            // relaxed — same gate as the G4b chimney scan.
+                            if (!piece_net_rect.empty() &&
+                                piece_net_rect[static_cast<size_t>(j) * fp.w + i] <
+                                    room.min_dim - kEps)
+                                continue;
+                        }
                         if (!seedable(i, j)) continue;
                         if (!relax && piece_net[static_cast<size_t>(j) * fp.w + i] <
                                           room.min_dim - kEps)
@@ -1245,6 +1788,23 @@ FloorPlan grow_floor_cells(const GrowInput& in, const ExpandedProgram& prog,
                     }
         if (best_i < 0) {
             if (std::getenv("BTG_DEBUG_DUMP")) {
+                if (seed_only_it != in.seed_next_to.end()) {
+                    std::string t;
+                    for (const glm::ivec2& c : seed_only_it->second) {
+                        const size_t q = static_cast<size_t>(c.y) * fp.w + c.x;
+                        t += " (" + std::to_string(c.x) + "," + std::to_string(c.y) + ")";
+                        if (occ[q] != kCellFree) {
+                            t += " occ";
+                            continue;
+                        }
+                        if (!seedable(c.x, c.y)) t += " !seedable";
+                        if (!piece_net_rect.empty() &&
+                            piece_net_rect[q] < room.min_dim - kEps)
+                            t += " net=" + std::to_string(piece_net_rect[q]);
+                    }
+                    std::fprintf(stderr, "seed fail %s: seed_set:%s\n", room.id.c_str(),
+                                 t.c_str());
+                }
                 int n_free = 0, n_seedable = 0, n_net = 0;
                 double net_max = 0.0;
                 for (int j = 0; j < fp.h; ++j)
@@ -1271,7 +1831,10 @@ FloorPlan grow_floor_cells(const GrowInput& in, const ExpandedProgram& prog,
                 }
                 std::fprintf(stderr, "%s", d.c_str());
             }
-            err = "no free cell for room " + room.id;
+            err = seed_only_it != in.seed_next_to.end()
+                      ? "no free cell for room " + room.id +
+                            " next to its chimney stack (the G4b seed set is occupied)"
+                      : "no free cell for room " + room.id;
             return fp;
         }
         if (std::getenv("BTG_DEBUG_DUMP"))
@@ -1281,6 +1844,7 @@ FloorPlan grow_floor_cells(const GrowInput& in, const ExpandedProgram& prog,
         room.z0 = best_j;
         room.x1 = best_i + 1;
         room.z1 = best_j + 1;
+        if (seed_only_it != in.seed_next_to.end()) room.pin_cell = {best_i, best_j};
         occ[static_cast<size_t>(best_j) * fp.w + best_i] = static_cast<int32_t>(oi);
         seeds.emplace_back(room.id, std::pair{best_i, best_j});
         placed.push_back(&room);

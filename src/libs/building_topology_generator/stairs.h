@@ -81,4 +81,16 @@ bool attic_walk_hosts_stair(const std::vector<char>& walk, int w, int h, double 
 bool place_stairs(const Ir& ir, StoreyFields& fields, const PlanParams& params,
                   Rng& rng, std::vector<StairCore>& out, std::string& err);
 
+// The auto-corridor's seed cells on storey k (algorithms §6.4): the free
+// 4-neighbors of the k-starting shafts along their fully door-ok sides (the
+// long flight side and the far end, §9.1 — a contact anywhere else cannot
+// host the corridor~stairwell door). mask gates freeness (a cell !=
+// kCellFree is excluded): the pipeline passes the storey field, the G4b
+// chimney gate the field with the candidate stack and the shafts stamped
+// out. When no fully door-ok side is exposed (shouldn't happen), falls back
+// to any free shaft neighbor — an empty result then truly means the shaft is
+// walled in and the storey cannot seed its corridor.
+std::vector<glm::ivec2> corridor_seed_cells(const std::vector<int32_t>& mask, int w, int h,
+                                            const std::vector<StairCore>& stairs, int k);
+
 }  // namespace building_topology_generator

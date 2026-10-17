@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "anneal.h"
+#include "chimneys.h"
 #include "ir.h"
 #include "plan.h"
 #include "program.h"
@@ -26,13 +27,19 @@ struct BuildingPlanResult {
     std::string error;
     StoreyFields fields;             // after the stair voids are stamped
     std::vector<StairCore> stairs;
+    std::vector<ChimneyCore> chimneys;  // B4 (§9.2); kCellCore stamped in fields
     std::vector<int> storey_of;      // per ExpandedProgram::rooms entry
     std::vector<PlanResult> storeys; // per Ir::storeys
     int retries_used = 0;
 };
 
+// max_retries: outer attempts re-rolling the stairs AND the chimney scan
+// (the tried-stack ban makes each retry explore a new position instead of
+// repeating the geometric argmin — 16 gives the hard seeds enough distinct
+// stack positions; the loop breaks early at hard == 0, so easy seeds pay
+// nothing).
 BuildingPlanResult plan_building(const ExpandedProgram& prog, const Ir& ir,
                                  const PlanParams& params, uint64_t seed,
-                                 int max_retries = 3);
+                                 int max_retries = 16);
 
 }  // namespace building_topology_generator

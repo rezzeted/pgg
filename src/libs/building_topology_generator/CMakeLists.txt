@@ -17,6 +17,8 @@ add_library(building_topology_generator STATIC
     anneal.cpp
     cost.h
     cost.cpp
+    chimneys.h
+    chimneys.cpp
     emit.h
     emit.cpp
     openings.h

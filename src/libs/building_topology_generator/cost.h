@@ -26,6 +26,6 @@ struct CostBreakdown {
 
 CostBreakdown evaluate_cost(const FloorPlan& fp, const ExpandedProgram& prog,
                             const DerivedOpenings& ops, const PlanParams& params,
-                            const FloorPlan* below = nullptr);
+                            const FloorPlan* below = nullptr, bool full_height = true);
 
 }  // namespace building_topology_generator

@@ -14,6 +14,7 @@
 
 #include <array>
 #include <cstdint>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -30,6 +31,9 @@ inline constexpr int32_t kCellFree = -1;     // inside the volumes, unassigned
 inline constexpr int32_t kCellOutside = -2;  // outside the volumes (L cut, annex above, ...)
 inline constexpr int32_t kCellVoid = -3;     // slab opening over a stair (no floor, §9.1)
 inline constexpr int32_t kCellRoofVoid = -4;  // attic: floor exists, ceiling < h_knee (§5.6)
+inline constexpr int32_t kCellCore = -5;  // chimney stack body (§6: no wall on its boundary,
+                                          // the stack asset builds the face; excluded from
+                                          // the slab rects like a void)
 
 struct PlanParams {
     IrParams ir;
@@ -57,6 +61,7 @@ struct PlanParams {
     double w_regularity = 1.0;
     double w_span = 1.0;
     double w_support = 1.5;       // C11: upper partitions over walls below (B3)
+    double w_door_gap = 2.0;      // B4: gradient toward door-capable runs (§7.1)
     double w_hard0 = 10.0;        // phase-0 weight of one hard violation
 };
 
@@ -75,6 +80,13 @@ struct PlanRoom {
     // Pinned rooms (B3: the stair shaft) are placed before the growth and
     // never touched by the anneal moves.
     bool pinned = false;
+    // The seed cell the room must KEEP inside its main rect (B4): set for the
+    // rooms seeded from a never-relaxed seed_next_to set (a hearth room's
+    // stack contact, the auto-corridor's shaft door side). The repair's
+    // guillotine sorts and cuts so the slice still contains it — a hearth
+    // room re-sliced off its pin loses the stack contact (hard.hearth) with
+    // no legal anneal move back (its sibling takes the frontage and anchors).
+    glm::ivec2 pin_cell{-1, -1};
     // Door-capable cells of the room's bbox, (j - z0) * (x1 - x0) + (i - x0);
     // empty = every cell may host a door. The stair shaft allows doors only
     // on the full-headroom floor cells (approach pad + the notch, §9.1).
@@ -211,6 +223,10 @@ struct GrowInput {
     std::vector<char> useful;          // attic walk mask (empty = all useful)
     int storey_index = 0;
     glm::dvec2 entrance_cell{-1.0, -1.0};  // < 0: the facade center (default)
+    // B4 (§9.2): a hearth room seeds only on its chimney stack's free
+    // neighbor cells (chimneys.h hearth_seed_cells); the constraint is never
+    // relaxed (the hearth hard term owns the failure).
+    std::map<std::string, std::vector<glm::ivec2>> seed_next_to;
 };
 
 FloorPlan grow_floor_cells(const GrowInput& in, const ExpandedProgram& prog,
@@ -236,5 +252,80 @@ bool rects_edge_adjacent(const std::array<int, 4>& a, const std::array<int, 4>& 
 // m_wing x m_wing (clamped to m_main). Works on a local grid over the union
 // bbox. G4 uses it to tell a wing-capable strip from a dead pocket.
 bool rects_covering_ok(const std::vector<std::array<int, 4>>& parts, int m_main, int m_wing);
+
+// Field analysis shared by the G4 cores (stairs, chimneys): the free cells
+// (kCellFree) minus `blocked` must stay 4-connected (a disconnected floor
+// has unreachable rooms; I3 would fail).
+bool field_connected_without(const std::vector<int32_t>& mask, int w, int h,
+                             const std::vector<int>& blocked);
+
+// True when `mask` holds a DEAD piece near the changed cells: a free rect
+// piece too thin to host any room (min side < 3 cells) whose cells cannot
+// even find a kWingCoverCells-square cover within the union of itself and
+// its free edge-adjacent neighbors — never a room, never a wing. Pieces away
+// from the change are the field's own and are not charged to the core.
+bool dead_piece_near(const std::vector<int32_t>& mask, int w, int h,
+                     const std::vector<int>& changed);
+
+// Wall-allowance margins of a free-field rect against a raw mask (out of
+// bounds = outside): the max side_half_t of the cells beyond each side.
+// G4b uses it to tell whether a piece can host a room (net dims vs min_dim)
+// before the growth exists.
+void field_side_margins(const std::vector<int32_t>& mask, int w, int h,
+                        const IrParams& ir, int x0, int z0, int x1, int z1,
+                        double& t_x0, double& t_x1, double& t_z0, double& t_z1);
+
+// Net-min-side map of the free cells (the I10 seed gate), shared by the G5
+// seeding and the G4b chimney gate: for every free cell, the max over all
+// all-free squares covering it of the square's net side (gross minus the
+// wall-allowance margins). A room seeded on a cell with piece_net under its
+// min_dim is trapped in a wing-only strip. `occ` decides blocked-ness (!=
+// kCellFree; pinned rooms count as blocked); `margins_mask` feeds the
+// margins (in the growth the shaft cells stay kCellFree there — a partition
+// wall — while occ blocks them).
+void field_piece_net(const std::vector<int32_t>& occ,
+                     const std::vector<int32_t>& margins_mask, int w, int h,
+                     const IrParams& ir, std::vector<double>& piece_net);
+
+// Rect-piece variant of the net-min-side map: decompose+union-merge the field
+// exactly as the G5 repair does, then give every cell the net min side of its
+// CONTAINING piece (gross minus the margins scanned in margins_mask); cells
+// outside any piece get 0. field_piece_net over-reports on slivers (a square
+// may extend into a neighbor piece) while the repair binds one room to one
+// piece — a guillotine slice spans the piece's full side. The chimney seed
+// gates and the seed_next_to filter use this map so a stack position that
+// passes the gate survives the repair.
+void field_piece_net_rect(const std::vector<int32_t>& occ,
+                          const std::vector<int32_t>& margins_mask, int w, int h,
+                          const IrParams& ir, std::vector<double>& piece_net_rect);
+
+// Rect-piece decomposition with per-cell piece identity: decompose+merge as
+// field_piece_net_rect, then give every cell the index of its containing
+// piece (-1 outside any piece) and fill the per-piece net extents (gross side
+// minus the margins scanned in margins_mask) plus the piece rects. The G4b
+// pair-frontage gate groups seed cells by piece: a hearth room's repair slice
+// must contain its seed cell (the stack contact), so the gate runs a seeded
+// guillotine feasibility per piece.
+void field_piece_ids(const std::vector<int32_t>& occ,
+                     const std::vector<int32_t>& margins_mask, int w, int h,
+                     const IrParams& ir, std::vector<int>& piece_id,
+                     std::vector<double>& piece_net_x,
+                     std::vector<double>& piece_net_z,
+                     std::vector<std::array<int, 4>>& piece_rects);
+
+// Re-slice feasibility of a storey field (mirrors the G5 guillotine repair
+// with free room->piece assignment): decompose+merge the mask into pieces,
+// then search an assignment of the rooms ((min_dim, target) pairs) to the
+// pieces such that every piece's room set is recursively guillotine-feasible
+// under the net min_dim cut rule, margins scanned in margins_mask (free =
+// a future partition, core = the stack face, outside/roof-void as in
+// side_half_t). Orphan pieces become wings and stay legal. A stack/shaft
+// position failing this can never survive the G5 repair, so the G4 cores
+// reject it; passing is only a necessary condition (the real repair binds
+// rooms by centroid), the growth retries absorb the slack.
+bool field_reslice_feasible(const std::vector<int32_t>& mask,
+                            const std::vector<int32_t>& margins_mask, int w, int h,
+                            const IrParams& ir,
+                            const std::vector<std::pair<double, double>>& rooms);
 
 }  // namespace building_topology_generator
